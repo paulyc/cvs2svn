@@ -3412,8 +3412,7 @@ class CVSCommit:
           # but hey, we're all idealists here, aren't we?
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit(self._ctx, "pre-commit branch CHANGE '%s'"
-                                   % c_rev.branch_name)
+            svn_commit = SVNCommit(self._ctx)
             svn_commit.set_symbolic_name(c_rev.branch_name)
             svn_commit.flush()
 
@@ -3524,6 +3523,15 @@ class SVNCommit:
     It is an error to pass CVS_REVS without REVNUM, but you may pass
     REVNUM without CVS_REVS, and then add a revision at a time by
     invoking add_revision()."""
+
+    print "KFF "
+    print "KFF No caller passes the CVS_REVS argument, so what's going on?"
+    print "KFF "
+    if len(cvs_revs):
+      print "KFF REVNUM:", revnum
+      print "KFF CVS_REVS:", cvs_revs
+      raise SVNCommitInternalInconsistencyError
+
     self._ctx = ctx
     self._description = description
     self.cvs_revs = cvs_revs
