@@ -522,14 +522,10 @@ class CVSRevision:
     # else
     return None
 
-  ### TODO tag_name is currently unused... can we get rid of it?
-  def _make_path(self, path, branch_name = None, tag_name = None):
-    """Return the trunk path, branch path, or tag path for PATH.
+  def _make_path(self, path, branch_name = None):
+    """Return the trunk path or branch path for PATH.
 
-    If PATH is empty or None, return the root trunk|branch|tag path.
-
-    It is an error to pass both a BRANCH_NAME and a TAG_NAME."""
-
+    If PATH is None, return None."""
     # For a while, we treated each top-level subdir of the CVS
     # repository as a "project root" and interpolated the appropriate
     # genealogy (trunk|tag|branch) in according to the official
@@ -564,30 +560,14 @@ class CVSRevision:
     #
     # and the surrounding thread, for why what people really want is a
     # way of specifying an in-repository prefix path, not interpolation.
-
-    # Check caller sanity.
-    if branch_name and tag_name:
-      sys.stderr.write("%s: make_path() miscalled: both branch and tag given.\n"
-                       % error_prefix)
-      sys.exit(1)
+    if path is None:
+      return None
 
     if branch_name:
       branch_name = _clean_symbolic_name(branch_name)
-      if path:
-        return self._ctx.branches_base + '/' + branch_name + '/' + path
-      else:
-        return self._ctx.branches_base + '/' + branch_name
-    elif tag_name:
-      tag_name = _clean_symbolic_name(tag_name)
-      if path:
-        return self._ctx.tags_base + '/' + tag_name + '/' + path
-      else:
-        return self._ctx.tags_base + '/' + tag_name
+      return self._ctx.branches_base + '/' + branch_name + '/' + path
     else:
-      if path:
-        return self._ctx.trunk_base + '/' + path
-      else:
-        return self._ctx.trunk_base
+      return self._ctx.trunk_base + '/' + path
 
   def _get_cvs_file_path(self):
     """Return the path and executable status of the rcs file for C_REV.
