@@ -1025,10 +1025,13 @@ def vendor_branch_sameness():
   # b.txt should be 'M'odified, and (for different reasons) c.txt and
   # d.txt should be 'D'eleted.
 
+  ###TODO Convert to check_rev.
   if logs[1].msg.find('Initial revision') != 0:
     raise svntest.Failure
 
   if not logs[1].changed_paths == {
+    '/branches' : 'A',
+    '/tags' : 'A',
     '/trunk' : 'A',
     '/trunk/proj' : 'A',
     '/trunk/proj/a.txt' : 'A',
@@ -1041,9 +1044,8 @@ def vendor_branch_sameness():
   if logs[2].msg.find(sym_log_msg('vbranchA')) != 0:
     raise svntest.Failure
 
-  if not logs[2].changed_paths == {
-    '/branches' : 'A',
-    '/branches/vbranchA (from /trunk:1)' : 'A',
+  if not logs[2].changed_paths == { 
+   '/branches/vbranchA (from /trunk:1)' : 'A',
     '/branches/vbranchA/proj/d.txt' : 'D',
     }:
     raise svntest.Failure

@@ -4851,7 +4851,7 @@ class SVNRepositoryMirror:
           self.delete_path(cvs_rev.svn_trunk_path)
         # ...and copy over from branch
         self.copy_path(cvs_rev.svn_path, cvs_rev.svn_trunk_path,
-                       svn_commit.revnum)
+                       svn_commit.motivating_revnum)
       elif cvs_rev.op == OP_DELETE:
         # delete trunk path
         self.delete_path(cvs_rev.svn_trunk_path)
@@ -5132,8 +5132,6 @@ class SVNRepositoryMirror:
     if svn_commit.symbolic_name:
       self.fill_symbolic_name(svn_commit.symbolic_name)
     elif svn_commit.motivating_revnum:
-      print "COM: INACTIVE Default branch copies for motivating commit"
-      svn_commit.motivating_revnum, "in SVNCommit", svn_commit.revnum
       self.synchronize_default_branch(svn_commit)
     else: # This actually commits CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
@@ -5148,8 +5146,9 @@ class SVNRepositoryMirror:
             self.add_path(cvs_rev)
           elif cvs_rev.op == OP_CHANGE:
             self.change_path(cvs_rev)
-          else: # Must be a delete
-            path = self.delete_path(cvs_rev.svn_path)
+
+        if cvs_rev.op == OP_DELETE:
+          path = self.delete_path(cvs_rev.svn_path)
 
   def cleanup(self):
     """Callback for the Cleanup.register in self.__init__."""
