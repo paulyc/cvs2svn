@@ -609,7 +609,7 @@ class CVSRevision:
       return rcs_path, None
 
   def filename(self):
-    "Return the last path component of self.fname."
+    "Return the last path component of self.fname, minus the ',v'"
     return self.fname.split('/')[-1][:-2]
 
 class CollectData(rcsparse.Sink):
@@ -1763,8 +1763,9 @@ class PersistenceManager(Singleton):
     return self.svn2cvs_db.len()
 
   def get_svn_revnum(self, cvs_rev_unique_key):
-    """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
-    was committed."""
+    """Return the Subversion revision number in which
+    CVS_REV_UNIQUE_KEY was committed, or SVN_INVALID_REVNUM if there
+    is no mapping for CVS_REV_UNIQUE_KEY."""
     return int(self.cvs2svn_db.get(cvs_rev_unique_key, SVN_INVALID_REVNUM))
 
   def get_svn_commit(self, svn_revnum):
@@ -2072,7 +2073,8 @@ class CVSCommit:
         cvs_generated_msg = ('file %s was initially added on branch %s.\n'
                              % (c_rev.filename(),
                                 c_rev.branches[0]))
-        author, log_msg = PersistenceManager().svn_commit_metadata[c_rev.digest]
+        author, log_msg = \
+                PersistenceManager().svn_commit_metadata[c_rev.digest]
         if not log_msg == cvs_generated_msg:
           add_revision(c_rev)
       else:
