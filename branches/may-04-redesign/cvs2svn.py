@@ -100,9 +100,9 @@ DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 #
 # SYMBOL_NAME SVN_REVNUM TYPE SVN_PATH
 #
-# Where type is either OPENING, CLOSING, or DEAD_OPENING.  The
-# SYMBOL_NAME and SVN_REVNUM are the primary and secondary sorting
-# criteria for creating SYMBOL_OPENINGS_CLOSINGS_SORTED. 
+# Where type is either OPENING orCLOSING.  The SYMBOL_NAME and
+# SVN_REVNUM are the primary and secondary sorting criteria for
+# creating SYMBOL_OPENINGS_CLOSINGS_SORTED.
 SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
 # A sorted version of the above file.
 SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
@@ -259,7 +259,6 @@ DIGEST_END_IDX = 9 + (sha.digestsize * 2)
 # Constants used in SYMBOL_OPENINGS_CLOSINGS
 OPENING = '0'
 CLOSING = 'C'
-DEAD_OPENING = 'D'
 
 # Officially, CVS symbolic names must use a fairly restricted set of
 # characters.  Unofficially, CVS 1.10 allows any character but [$,.:;@]
@@ -1163,15 +1162,12 @@ class SymbolingsLogger(Singleton):
 
   def log_names_for_rev(self, names, c_rev, svn_revnum):
     """Iterate through NAMES.  Based on the type of C_REV we have,
-    either log an opening, a dead opening, and, if C_REV.next_rev is
-    not None, a closing.  The dead opening and the opening both use
-    SVN_REVNUM, but the closing (if any) will have its revnum
-    determined later."""
+    either log an opening or, if C_REV.next_rev is not None, a
+    closing.  The opening uses SVN_REVNUM, but the closing (if any)
+    will have its revnum determined later."""
     for name in names:
       name = _clean_symbolic_name(name)
-      if c_rev.op == OP_DELETE:
-        self._log_dead_opening(name, c_rev, svn_revnum)
-      else:
+      if not c_rev.op == OP_DELETE:
         self._log(name, svn_revnum, c_rev.svn_path, OPENING)
       
       # If our c_rev has a next_rev, then that's the closing rev for
@@ -1180,26 +1176,6 @@ class SymbolingsLogger(Singleton):
       if c_rev.next_rev is not None:
         self.closings.write('%s %s\n' %
                             (name, c_rev.unique_key(c_rev.next_rev))) 
-
-  def _log_dead_opening(self, name, c_rev, svn_revnum):
-    """Write out a single line to the symbol_openings_closings file
-    representing that SVN_REVNUM of svn_path is a dead opening for
-    NAME (which can only be a branch)."""
-
-    # If we have a C_REV on branch NAME whose op is OP_DELETE, it's a
-    # special case.  It means that we've encountered a situation where
-    # a file was added on a branch, so in RCS, the file is added as
-    # rev 1.1 in state 'dead', and the file itself is added on the
-    # branch.  Therefore, we have no file to copy here, but we need to
-    # copy the branch itself.
-
-    # For copies from trunk, we just want the first path element
-    path = c_rev.svn_path.split('/')[0]
-    if c_rev.branch_name:
-      # For copies from a branch, we want the first *two* path
-      # elements (e.g. 'branches/my_branch')
-      path = '/'.join(c_rev.svn_path.split('/')[:2])
-    self._log(name, svn_revnum, path, DEAD_OPENING)
 
   def log_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it opens a symbolic name."""
@@ -1332,11 +1308,6 @@ def print_node_tree(tree, root_node, indent_depth=0):
       continue
     print_node_tree(tree, value, (indent_depth + 1))
 
-class SymbolingsReaderEmptyFillError(Exception):
-  """Exception raised if we encounter an attempted fill of a symbolic
-  name that contains no openings or closings (and consequently,
-  nothing would be filled)."""
-  pass
 
 class SymbolingsReader:
   """Provides an interface to the SYMBOL_OPENINGS_CLOSINGS_SORTED file
@@ -1385,7 +1356,6 @@ class SymbolingsReader:
       if (revnum > svn_revnum
           or name != symbolic_name):
         break
-
       symbol_fill.register(svn_path, revnum, type)
 
     # get current offset of the read marker and set it to the offset
@@ -1394,10 +1364,6 @@ class SymbolingsReader:
     if not symbol_fill.is_empty():
       # Subtract one cause we rstripped the CR above.
       self.offsets[symbolic_name] = self.symbolings.tell() - len(line) - 1
-    else:
-      raise SymbolingsReaderEmptyFillError, \
-            ("Read no valid openings or closings for '%s' at svn_revnum '%d'"
-                                             % (symbolic_name, svn_revnum))
                                
     symbol_fill.make_node_tree()
     return symbol_fill
@@ -1444,22 +1410,6 @@ class SymbolicNameFillingGuide:
     self.root_key = '0'
     # The dictionary that holds our node tree, seeded with the root key.
     self.node_tree = { self.root_key : { } }
-
-    # These variables will hold information necessary to create our
-    # branch if we encounter a DEAD_OPENING in self.things
-    #
-    # See SymbolingsLogger._log_dead_opening for more information.
-
-    # The subversion revision number to copy from if one of our
-    # opening revisions was in state 'dead', false otherwise.
-    #
-    # Note that this will always log the *last* dead
-    # opening... we don't need to track more than one as it's just
-    # going to help us make sure we made the copy necessary to create
-    # our branch.
-    self.dead_opening_rev = None
-    # The subversion path to the root of our branch (e.g. branches/the_branch)
-    self.branch_source = None
 
   def get_best_revnum(self, node, preferred_revnum):
     """ Determine the best subversion revision number to use when
@@ -1614,18 +1564,12 @@ class SymbolicNameFillingGuide:
     to be copied into self.symbolic_name, and SVN_REVNUM is either the
     first svn revision number that we can copy from (our opening), or
     the last (not inclusive) svn revision number that we can copy from
-    (our closing).  TYPE indicates whether this path is an opening, a
-    dead opening, or a closing.
+    (our closing).  TYPE indicates whether this path is an opening or a
+    a closing.
 
     The opening for a given SVN_PATH must be passed before the closing
     for it to have any effect... any closing encountered before a
     corresponding opening will be discarded.
-
-    If TYPE is DEAD_OPENING, set self.branch_source and
-    self.dead_opening_rev to SVN_PATH and SVN_REVNUM respectively.
-    (It's OK to overwrite these variables if we have multiple dead
-    openings, as we just need one to make sure that our branch gets
-    copied.)
 
     It is not necessary to pass a corresponding closing for every
     opening.
@@ -1636,9 +1580,6 @@ class SymbolicNameFillingGuide:
     # Only log a closing if we've already registered the opening for that path.
     elif type == CLOSING and self.things.has_key(svn_path):
       self.things[svn_path][self.closing_key] = svn_revnum
-    elif type == DEAD_OPENING:
-      self.dead_opening_rev = svn_revnum
-      self.branch_source = svn_path
 
   def make_node_tree(self):
     """Generates the SymbolicNameFillingGuide's node tree from
@@ -1674,10 +1615,9 @@ class SymbolicNameFillingGuide:
     #print_node_tree(self.node_tree, self.root_key) 
 
   def is_empty(self):
-    """Return true if we haven't accumulated any openings, dead openings, or
-    closings, false otherwise."""
-    return ((not len(self.things))
-             and (self.dead_opening_rev is None))
+    """Return true if we haven't accumulated any openings or closings,
+    false otherwise."""
+    return not len(self.things)
 
 
 def generate_offsets_for_symbolings():
