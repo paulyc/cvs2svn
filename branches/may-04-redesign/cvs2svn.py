@@ -1741,6 +1741,7 @@ class PersistenceManager(Singleton):
     self.last_filled = {}
 
   def total_revs(self):
+    """Return the total number of Subversion revisions."""
     return self.svn2cvs_db.len()
 
   def get_svn_revnum(self, cvs_rev_unique_key):
@@ -3785,7 +3786,7 @@ def pass8(ctx):
     repos.add_delegate(DumpfileDelegate(ctx))
     Log().write(LOG_QUIET, "Starting Subversion Dumpfile.")
 
-  repos.add_delegate(StdoutDelegate(PersistenceManager(ctx).total_revs()))
+  repos.add_delegate(StdoutDelegate(PersistenceManager(ctx).total_revs() + 1))
 
   while(1):
     svn_commit = PersistenceManager(ctx).get_svn_commit(svncounter)
