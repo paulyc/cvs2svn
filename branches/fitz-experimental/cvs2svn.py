@@ -600,6 +600,7 @@ def make_path(ctx, path, branch_name = None, tag_name = None):
     else:
       return ctx.trunk_base
 
+
 def relative_name(cvsroot, fname):
   l = len(cvsroot)
   if fname[:l] == cvsroot:
