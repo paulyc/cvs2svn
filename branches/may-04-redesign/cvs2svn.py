@@ -4455,9 +4455,15 @@ class SVNRepositoryMirror:
     ###thrown if the response was unexpected.  Code defensively.
     parent_node_key, parent_node_contents = self._get_youngest_root_node()
 
+    path_so_far = None
     # Walk up the path, one node at a time.
     components = cvs_rev.svn_path.split('/')
+    last_component = components[-1]
     for component in components:
+      if path_so_far:
+        path_so_far = path_so_far + '/' + component
+      else:
+        path_so_far = component
       this_node_key = this_node_contents = None
       # If the parent_node_contents doesn't have an entry for this
       # component, create a new node for the component and add it to
@@ -4467,6 +4473,10 @@ class SVNRepositoryMirror:
         parent_node_contents[component] = this_node_key
         # Update the parent node in the db
         self.nodes_db[parent_node_key] = parent_node_contents
+        # If we create a new node and it's not a leaf node, then we've just
+        # created a new directory.  Let the delegate know.
+        if component is not last_component:
+          self.delegate.mkdir(path_so_far)
       else:
         # One way or another, parent dir now has an entry for component,
         # so grab it, see if it's mutable, and DTRT if it's not.
@@ -4605,7 +4615,7 @@ class SVNRepositoryMirror:
       print "COM: Filling name", svn_commit.symbolic_name, "in SVNCommit"
       self.fill_symbolic_name(svn_commit.symbolic_name)
     elif svn_commit.symbolic_name:
-      print "COM: Default branch copies for branch",
+      print "COM: INACTIVE Default branch copies for branch",
       svn_commit.default_branch, "in SVNCommit", svn_commit.revnum
       pass ###TODO: handle default_branch copies/deletes
     else: # This actually commits CVSRevisions
@@ -4653,6 +4663,10 @@ class SVNRepositoryDelegate:
     see subclass implementation for details."""
     raise NotImplementedError
 
+  def mkdir(self, path):
+    """PATH is a string; see subclass implementation for details."""
+    raise NotImplementedError
+
   def add_path(self, c_rev):
     """C_REV is a CVSRevision; see subclass implementation for
     details."""
@@ -4668,8 +4682,9 @@ class SVNRepositoryDelegate:
     details."""
     raise NotImplementedError
   
-  def copy_path(self, c_rev):
-    """C_REV is a CVSRevision; see subclass implementation for
+  def copy_path(self, src_path, dest_path, src_revnum):
+    """SRC_PATH and DEST_PATH are both strings, and SRC_REVNUM is a
+    subversion revision number (int); see subclass implementation for
     details."""
     raise NotImplementedError
   
@@ -4701,6 +4716,10 @@ class StdoutDelegate(SVNRepositoryDelegate):
     print " ", "=" * 40
     print "  Starting Subversion commit", svn_revnum
 
+  def mkdir(self, path):
+    """Print a line stating that we are creating directory PATH."""
+    print "    New Directory", path
+
   def add_path(self, c_rev):
     """Print a line stating that we are 'adding' c_rev.svn_path."""
     print "    Adding", c_rev.svn_path
@@ -4713,10 +4732,11 @@ class StdoutDelegate(SVNRepositoryDelegate):
     """Print a line stating that we are 'deleting' c_rev.svn_path."""
     print "    Deleting", c_rev.svn_path
   
-  def copy_path(self, c_rev):
-    """Print a line stating that we are 'copying' c_rev.svn_path."""
-    ###TODO WHERE IN THE SAM HILL ARE WE COPYING *FROM*?!?!
-    print "    Copying", c_rev.svn_path
+  def copy_path(self, src_path, dest_path, src_revnum):
+    """Print a line stating that we are 'copying' revision SRC_REVNUM
+    of SRC_PATH to DEST_PATH."""
+    print "    Copying revision", src_revnum, "of", src_path
+    print "                  to", dest_path
   
   def finish(self):
     """State that we are done creating our repository."""
