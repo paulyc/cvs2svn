@@ -488,7 +488,7 @@ def prune_with_care():
       print "Revision %d failed to remove '%s'." % (rev, path)
       raise svntest.Failure
 
-  rev = 41
+  rev = 47
   for path in ('/trunk/full-prune-reappear',
                '/trunk/full-prune-reappear/appears-later'):
     if not (logs[rev].changed_paths.get(path) == 'A'):
@@ -502,7 +502,7 @@ def interleaved_commits():
   repos, wc, logs = ensure_conversion('main')
 
   # The initial import.
-  rev = 31
+  rev = 37
   for path in ('/trunk/interleaved',
                '/trunk/interleaved/1',
                '/trunk/interleaved/2',
@@ -565,7 +565,7 @@ def simple_commits():
   repos, wc, logs = ensure_conversion('main')
 
   # The initial import.
-  rev = 21
+  rev = 22
   if not logs[rev].changed_paths == {
     '/trunk/proj': 'A',
     '/trunk/proj/default': 'A',
@@ -588,7 +588,7 @@ def simple_commits():
     raise svntest.Failure
     
   # The first commit.
-  rev = 24
+  rev = 29
   if not logs[rev].changed_paths == {
     '/trunk/proj/sub1/subsubA/default': 'M',
     '/trunk/proj/sub3/default': 'M',
@@ -599,7 +599,7 @@ def simple_commits():
     raise svntest.Failure
 
   # The second commit.
-  rev = 25
+  rev = 30
   if not logs[rev].changed_paths == {
     '/trunk/proj/default': 'M',
     '/trunk/proj/sub1/default': 'M',
@@ -622,13 +622,13 @@ def simple_tags():
  
   # Verify the copy source for the tags we are about to check
   # No need to verify the copyfrom revision, as simple_commits did that
-  rev = 22
+  rev = 23
   if not logs[rev].changed_paths == {
-    '/branches/vendorbranch/proj (from /trunk/proj:21)': 'A',
+    '/branches/vendorbranch/proj (from /trunk/proj:22)': 'A',
     }:
     raise svntest.Failure
 
-  fromstr = ' (from /branches/vendorbranch:23)'
+  fromstr = ' (from /branches/vendorbranch:24)'
 
   if logs[rev].msg.find(sym_log_msg('vendorbranch')) != 0:
     raise svntest.Failure
@@ -643,7 +643,7 @@ def simple_tags():
     raise svntest.Failure
 
   # The same, as a branch
-  rev = 44
+  rev = 25
   if not logs[rev].changed_paths == {
     '/branches/B_FROM_INITIALS'+fromstr: 'A',
     '/branches/B_FROM_INITIALS/single-files': 'D',
@@ -662,7 +662,7 @@ def simple_tags():
     raise svntest.Failure
 
   # The same, as a branch
-  rev = 45
+  rev = 28
   if not logs[rev].changed_paths == {
     '/branches/B_FROM_INITIALS_BUT_ONE'+fromstr: 'A',
     '/branches/B_FROM_INITIALS_BUT_ONE/single-files': 'D',
@@ -676,7 +676,7 @@ def simple_branch_commits():
   # See test-data/main-cvsrepos/proj/README.
   repos, wc, logs = ensure_conversion('main')
 
-  rev = 29
+  rev = 35
   if not logs[rev].changed_paths == {
     '/branches/B_MIXED/proj/default': 'M',
     '/branches/B_MIXED/proj/sub1/default': 'M',
@@ -695,13 +695,13 @@ def mixed_time_tag():
 
   rev = find_tag_rev(logs, 'T_MIXED')
   expected = {  
-    '/tags/T_MIXED (from /trunk:25)': 'A',
+    '/tags/T_MIXED (from /trunk:30)': 'A',
     '/tags/T_MIXED/partial-prune': 'D',
     '/tags/T_MIXED/single-files': 'D',
-    '/tags/T_MIXED/proj/sub2/subsubA (from /trunk/proj/sub2/subsubA:21)': 'R',
-    '/tags/T_MIXED/proj/sub3 (from /trunk/proj/sub3:24)': 'R',
+    '/tags/T_MIXED/proj/sub2/subsubA (from /trunk/proj/sub2/subsubA:22)': 'R',
+    '/tags/T_MIXED/proj/sub3 (from /trunk/proj/sub3:29)': 'R',
     }
-  if rev == 46:
+  if rev == 15:
     expected['/tags'] = 'A'
   if not logs[rev].changed_paths == expected:
     raise svntest.Failure
