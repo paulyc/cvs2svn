@@ -3238,26 +3238,35 @@ def pass3(ctx):
 
 def pass4(ctx):
   """Iterate through sorted revs and generate:
-  1. The LastSymbolicNameDatabase, which contains the last CVSRevision
-     that is a source for each tag or branch.
-
-  2. A Database that maps CVSRevision.unique_key()s to CVSRevision
+  1. A Database that maps CVSRevision.unique_key()s to CVSRevision
      s-rev type strings.
+
+  And if we're not doing a trunk-only conversion, also generate:
+
+  2. The LastSymbolicNameDatabase, which contains the last CVSRevision
+     that is a source for each tag or branch.
 
   3. A Database that contains all symbolic names that are tags.
   """
-  last_sym_name_db = LastSymbolicNameDatabase('n')
+
+  ### TODO: Can't building the CVSRevisionDatabase be done in
+  ### CollectData?  If so, then we can skip this pass entirely when
+  ### doing --trunk-only
   cvs_rev_db = CVSRevisionDatabase('n', ctx)
-  tags_db = TagsDatabase('n')
+  if not ctx.trunk_only:
+    tags_db = TagsDatabase('n')
+    last_sym_name_db = LastSymbolicNameDatabase('n')
 
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
-    last_sym_name_db.log_revision(c_rev)
+    if not ctx.trunk_only:
+      last_sym_name_db.log_revision(c_rev)
+      tags_db.log_revision(c_rev)
     cvs_rev_db.log_revision(c_rev)
-    tags_db.log_revision(c_rev)
 
-  last_sym_name_db.create_database()
+  if not ctx.trunk_only:
+    last_sym_name_db.create_database()
 
 def pass5(ctx):
   """
@@ -3275,15 +3284,17 @@ def pass5(ctx):
   ###TODO Can we move this to pass4?
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
-    aggregator.process_revision(c_rev)
+    if not (ctx.trunk_only and c_rev.branch_name is not None):
+      aggregator.process_revision(c_rev)
   aggregator.flush()
-  SymbolingsLogger(ctx).close()
+  if not ctx.trunk_only:
+    SymbolingsLogger(ctx).close()
 
 
 def pass6(ctx):
-  sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
-  Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
-  pass
+  if not ctx.trunk_only:
+    sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
+    Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
 
 class SymbolingsReaderEmptyFillError(Exception):
   """Exception raised if we encounter an attempted fill of a symbolic
@@ -3665,7 +3676,8 @@ def generate_offsets_for_symbolings():
       offsets_db[sym] = file.tell() - len(line)
 
 def pass7(ctx):
-  generate_offsets_for_symbolings()
+  if not ctx.trunk_only:
+    generate_offsets_for_symbolings()
 
 ###TODO move this stuff out of here! pass8 should be here.
 
@@ -3715,15 +3727,16 @@ class CommitMapper(Singleton):
     Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
     self.svn_commit_names_dates = Database(SVN_COMMIT_NAMES_DATES, 'c')
     Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8)
-    self.motivating_revnums = Database(MOTIVATING_REVNUMS, 'c')
-    Cleanup().register(MOTIVATING_REVNUMS, pass8)
     self.svn_commit_metadata = Database(METADATA_DB, 'r')
     Cleanup().register(METADATA_DB, pass8)
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
     ###TODO kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.
     ###TODO FITZ: We should set an is_tag var on SVNCommit...
-    self.tags_db = TagsDatabase('r')
+    if not ctx.trunk_only:
+      self.tags_db = TagsDatabase('r')
+      self.motivating_revnums = Database(MOTIVATING_REVNUMS, 'c')
+      Cleanup().register(MOTIVATING_REVNUMS, pass8)
 
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
@@ -3770,6 +3783,10 @@ class CommitMapper(Singleton):
         author, log_msg = self.svn_commit_metadata[digest]
         svn_commit.set_author(author)
         svn_commit.set_log_msg(log_msg)
+
+    # If we're doing a trunk-only conversion, we don't need to do any more work.
+    if self._ctx.trunk_only:
+      return svn_commit
 
     name, date = self._get_name_and_date(svn_revnum)
     if name:
@@ -4067,8 +4084,9 @@ class CVSCommit:
 
     svn_commit.flush()
 
-    for c_rev in self.revisions():
-      SymbolingsLogger(self._ctx).check_revision(c_rev, svn_commit.revnum)
+    if not self._ctx.trunk_only:    
+      for c_rev in self.revisions():
+        SymbolingsLogger(self._ctx).check_revision(c_rev, svn_commit.revnum)
 
   ###TODO We need a test case where we have a file on a default branch
   #and on the HEAD revision of the default branch in CVS, that file is
@@ -4128,6 +4146,10 @@ class CVSCommit:
     if seconds > COMMIT_THRESHOLD:
       print ('%s: grouping spans more than %d seconds'
              % (warning_prefix, COMMIT_THRESHOLD))
+
+    if ctx.trunk_only: # Only do the primary commit if we're trunk-only
+      self._commit()
+      return self.motivating_commit
 
     self._pre_commit()
     self._commit()
@@ -4307,7 +4329,8 @@ class CVSRevisionAggregator:
     ###TODO Cleanup().register()
     ###TODO WARNING: What happens when we call cleanup.register
     ###multiple times on the same file?????????????
-    self.last_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
+    if not ctx.trunk_only:
+      self.last_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
     ###TODO Cleanup().register()
     self.cvs_commits = {}
     self.pending_symbols = {}
@@ -4402,10 +4425,11 @@ class CVSRevisionAggregator:
     If C_REV is not None, then we first add to self.pending_symbols
     any symbols from C_REV that C_REV is the last CVSRevision for.
     """
-    # Get the symbolic names that this c_rev is the last *source*
-    # CVSRevision for and add them to those left over from previous
-    # passes through the aggregator.
-    if c_rev:
+    # If we're not doing a trunk-only conversion, get the symbolic
+    # names that this c_rev is the last *source* CVSRevision for and
+    # add them to those left over from previous passes through the
+    # aggregator.
+    if c_rev and not self._ctx.trunk_only:
       for sym in self.last_revs_db.get(c_rev.unique_key(), []):
         self.pending_symbols[sym] = None
 
@@ -4498,10 +4522,10 @@ class SVNRepositoryMirror:
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
 
-    ###TODO IMPT: Suck this into memory.
-    self.tags_db = TagsDatabase('r')
-
-    self.symbolings_reader = SymbolingsReader(self._ctx)
+    if not ctx.trunk_only:
+      ###TODO IMPT: Suck this into memory.
+      self.tags_db = TagsDatabase('r')
+      self.symbolings_reader = SymbolingsReader(self._ctx)
 
     # Note that we haven't started committing yet
     self.active = 0
@@ -5100,7 +5124,7 @@ class SVNRepositoryMirror:
     ###
     ###TODO: We MUST do this in a separate commit, so it's
     ### not mixed in with a user change.
-    if not self.active:
+    if not self.active and not self._ctx.trunk_only:
       self.mkdir(self._ctx.branches_base)
       self.mkdir(self._ctx.tags_base)
       self.active = 1
@@ -6015,6 +6039,7 @@ def main():
   def clear_default_branches_db():
     # This is the only DB reference still reachable at this point;
     # lose it before removing the file.
+    ###TODO We should only use this db if we're not trunk-only.
     ctx.default_branches_db = None
 
   # Lock the current directory for temporary files.
