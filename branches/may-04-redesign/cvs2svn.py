@@ -4318,7 +4318,12 @@ class SVNRepositoryMirror:
   it will call the delegate's corresponding repository action method.
   See SVNRepositoryMirrorDelegate for more information.
 
-  You must invoke start_commit between SVNCommits."""
+  You must invoke start_commit between SVNCommits.
+
+  *** WARNING *** All path arguments to methods in this class CANNOT
+      have leading or trailing slashes.
+
+  """
   def __init__(self, ctx, delegate=None):
     """Set up the SVNRepositoryMirror and prepare it for SVNCommits."""
     self._ctx = ctx
@@ -4574,8 +4579,9 @@ class SVNRepositoryMirror:
 
   def _add_or_change_path(self, svn_path):
     """From the youngest revision, bubble down a chain of mutable
-    nodes for SVN_PATH.  Create new (mutable) nodes as
-    necessary.
+    nodes for SVN_PATH.  Create new (mutable) nodes as necessary, and
+    calls self.delegate.mkdir() once on each intermediate path it
+    creates.
 
     This makes nodes mutable only as needed, otherwise, mutates any
     mutable nodes it encounters."""
@@ -4608,6 +4614,12 @@ class SVNRepositoryMirror:
         if component is not last_component:
           self.delegate.mkdir(path_so_far)
       else:
+        # NOTE: The following clause is essentially _open_path, but to
+        # use it here would mean that we would have to re-walk our
+        # path_so_far * len(components), which is inefficient.
+        # Perhaps someone could re-work _open_path to accomodate this,
+        # but I don't think it's all that impt.
+        #
         # One way or another, parent dir now has an entry for component,
         # so grab it, see if it's mutable, and DTRT if it's not.
         this_node_key = parent_node_contents[component]
@@ -4716,6 +4728,35 @@ class SVNRepositoryMirror:
         # TODO Manage deletes (prunes) (which calls the delegate)
       self._fill(symbol_fill, node_contents, name, src_path, src_revnum)
 
+  def _open_path(self, path):
+    """Open a chain of mutable nodes for PATH from the youngest
+    revision.  Any nodes in the chain that are already mutable will be
+    used as-is.  Immutable nodes will be copied, inserted in the
+    nodes_db, and attached to their mutable parents.
+
+    Returns a tuple consisting of the final node's key and its
+    contents."""
+    parent_node_key, parent_node_contents = self._get_youngest_root_node()
+
+    components = path.split('/')
+    last_component = components[-1]
+    ###TODO Do something more constructive than die if someone asks
+    ###for a node that doesn't exist
+    for component in components:
+     this_node_key = parent_node_contents[component]
+     this_node_contents = self.nodes_db[this_node_key]
+     mutable = this_node_contents.get(self.mutable_flag)
+     if not mutable:
+       this_node_key, this_node_contents \
+                      = self._new_mutable_node(this_node_contents)
+       parent_node_contents[component] = this_node_key
+       self.nodes_db[parent_node_key] = parent_node_contents
+
+     parent_node_key = this_node_key
+     parent_node_contents = this_node_contents
+
+    return this_node_key, this_node_contents
+
   def copy_path(self, src_path, dest_path, src_revnum):
     """Copy SRC_PATH at subversion revision number SRC_REVNUM to
     DEST_PATH.
@@ -4724,14 +4765,18 @@ class SVNRepositoryMirror:
     *must* exist, but DEST_PATH *cannot* exist"""
 
     # get the contents of the node of our src_path
-    ign, src_node_contents = self._node_for_path(src_path, src_revnum,)
+    ign, src_node_contents = self._node_for_path(src_path, src_revnum)
     # get the dest node from self.youngest--it will always be mutable.
-    dest_node_key, dest_node_contents = \
-                   self._node_for_path(dest_path, self.youngest, 1)
 
-    last_path_element = dest_path.split('/')[-1]
+    # Get the parent path and the base path of the dest_path
+    dest_components = dest_path.split('/')
+    dest_parent = '/'.join(dest_components[:-1])
+    dest_basename = dest_components[-1]
+
+    # Get a mutable node for our destination parent dir.
+    dest_node_key, dest_node_contents = self._open_path(dest_parent)
     
-    if dest_node_contents.has_key(last_path_element):
+    if dest_node_contents.has_key(dest_basename):
       msg = "Attempt to add path '%s' to repository mirror " % dest_path
       msg = msg + "when it already exists in the mirror."
       raise SVNRepositoryMirrorPathExistsError, msg
@@ -4744,7 +4789,7 @@ class SVNRepositoryMirror:
     #and save DEST_NODE_CONTENTS back to the nodes_db under
     #DEST_NODE_KEY.
     key, new_node = self._new_mutable_node(src_node_contents)
-    dest_node_contents[last_path_element] = key
+    dest_node_contents[dest_basename] = key
     self.nodes_db[dest_node_key] = dest_node_contents
     self.delegate.copy_path(src_path, dest_path, src_revnum)
 
