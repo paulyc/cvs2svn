@@ -1278,6 +1278,13 @@ def compose_tag_three_sources():
     })
 
 
+def pass5_when_to_fill():
+  "reserve a svn revnum for a fill only when required"
+  # The conversion will fail if the bug is present, and
+  # ensure_conversion would raise svntest.Failure.
+  repos, wc, logs = ensure_conversion('pass5-when-to-fill')
+  
+
 #----------------------------------------------------------------------
 
 ########################################################################
@@ -1315,6 +1322,7 @@ test_list = [ None,
               vendor_branch_sameness,
               default_branches,
               compose_tag_three_sources,
+              pass5_when_to_fill,
              ]
 
 if __name__ == '__main__':
