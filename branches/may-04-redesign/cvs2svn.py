@@ -3650,6 +3650,7 @@ class CommitMapper(Singleton):
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
     ###TODO kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.
+    ###TODO FITZ: We should set an is_tag var on SVNCommit...
     self.tags_db = TagsDatabase('r')
 
   def get_svn_revnum(self, cvs_rev_unique_key):
@@ -3657,6 +3658,7 @@ class CommitMapper(Singleton):
     was committed."""
     return int(self.cvs2svn_db[cvs_rev_unique_key])
 
+  ###TODO: Move this to SVNCommit?
   def _manufacture_log_msg(self, symbolic_name, is_tag=None):
     """Return a log message for a manufactured commit that fills SYMBOLIC_NAME.
     If IS_TAG is true, write the log message as though for a tag, else
@@ -3999,6 +4001,16 @@ class CVSCommit:
     # Generate one SVNCommit for each default branch we encounter.
     # Add each c_rev on that branch to the commit, and flush all
     # commits at the end.
+
+    ###TODO: There doesn't seem to be any real reason to generate an
+    # SVNCommit for each default branch that we encounter here--after
+    # all, we may have just committed changes to a whole bunch of
+    # default branches in _commit, so there's no real reason to divvy
+    # this out into separate commits.  This will also require that we
+    # change SVNCommit.default_branch to SVNCommit.is_default_branch
+    # which will indicate that c_rev.branch_name is the default branch
+    # name for that c_rev in the commit.  Once the redesign is
+    # complete, we should revisit this.
     svn_commits = { }
     for c_rev in self.default_branch_copies + self.default_branch_deletes:
       if not svn_commits.has_key(c_rev.branch_name):
@@ -4012,9 +4024,6 @@ class CVSCommit:
 
     for svn_commit in svn_commits.values():
       svn_commit.flush()
-
-
-
 
   def process_revisions(self, ctx, done_symbols):
     self.done_symbols = done_symbols
@@ -4921,11 +4930,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     self.dumpfile = open(self.dumpfile_path, 'wb')
     self.write_dumpfile_header()
 
-  def set_mirror(self, mirror):
-    """Set the SVNRepositoryMirror for this instance."""
-    ###TODO kff: We don't actually use this yet.  Will we ever?
-    self.mirror = mirror
-
   def write_dumpfile_header(self):
     # Initialize the dumpfile with the standard headers.
     #
@@ -5024,6 +5028,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
                         "\n"
                         "\n" % self._utf8_path(path))
 
+  ###TODO Move this to CVSRevision
   def _get_cvs_path(self, c_rev):
     """Return the path and executable status of the rcs file for C_REV.
     Use like this:     path, exec_status = self._get_cvs_path(C_REV)
