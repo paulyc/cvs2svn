@@ -4418,13 +4418,13 @@ class SVNRepositoryMirror:
     root_key = self.revs_db[self._youngest_key()]
     self._stabilize_directory(root_key)
 
-  def delete_path(self, cvs_rev, prune=None):
+  def delete_path(self, path):
     """Delete PATH from the tree.  PATH may not have a leading slash.
 
     Return path_deleted where path_deleted is the path actually
     deleted or None if PATH did not exist.  
 
-    If PRUNE is not None, then delete the highest possible directory,
+    If self._ctx.prune is not None, then delete the highest possible directory,
     which means the returned path may differ from PATH.  In other
     words, if PATH was the last entry in its parent, then delete
     PATH's parent, unless it too is the last entry in *its* parent, in
@@ -4436,9 +4436,8 @@ class SVNRepositoryMirror:
     (like /trunk, /branches, /tags), not does it prune upwards beyond
     those entries.
 
-    PRUNE is like the -P option to 'cvs checkout'."""
+    self._ctx.prune is like the -P option to 'cvs checkout'."""
     ###TODO Review this with kfogel
-    path = cvs_rev.svn_path
     components = string.split(path, '/')
     path_so_far = None
 
@@ -4516,7 +4515,7 @@ class SVNRepositoryMirror:
       # If we're pruning at all, and we're looking at a prunable thing
       # (and that thing isn't one of our top-level directories --
       # trunk, tags, branches) ...
-      if prune and (new_key is None) and is_prunable(pval) \
+      if self._ctx.prune and (new_key is None) and is_prunable(pval) \
          and parent_item != parent_chain[-2]:
         # ... then up our count of pruned items, and do nothing more.
         # All the action takes place when we hit a non-prunable
@@ -4877,9 +4876,11 @@ class SVNRepositoryMirror:
         elif cvs_rev.op == OP_CHANGE:
           self.change_path(cvs_rev)
         else: # Must be a delete
-          ###TODO FIXME pass prune
-          path = self.delete_path(cvs_rev)
-          self.delegate.delete_path(cvs_rev)
+          ###TODO IMPT! FIXME FIX self.delete_path to call the delegate!
+          ### delete_path, since it manages pruning, will handle that
+          ### correctly
+          path = self.delete_path(cvs_rev.svn_path)
+          self.delegate.delete_path(cvs_rev.svn_path)
 
   def close(self):
     self.delegate.finish()
@@ -4925,8 +4926,8 @@ class SVNRepositoryMirrorDelegate:
     details."""
     raise NotImplementedError
 
-  def delete_path(self, c_rev):
-    """C_REV is a CVSRevision; see subclass implementation for
+  def delete_path(self, path):
+    """PATH is a string; see subclass implementation for
     details."""
     raise NotImplementedError
   
@@ -5215,15 +5216,15 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     """Emit the change corresponding to C_REV, a CVSRevision."""
     self._add_or_change_path(c_rev, OP_CHANGE)
 
-  def delete_path(self, c_rev):
-    """Emit the deletion of C_REV.svn_path."""
+  def delete_path(self, path):
+    """Emit the deletion of PATH."""
     ###TODO kff: This just needs to take SVN_PATH, really.
     ###
     ###TODO kff: Who is responsible for pruning behavior?  The caller,
     ### I think, but we should make sure that's what we want.
     self.dumpfile.write('Node-path: %s\n'
                         'Node-action: delete\n'
-                        '\n' % self._utf8_path(c_rev.svn_path))
+                        '\n' % self._utf8_path(path))
   
   def copy_path(self, src_path, dest_path, src_revnum):
     """Emit the copying of SRC_PATH at SRC_REV to DEST_PATH."""
@@ -5280,9 +5281,9 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
     """Print a line stating that we are 'changing' c_rev.svn_path."""
     print "    Changing", c_rev.svn_path
 
-  def delete_path(self, c_rev):
-    """Print a line stating that we are 'deleting' c_rev.svn_path."""
-    print "    Deleting", c_rev.svn_path
+  def delete_path(self, path):
+    """Print a line stating that we are 'deleting' PATH."""
+    print "    Deleting", path
   
   def copy_path(self, src_path, dest_path, src_revnum):
     """Print a line stating that we are 'copying' revision SRC_REVNUM
