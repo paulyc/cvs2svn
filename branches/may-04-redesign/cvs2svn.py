@@ -2068,9 +2068,10 @@ class CVSCommit:
     accounted_for_sym_names = [ ]
 
     def fill_needed(c_rev):
-      """If this is the first commit on a new branch (for this file),
-      then find out if we need to fill the branch, or if another file's first
-      commit on the branch has already done this for us."""
+      """Return 1 if this is the first commit on a new branch (for
+      this file) and we need to fill the branch; else return 0
+      (meaning that some other file's first commit on the branch has
+      already done the fill for us)."""
       if c_rev.rev.count('.') != c_rev.prev_rev.count('.'):
         cm = CommitMapper()
         svn_revnum = cm.get_svn_revnum(c_rev.unique_key(c_rev.prev_rev))
