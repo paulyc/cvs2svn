@@ -2991,12 +2991,12 @@ class SVNRepositoryMirror:
 
     src_path = _path_join(copy_source.prefix, path)
     dest_path = _path_join(dest_prefix, path)
-    dest_exits = self._path_exists(dest_path)
+    dest_exists = self._path_exists(dest_path)
 
     # Figure out if we shall copy to this destination and delete any
     # destination path that is in the way.
     dest_entries = None # I.e. unknown
-    if dest_exits:
+    if dest_exists:
       if prune_ok and (parent_source_prefix != copy_source.prefix or
                        copy_source.revnum != preferred_revnum):
         # We are about to replace the destination, so we need to remove
