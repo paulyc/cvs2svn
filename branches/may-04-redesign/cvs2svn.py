@@ -3793,9 +3793,8 @@ class CVSCommit:
     self.t_min = 1L<<32
     self.t_max = 0
 
-    # This will be set to the subversion revision number of the
-    # SVNCommit that occurs in self._commit.
-    self.motivating_revnum = SVN_INVALID_REVNUM
+    # This will be set to the SVNCommit that occurs in self._commit.
+    self.motivating_commit = None
     
     # State for handling default branches.
     # 
@@ -3965,7 +3964,7 @@ class CVSCommit:
     # revision containing the log message for the second dead
     # revision, because we don't want to lose that information.
     svn_commit = SVNCommit(self._ctx, "commit")
-    self.motivating_revnum = svn_commit.revnum
+    self.motivating_commit = svn_commit
 
     for c_rev in self.changes:
       svn_commit.add_revision(c_rev)
@@ -4034,7 +4033,7 @@ class CVSCommit:
     for c_rev in self.default_branch_cvs_revisions:
       if not svn_commits.has_key(c_rev.branch_name):
         svn_commit = SVNCommit(self._ctx, "post-commit def_br_[copy|delete]")
-        svn_commit.set_motivating_revnum(self.motivating_revnum)
+        svn_commit.set_motivating_revnum(self.motivating_commit.revnum)
         svn_commit.add_revision(c_rev)
         svn_commits[c_rev.branch_name] = svn_commit
       else:
