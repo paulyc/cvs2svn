@@ -498,18 +498,16 @@ class CVSRevision:
   def branch_file_needs_to_be_created_in_this_revision(self):
     """Return true if the file belonging to this CVS Revision needs to
     be created (on a branch) in this revision."""
-    # If the length of our current rev_num is different than the
-    # length of our previous revision's rev_num, we're now on a
+    # If the number of dots in our current rev_num is different than the
+    # number of dots in our previous revision's rev_num, we're now on a
     # different line of development, so a copy will need to be made to
     # create this file.
-    rev_len = len(self.rev)
-    prev_rev_len = len(self.prev_rev)
-    if not rev_len == prev_rev_len:
+    if self.rev.count('.') != self.prev_rev.count('.'):
       return 1
     # If we're on the same line of development, but we're an add, we
     # also return true.
-    elif self.op == OP_ADD:
-        return 1
+    if self.op == OP_ADD:
+      return 1
     return 0
 
 
