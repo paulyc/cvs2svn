@@ -3633,6 +3633,8 @@ class CommitMapper(Singleton):
     Cleanup().register(SVN_COMMIT_NAMES, pass8)
     self.svn_default_branches = Database(SVN_DEFAULT_BRANCHES, 'c')
     Cleanup().register(SVN_DEFAULT_BRANCHES, pass8)
+    self.svn_commit_metadata = Database(METADATA_DB, 'r')
+    Cleanup().register(METADATA_DB, pass8)
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
 
   def get_svn_revnum(self, cvs_rev_unique_key):
@@ -3652,9 +3654,17 @@ class CommitMapper(Singleton):
     if c_rev_keys == None:
       return None
 
+    digest = None
     for key in c_rev_keys:
       c_rev = self.cvs_revisions.get_revision(key)
       svn_commit.add_revision(c_rev)
+      # Set the author and log message for this commit, if we haven't
+      # done so already.
+      if digest is None:
+        digest = c_rev.digest
+        author, log_msg = self.svn_commit_metadata[digest]
+        svn_commit.set_author(author)
+        svn_commit.set_log_msg(log_msg)
 
     name = self.svn_commit_names.get(str(svn_revnum), None)
     if name:
@@ -4004,26 +4014,18 @@ class SVNCommit:
     self._ctx = ctx
     self._description = description
 
-    # Dictionary mapping Subversion revprop names to values.  It
-    # contains at least these three mappings:
+    # Revprop metadata for this commit.
     #
-    #   "svn:author"  ==>  authorname   (string in local encoding)
-    #   "svn:date"    ==>  datestamp    (e.g., "2004-05-25T20:00:00.000000Z")
-    #   "svn:author"  ==>  log message  (string in local encoding)
+    # These initial values are placeholders.  At least the log and the
+    # date should be different by the time these are used.
     #
-    # The dictionary is updated, if and as appropriate, every time a
-    # CVSRevision is added to this SVNCommit.
-    #
-    # The initial values are placeholders.  At least the log and the
-    # date should be different by the time these props are used.
-    self.props = {
-      'svn:author' : 'cvs2svn',
-      'svn:log'    : "This log message means an SVNCommit was used too soon.",
-      'svn:date'   : "0000-00-00T00:00:00.000000Z"
-      }
-
-    # The latest date seen so far in a CVSRevision.
-    self._max_date = 0
+    # They are private because their values should be returned encoded
+    # in UTF8, but callers aren't required to set them in UTF8.
+    # Therefore, accessor methods are used to set them, and
+    # self.get_revprops() is used to to get them, in dictionary form.
+    self._author = 'cvs2svn'
+    self._log_msg = "This log message means an SVNCommit was used too soon."
+    self._max_date = 0  # Latest date seen so far.
 
     self.cvs_revs = cvs_revs
     if cvs_revs is not None:
@@ -4051,39 +4053,50 @@ class SVNCommit:
     self.default_branch = name
     CommitMapper(self._ctx).set_default_branch(self.revnum, name)
 
-  def _update_props(self, cvs_rev):
-    """Update the revprops for this commit according to CVS_REV."""
+  def set_author(self, author):
+    """Set this SVNCommit's author to AUTHOR (a locally-encoded string).
+    This is the only way to set an SVNCommit's author."""
+    self._author = author
 
-    if cvs_rev.timestamp > self._max_date:
-      self._max_date = cvs_rev.timestamp
+  def set_log_msg(self, msg):
+    """Set this SVNCommit's log message to MSG (a locally-encoded string).
+    This is the only way to set an SVNCommit's log message."""
+    self._log_msg = msg
 
-    ###TODO We need to get a real author and log somehow.
+  def set_date(self, date):
+    """Set this SVNCommit's date to DATE (an integer).
+    Note that self.add_revision() updates this automatically based on
+    a CVSRevision; so you may not need to call this at all, and even
+    if you do, the value may be overwritten by a later call to
+    self.add_revision()."""
+    self._max_date = date
+   
+  def get_revprops(self):
+    """Return the Subversion revprops for this SVNCommit."""
     date = format_date(self._max_date)
-    author = "cvs2svn"
-    log = "This is a fake log message for a real CVSRevision."
-
     try: 
       ### FIXME: The 'replace' behavior should be an option, like
       ### --encoding is.
-      unicode_author = unicode(author, self._ctx.encoding, 'replace')
-      unicode_log = unicode(log, self._ctx.encoding, 'replace')
-      self.props['svn:author'] = unicode_author.encode('utf8')
-      self.props['svn:log'] = unicode_log.encode('utf8')
-      self.props['svn:date'] = date
+      unicode_author = unicode(self._author, self._ctx.encoding, 'replace')
+      unicode_log = unicode(self._log_msg, self._ctx.encoding, 'replace')
+      return { 'svn:author' : unicode_author.encode('utf8'),
+               'svn:log'    : unicode_log.encode('utf8'),
+               'svn:date'   : date }
     except UnicodeError:
       print '%s: problem encoding author or log message:' % warning_prefix
-      print "  author: '%s'" % author
-      print "  log:    '%s'" % log
+      print "  author: '%s'" % self._author
+      print "  log:    '%s'" % self._log_msg
       print "  date:   '%s'" % date
       print "(for rev %s of '%s')" % (cvs_rev.rev, cvs_rev.fname)
       print "Consider rerunning with (for example) '--encoding=latin1'."
-      self.props['svn:author'] = author
-      self.props['svn:log'] = log
-      self.props['svn:date'] = date
+      return { 'svn:author' : self._author,
+               'svn:log'    : self._log_msg,
+               'svn:date'   : date }
 
   def add_revision(self, cvs_rev):
     self.cvs_revs.append(cvs_rev)
-    self._update_props(cvs_rev)
+    if cvs_rev.timestamp > self._max_date:
+      self._max_date = cvs_rev.timestamp
 
   def flush(self):
     print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self._description)
@@ -4844,11 +4857,12 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     # are always the same for revisions.
     
     # Calculate the total length of the props section.
+    props = svn_commit.get_revprops()
     total_len = 10  # len('PROPS-END\n')
-    for propname in svn_commit.props.keys():
+    for propname in props.keys():
       klen = len(propname)
       klen_len = len('K %d' % klen)
-      vlen = len(svn_commit.props[propname])
+      vlen = len(props[propname])
       vlen_len = len('V %d' % vlen)
       # + 4 for the four newlines within a given property's section
       total_len = total_len + klen + klen_len + vlen + vlen_len + 4
@@ -4860,14 +4874,14 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
                         '\n'
                         % (self.revision, total_len, total_len))
 
-    for propname in svn_commit.props.keys():
+    for propname in props.keys():
       self.dumpfile.write('K %d\n' 
                           '%s\n' 
                           'V %d\n' 
                           '%s\n' % (len(propname),
                                     propname,
-                                    len(svn_commit.props[propname]),
-                                    svn_commit.props[propname]))
+                                    len(props[propname]),
+                                    props[propname]))
 
     self.dumpfile.write('PROPS-END\n')
     self.dumpfile.write('\n')
