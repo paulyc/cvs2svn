@@ -3278,11 +3278,6 @@ class SVNRepositoryMirrorDelegate:
     raise NotImplementedError
 
 
-class RepositoryDelegate(SVNRepositoryMirrorDelegate):
-  """Creates a new Subversion Repository."""
-  pass
-
-
 class DumpfileDelegate(SVNRepositoryMirrorDelegate):
   """Create a Subversion dumpfile."""
 
@@ -3306,15 +3301,9 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     self.set_eol_style = ctx.set_eol_style
     self.mime_mapper = ctx.mime_mapper
     self.path_encoding = ctx.encoding
-    self.revision = 0
     
     self.dumpfile = open(self.dumpfile_path, 'wb')
     self._write_dumpfile_header()
-
-    ###TODO Remove this once we're dumping straight to the repos for real
-    self.target = None
-    if not ctx.dump_only:
-      self.target = ctx.target
 
   def _write_dumpfile_header(self):
     # Initialize the dumpfile with the standard headers.
@@ -3561,10 +3550,43 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     """Perform any cleanup necessary after all revisions have been
     committed."""
     self.dumpfile.close()
-    ###TODO Remove this once we've written a real delegate to import.
-    if self.target:
-      os.system('svnadmin create %s' % self.target)
-      os.system('svnadmin load %s -q < cvs2svn-dump' % self.target)
+
+
+class RepositoryDelegate(DumpfileDelegate):
+  """Creates a new Subversion Repository.  DumpfileDelegate does all
+  of the heavy lifting."""
+  def __init__(self, ctx):
+    self.svnadmin = ctx.svnadmin
+    self.target = ctx.target
+    if not ctx.existing_svnrepos:
+      Log().write(LOG_NORMAL,"Creating new repository '%s'" % (self.target))
+      run_command('%s create %s %s' % (self.svnadmin, ctx.bdb_txn_nosync
+                                       and "--bdb-txn-nosync"
+                                       or "", self.target))
+    DumpfileDelegate.__init__(self, ctx)
+
+    # This is 1 if a commit is in progress, otherwise None.
+    self._commit_in_progress = None
+
+  def _close_dumpfile_and_load_into_repos(self):
+    self.dumpfile.close()
+    run_command('%s load %s -q < %s' % (self.svnadmin, self.target,
+                                        self.dumpfile_path))
+
+  def start_commit(self, svn_commit):
+    """Start a new commit.  If a commit is already in progress, close
+    the dumpfile, load it into the svn repository, open a new
+    dumpfile, and write the header into it."""
+    if self._commit_in_progress:
+      self._close_dumpfile_and_load_into_repos()
+      self.dumpfile = open(self.dumpfile_path, 'wb') # start new dumpfile
+      self._write_dumpfile_header()
+    DumpfileDelegate.start_commit(self, svn_commit)
+    self._commit_in_progress = 1
+  
+  def finish(self):
+    """Loads the last commit into the repository."""
+    self._close_dumpfile_and_load_into_repos()
 
 
 class StdoutDelegate(SVNRepositoryMirrorDelegate):
@@ -3765,10 +3787,12 @@ def pass8(ctx):
   ### our action.
   svncounter = 2 # Repository initialization is 1.
 
-  # kff: toggle between these two lines to test the DumpfileDelegate or not
-  #repos = SVNRepositoryMirror(ctx, StdoutDelegate())
   repos = SVNRepositoryMirror(ctx)
-  repos.add_delegate(DumpfileDelegate(ctx))
+
+  if (ctx.target):
+    repos.add_delegate(RepositoryDelegate(ctx))
+  else:
+    repos.add_delegate(DumpfileDelegate(ctx))
   repos.add_delegate(StdoutDelegate(PersistenceManager(ctx).total_revs()))
 
   while(1):
