@@ -613,17 +613,6 @@ class CollectData(rcsparse.Sink):
     branch_rev = branch_rev[:last2_dot] + revision[last_dot:]
     self.set_branch_name(branch_rev, branch_name)
 
-  def get_tags(self, revision):
-    """Return a list of all tag names attached to REVISION.
-    REVISION is a regular revision number like '1.7', and the result
-    never includes branch names, only plain tags."""
-    return self.taglist.get(revision, [])
-
-  def get_branches(self, revision):
-    """Return a list of all branch names that sprout from REVISION.
-    REVISION is a regular revision number like '1.7'."""
-    return self.branchlist.get(revision, [])
-
   def define_tag(self, name, revision):
     """Record a bidirectional mapping between symbolic NAME and REVISION.
     REVISION is an unprocessed revision number from the RCS file's
@@ -883,8 +872,8 @@ class CollectData(rcsparse.Sink):
                         self.next_rev.get(revision),
                         deltatext_code, self.fname,
                         self.mode, self.rev_to_branch_name(revision),
-                        self.get_tags(revision),
-                        self.get_branches(revision))
+                        self.taglist.get(revision, []),
+                        self.branchlist.get(revision, []))
     self.revs.write(str(c_rev) + "\n")
     self.cvs_rev_db.log_revision(c_rev)
 
