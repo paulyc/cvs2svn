@@ -4822,8 +4822,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
   def start_commit(self, svn_commit):
     """Emit the start of SVN_COMMIT (an SVNCommit)."""
 
-    print "XKFF: revision going from %d to %d" \
-          % (self.revision, svn_commit.revnum)
     self.revision = svn_commit.revnum
 
     # The start of a new commit typically looks like this:
