@@ -438,17 +438,11 @@ class CVSRevision:
     return revnum + "/" + self.fname
 
   def write_revs_line(self, output):
-    if not self.prev_rev:
-      self.prev_rev = '*'
-    if not self.next_rev:
-      self.next_rev = '*'
-    output.write('%08lx %s %s %s %s %s %s ' % \
+    output.write('%08lx %s %s %s %s %s %s %s %s %d ' % \
                  (self.timestamp, self.digest, self.op,
-                  self.prev_rev, self.rev, self.next_rev,
-                  self.deltatext_code))
-    output.write('%s ' % (self.mode or "*"))
-    output.write('%s ' % (self.branch_name or "*"))
-    output.write('%d ' % (len(self.tags)))
+                  (self.prev_rev or "*"), self.rev, (self.next_rev or "*"),
+                  self.deltatext_code, (self.mode or "*"),
+                  (self.branch_name or "*"), len(self.tags) ))
     for tag in self.tags:
       output.write('%s ' % (tag))
     output.write('%d ' % (len(self.branches)))
