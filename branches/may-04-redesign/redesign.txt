@@ -37,11 +37,11 @@ will go after pass3, but before 8 and 9.
 First, we create a new pass, called pass4.  This pass will iterate
 through the s-revs file, doing several unrelated things:
 
-  1. Determine the closing Subversion revisions for each tag and
+  1. Determine the last Subversion revisions for each tag and
      branch.  Yes, this is basically get_symbol_closing_revs().  We
      write these out to a database in the following format:
 
-       cvs-symname-closing-revs.db:
+       cvs-symname-last-revs.db:
             Key                      Value    
             CVS Revision             array of Symbolic names
      
@@ -111,8 +111,9 @@ through the s-revs file, doing several other unrelated things:
 
      Here is what the columns mean:
 
-     SYMBOLIC_NAME: The name of the branch or tag that starts in this
-                    CVS Revision (There can be multiples per CVS rev)
+     SYMBOLIC_NAME: The name of the branch or tag that starts or ends
+                    in this CVS Revision (There can be multiples per
+                    CVS rev)
 
      CVSRevision.unique_key(): This is a unique key that identifies
                                the CVSRevision where this opening or
@@ -126,12 +127,14 @@ through the s-revs file, doing several other unrelated things:
        find the corresponding Subversion revision for each opening and
        closing.
 
-       Finding the opening revision for a source path on a branch or
+       Finding the opening revision for a source path of a branch or
        tag:
 
          The line in the s-revs file that lists the corresponding
          tag(s) and branch(es) corresponds to the opening CVS Revision
          for that file.
+
+###TODO This is incorrect now.  See SymbolingsLogger.
 
        Finding the closing revision for a source file on a branch or
        tag:
@@ -160,7 +163,7 @@ through the s-revs file, doing several other unrelated things:
 
          For each CVS Revision, we calculate the Subversion path, and
          check for the existence of that path in svn-opening-names.db,
-         and if it's in there, then we check to see if it's value
+         and if it's in there, then we check to see if its value
          contains the symbolic name that we're currently working on.
          If it does, then we remove that symbolic name from the list
          of values and record our current CVS Revision in

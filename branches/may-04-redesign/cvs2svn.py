@@ -101,7 +101,7 @@ SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
 NODES_DB = 'cvs2svn-nodes.db'
 
-SYMBOL_CLOSING_CVS_REVS_DB = 'cvs2svn-symbol-closing-cvs-revs.db'
+SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
 CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
 TAGS_DB = 'cvs2svn-tags.db'
 
@@ -2830,7 +2830,7 @@ def pass4(ctx):
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that
   # rev.
-  symbol_revs_db = Database(SYMBOL_CLOSING_CVS_REVS_DB, 'n')
+  symbol_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'n')
   for sym, rev_unique_key in symbols.items():
     if symbol_revs_db.has_key(rev_unique_key):
       ary = symbol_revs_db[rev_unique_key]
@@ -2861,7 +2861,7 @@ def pass8(ctx):
   else:
     sym_tracker = SymbolicNameTracker()
     tags_db = Database(TAGS_DB, 'r')
-    symbol_revs_db = Database(SYMBOL_CLOSING_CVS_REVS_DB, 'r')
+    symbol_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
   metadata_db = Database(METADATA_DB, 'r')
 
   # A dictionary of Commit objects, keyed by digest.  Each object
