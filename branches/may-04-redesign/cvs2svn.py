@@ -1382,7 +1382,7 @@ class SymbolingsReader:
         break
       name, revnum, type, svn_path = line.split(" ", 3)
       revnum = int(revnum)
-      if (revnum >= svn_revnum
+      if (revnum > svn_revnum
           or name != symbolic_name):
         break
 
@@ -2520,6 +2520,12 @@ class FillSource:
     return other.score.__cmp__(self.score)
 
 
+class SVNRepositoryMirrorInvalidFillOperation(Exception):
+  """Exception raised if an empty SymbolicNameFillingGuide is returned
+  during a fill where the branch in question already exists."""
+  pass
+
+
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
   SVNCommit at a time.  The mirror is skeletal; it does not contain
@@ -2851,16 +2857,16 @@ class SVNRepositoryMirror:
     parent = self.nodes_db[parent_key]
     return parent_key, parent
 
-  def _fill_symbolic_name(self, symbolic_name):
+  def _fill_symbolic_name(self, svn_commit):
     """Performs all copies necessary to create as much of the the tag
-    or branch SYMBOLIC_NAME as possible given the current revision of
-    the repository mirror.
+    or branch SVN_COMMIT.symbolic_name as possible given the current
+    revision of the repository mirror.
 
     The symbolic name is guaranteed to exist in the Subversion
     repository by the end of this call, even if there are no paths
     under it."""
     symbol_fill = self.symbolings_reader.filling_guide_for_symbol(
-      symbolic_name, self.youngest)
+      svn_commit.symbolic_name, self.youngest)
 
     sources = []
     for entry, key in symbol_fill.node_tree[symbol_fill.root_key].items():
@@ -2871,36 +2877,44 @@ class SVNRepositoryMirror:
           sources.append(FillSource(entry + '/' + entry2, key2))
       else:
         raise # Should never happen
-    if self.tags_db.has_key(symbolic_name):
-      dest_prefix = _path_join(self._ctx.tags_base, symbolic_name)
+    if self.tags_db.has_key(svn_commit.symbolic_name):
+      dest_prefix = _path_join(self._ctx.tags_base, svn_commit.symbolic_name)
     else:
-      dest_prefix = _path_join(self._ctx.branches_base, symbolic_name)
+      dest_prefix = _path_join(self._ctx.branches_base,
+                               svn_commit.symbolic_name)
+
     if sources:
       self._fill(symbol_fill, dest_prefix, sources)
-
-    # If our symbol fill had a dead opening revision...
-    if symbol_fill.dead_opening_rev:
-      branch_dest = self._dest_path_for_source_path(symbolic_name,
-                                                    symbol_fill.branch_source)
-      # ...and our branch still doesn't exist...
-      if not self._path_exists(branch_dest):
-        # ...that means that our first commit on the branch was to a
-        # file added on the branch, so we copy the branch source
-        # directory.
+    else:
+      # We can only get here for a branch whose first commit is an add
+      # (as opposed to a copy).
+      dest_path = self._ctx.branches_base + '/' + symbol_fill.name
+      if not self._path_exists(dest_path):
+        print "FITZ:", symbol_fill.name
+        # If our symbol_fill was empty, that means that our first
+        # commit on the branch was to a file added on the branch, and
+        # that this is our first fill of that branch.
         #
         # This case is covered by test 16.
         #
-        # ...we create the branch.
-        entries = self._copy_path(symbol_fill.branch_source, branch_dest,
-                                  symbol_fill.dead_opening_rev) 
+        # ...we create the branch by copying trunk from the our
+        # current revision number minus 1
+        source_path = self._ctx.trunk_base
+        entries = self._copy_path(source_path, dest_path,
+                                  svn_commit.revnum - 1) 
         # Now since we've just copied trunk to a branch that's
         # *supposed* to be empty, we delete any entries in the
         # copied directory.
         for entry in entries:
           if entry[0] == '/':
             continue
-          del_path = branch_dest + '/' + entry
+          del_path = dest_path + '/' + entry
           self._delete_path(del_path) # Delete but don't prune.
+      else:
+        msg = "Error filling branch '" + symbol_fill.name + "'.\n"
+        msg = msg + "Received an empty SymbolicNameFillingGuide and\n"
+        msg = msg + "attempted to create a branch that already exists."
+        raise SVNRepositoryMirrorInvalidFillOperation, msg
 
   def _synchronize_default_branch(self, svn_commit):
     """Propagate any changes that happened on a non-trunk default
@@ -3191,7 +3205,7 @@ class SVNRepositoryMirror:
     if svn_commit.symbolic_name:
       Log().write(LOG_VERBOSE, "Filling symbolic name:",
                   svn_commit.symbolic_name)
-      self._fill_symbolic_name(svn_commit.symbolic_name)
+      self._fill_symbolic_name(svn_commit)
     elif svn_commit.motivating_revnum:
       Log().write(LOG_VERBOSE, "Synchronizing default_branch motivated by %d"
                   % svn_commit.motivating_revnum)

@@ -1369,9 +1369,8 @@ test_list = [ None,
               compose_tag_three_sources,
               pass5_when_to_fill,
               peer_path_pruning,
-              XFail(empty_trunk),
+              empty_trunk,
               no_spurious_svn_commits,
-              XFail(invalid_closings_on_trunk),
              ]
 
 if __name__ == '__main__':
