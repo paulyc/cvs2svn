@@ -1635,6 +1635,7 @@ class SymbolicNameTracker:
     # The keys for the opening and closing revision lists attached to
     # each directory or file.  Includes "/" so as never to conflict
     # with any real entry.
+    ### TODO These should be 2 chars when not debugging
     self.opening_revs_key = "/openings"
     self.closing_revs_key = "/closings"
 
@@ -1642,7 +1643,8 @@ class SymbolicNameTracker:
     # is stored under the appropriate key, and the corresponding
     # opening and closing rev lists are removed.
     self.copyfrom_rev_key = "/copyfrom-rev"
-
+    self.file_key = "/is_file"
+    ###TODO self.tags should be stored in the symnames_db
     self.tags = {}
 
   def probe_path(self, symbolic_name, path, debugging=None):
@@ -1687,53 +1689,6 @@ class SymbolicNameTracker:
     # It's not actually a parent at this point, it's the leaf node.
     return parent
 
-  def bump_rev_count(self, item_key, rev, revlist_key):
-    """Increment REV's count in opening or closing list under KEY.
-    REVLIST_KEY is self.*_opening_revs_key or self.*_closing_revs_key,
-    and indicates which rev list to increment REV's count in.
-
-    For example, if REV is 7, REVLIST_KEY is
-    self.opening_revs_key, and the entry's tags opening revs list
-    looks like this
-
-         [(2, 5), (7, 2), (10, 15)]
-
-    then afterwards it would look like this:
-
-         [(2, 5), (7, 3), (10, 15)]
-
-    But if no tuple for revision 7 were present, then one would be
-    added, for example
-
-         [(2, 5), (10, 15)]
-
-    would become
-
-         [(2, 5), (7, 1), (10, 15)]
-
-    The list is sorted by ascending revision both before and after."""
-
-    entry_val = self.db[item_key]
-    
-    if not entry_val.has_key(revlist_key):
-      entry_val[revlist_key] = [(rev, 1)]
-    else:
-      rev_counts = entry_val[revlist_key]
-      for i in range(len(rev_counts)):
-        this_rev, this_count = rev_counts[i]
-        if rev == this_rev:
-          rev_counts[i] = (this_rev, this_count + 1)
-          break
-        elif this_rev > rev:
-          if i > 0:
-            i = i - 1
-          rev_counts.insert(i, (rev, 1))
-          break
-      else:
-        rev_counts.append((rev, 1))
-      entry_val[revlist_key] = rev_counts
-
-    self.db[item_key] = entry_val
 
   # The verb form of "root" is "root", but that would be misleading in
   # this case; and the opposite of "uproot" is presumably "downroot",
@@ -1749,14 +1704,18 @@ class SymbolicNameTracker:
 
     for name in names:
       components = [name] + string.split(svn_path, '/')
+      last_component = components[-1]
       parent_key = self.root_key
       for component in components:
-        self.bump_rev_count(parent_key, svn_rev, self.opening_revs_key)
         parent = self.db[parent_key]
         if not parent.has_key(component):
           new_child_key = gen_key()
           parent[component] = new_child_key
-          self.db[new_child_key] = {}
+          if component is last_component:
+            self.db[new_child_key] = {self.file_key : 1,
+                                      self.opening_revs_key : svn_rev}
+          else:
+            self.db[new_child_key] = {}
           self.db[parent_key] = parent
         # One way or another, parent now has an entry for component.
         this_entry_key = parent[component]
@@ -1765,7 +1724,6 @@ class SymbolicNameTracker:
         parent_key = this_entry_key
         parent = this_entry_val
 
-      self.bump_rev_count(parent_key, svn_rev, self.opening_revs_key)
 
   def enroot_tags(self, svn_path, svn_rev, tags):
     """Record SVN_PATH at SVN_REV as the earliest point from which the
@@ -1800,8 +1758,8 @@ class SymbolicNameTracker:
       # them).
       if not parent.has_key(name):
         return
+      last_component = components[-1]
       for component in components:
-        self.bump_rev_count(parent_key, svn_rev, self.closing_revs_key)
         # Check for a "can't happen".
         if not parent.has_key(component):
           sys.stderr.write("%s: in path '%s', value for parent key '%s' "
@@ -1810,11 +1768,14 @@ class SymbolicNameTracker:
           sys.exit(1)
         this_entry_key = parent[component]
         this_entry_val = self.db[this_entry_key]
+
+        if component is last_component:
+          this_entry_val[self.closing_revs_key] = svn_rev
+          self.db[this_entry_key] = this_entry_val
+
         # Swaparoo.
         parent_key = this_entry_key
         parent = this_entry_val
-
-      self.bump_rev_count(parent_key, svn_rev, self.closing_revs_key)
 
   def close_tags(self, svn_path, svn_rev, tags):
     """Record that as of SVN_REV, SVN_PATH could no longer be the
@@ -1909,20 +1870,92 @@ class SymbolicNameTracker:
     LIMIT_REV from SCORES, a list returned by score_revisions()."""
     return self.best_rev(scores, rev, limit_rev) == rev
 
+  def jit_score_node(self, node):
+    """Return two arrays: one of opening scores and one of closing
+    scores.  To do this, we walk the tree to each leaf node, get the
+    opening and closing score from there, and walk back up."""
+
+    root_key = node
+    tree = {node : self.db[node]} # Make a little node tree here in-mem
+    self.copy_node_tree(self.db, tree, node)
+    #self.print_node_tree(tree, root_key)
+
+    openings = self.score_node_tree(tree, node, self.opening_revs_key)
+    closings = self.score_node_tree(tree, node, self.closing_revs_key)
+    return self.condense_scores(openings), self.condense_scores(closings)
+
+  def condense_scores(self, scores):
+    """Takes an array of revisions (scores), for example:
+
+      [21, 18, 6, 49, 39, 24, 24, 24, 24, 24, 24, 24]
+
+    and adds up every occurrence of each revision and returns a sorted
+    array of tuples containing (svn_revnum, count):
+
+      [(6, 1), (18, 1), (21, 1), (24, 7), (39, 1), (49, 1)]
+    """
+    s = {}
+    for k in scores: # Add up the scores
+      if s.has_key(k):
+        s[k] = s[k] + 1
+      else:
+        s[k] = 1
+    a = []
+    for k, v in s.items(): # compose the tuples
+      a.append((k, v))
+    a.sort()
+    return a
+
+  def score_node_tree(self, tree, node, score_key):
+    """ Given NODE in TREE, return all scores for SCORE_KEY for all
+    nodes under NODE, including the score for NODE itself."""
+    keys = []
+    if tree[node].has_key(score_key) and tree[node].has_key(self.file_key): 
+      # If here, then we're at a leaf: Score and return
+      score = tree[node][score_key]
+      keys.append(score)
+      return keys
+
+    for key, value in tree[node].items():
+      if key[0] == '/': #Skip flags
+        continue
+      keys = keys + self.score_node_tree(tree, value, score_key)
+    return keys
+
+  def print_node_tree(self, tree, root_node, indent_depth=0):
+    """For debugging purposes.  Prints all nodes in TREE that are
+    rooted at ROOT_NODE.  INDENT_DEPTH is merely for purposes of
+    debugging with the print statement in this function."""
+    #print "NNN:", " " * (indent_depth * 2), root_node, tree[root_node]
+    for key, value in tree[root_node].items():
+      if key[0] == '/': #Skip flags
+        continue
+      self.print_node_tree(tree, value, (indent_depth + 1))
+
+  def copy_node_tree(self, src, dst, start):
+    """Helper for jit_score_node.  Recursively copies START node and
+    all nodes under it from SRC to DST."""
+    for k, v in src[start].items(): # dup read of prev line
+      if k[0] == '/': #Skip flags
+        continue
+      dst[v] = src[v] 
+      self.copy_node_tree(src, dst, v)
+
   # Helper for copy_descend().
   def cleanup_entries(self, rev, limit_rev, entries, is_tag):
     """Return a copy of ENTRIES, minus the individual entries whose
     highest scoring revision doesn't match REV (and also, minus and
     special '/'-denoted flags).  IS_TAG is 1 or None, based on whether
     this work is being done for the sake of a tag or a branch."""
-
     new_entries = {}
-    for key in entries.keys():
+    for key, entry in entries.items():
       if key[0] == '/': # Skip flags
         continue
-      entry = entries.get(key)
       val = self.db[entry]
-      scores = self.score_revisions(val.get(self.opening_revs_key), val.get(self.closing_revs_key))
+
+      opening_scores, closing_scores = self.jit_score_node(entry)
+      scores = self.score_revisions(opening_scores, closing_scores)
+
       if self.is_best_rev(scores, rev, limit_rev):
         new_entries[key] = entry
     return new_entries
@@ -1964,8 +1997,8 @@ class SymbolicNameTracker:
     if not val.has_key(self.copyfrom_rev_key):
       # If not already copied this subdir, calculate its "best rev"
       # and see if it differs from parent's best rev.
-      scores = self.score_revisions(val.get(self.opening_revs_key),
-                                    val.get(self.closing_revs_key))
+      opening_scores, closing_scores = self.jit_score_node(key)
+      scores = self.score_revisions(opening_scores, closing_scores)
       rev = self.best_rev(scores, parent_rev, limit_rev)
 
       if rev == SVN_INVALID_REVNUM:
@@ -2547,6 +2580,7 @@ class SymbolicName:
     return  cmp(self.name, other.name)
 
 
+###TODO break this out into a separate pass
 def get_symbol_closing_revs(ctx):
   """Iterate through sorted revs, accumulating tags and branches as it
   goes.  Returns a dictionary whose key is the last revision a
