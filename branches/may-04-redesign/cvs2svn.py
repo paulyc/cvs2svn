@@ -125,7 +125,7 @@ SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
 # file, and this file's 1.3 is the latest (by date) revision among
 # *all* CVS files that is a source for branch B, then the
 # CVSRevision.unique_key() corresponding to this file at 1.3 would
-# list at least B in its list. ###TODO rewrite example to use s-revs?
+# list at least B in its list.
 SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
 
 # Maps CVSRevision.unique_key() to corresponding line in s-revs.
@@ -464,7 +464,7 @@ class CVSRevision:
       return 1
     if name in self.branches:
       return 1
-    ###TODO REMOVING THIS IS NOT CORRECT because if we do, the
+    ###THIS CODE TO BE DELETED: REMOVING THIS IS NOT CORRECT because if we do, the
     ###symbolicnametracker blows away the branch in the
     ###symbolicnamesdb before the last commits on that branch.
     if self.branch_name == name:
@@ -1774,7 +1774,7 @@ class Dumper:
     else:
       eol_style = 'native'
 
-    ### TODO: Deal with other expansion modes.  What do we do about
+    ### THIS CODE WILL BE DELETED: Deal with other expansion modes.  What do we do about
     ### the various keyword expansion styles (name only, value only,
     ### both name and value, old value, etc.)?  Beats me.
     
@@ -1797,7 +1797,7 @@ class Dumper:
     # Calculate the property length (+10 for "PROPS-END\n")
     props_len = len(prop_contents) + 10
     
-    ### FIXME: We ought to notice the -kb flag set on the RCS file and
+    ### THIS CODE WILL BE DELETED: We ought to notice the -kb flag set on the RCS file and
     ### use it to set svn:mime-type.
     ### (How this will interact with the mime-mapper code
     ### has yet to be decided.)
@@ -2021,7 +2021,7 @@ class SymbolicNameTracker:
     # The keys for the opening and closing revision lists attached to
     # each directory or file.  Includes "/" so as never to conflict
     # with any real entry.
-    ### TODO These should be 2 chars when not debugging
+    ### THIS CODE WILL BE DELETED These should be 2 chars when not debugging
     self.opening_revs_key = "/o"
     self.closing_revs_key = "/c"
 
@@ -2030,7 +2030,7 @@ class SymbolicNameTracker:
     # opening and closing rev lists are removed.
     self.copyfrom_rev_key = "/r"
     self.file_key = "/f"
-    ###TODO self.tags should be stored in the symnames_db
+    ###THIS CODE WILL BE DELETED self.tags should be stored in the symnames_db
     self.tags = {}
 
   def probe_path(self, symbolic_name, path, debugging=None):
@@ -2626,7 +2626,6 @@ class SymbolicNameTracker:
   #  for key in self.db.db.keys():
   #    print key, self.db[key]
 
-### TODO add digest to constructor, then use it in __cmp__
 class Commit:
   def __init__(self, author, log):
     self.author = author
@@ -2830,7 +2829,7 @@ class Commit:
       # the subversion repository.
       sym_tracker.enroot_tags(c_rev.svn_path, svn_rev, c_rev.tags)
       sym_tracker.enroot_branches(c_rev.svn_path, svn_rev, c_rev.branches)
-      ###TODO We generate a new revision unconditionally, even if this
+      ###THIS CODE WILL BE DELETED We generate a new revision unconditionally, even if this
       ### is a deletion of an already-deleted path, so we have a place
       ### to record the log message.  But, we should probably prefix
       ### that log message with some explanation, otherwise it can
@@ -3017,8 +3016,6 @@ class SymbolingsLogger(Singleton):
 
   def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens a symbolic name."""
-    ## TODO check symbolic_names
-
     # We log this revision if:
     # - There is branch/tag OPENING activity in this c_rev
     #   AND
@@ -3108,7 +3105,6 @@ class CVSRevisionDatabase:
     argument to Database or anydbm.open()).  CTX is required if you
     wish to call the get_revision() method."""
     self._ctx = ctx
-    ###TODO Properly subclass Database
     self.cvs_revs_db = Database(CVS_REVS_DB, mode)
     Cleanup().register(CVS_REVS_DB, pass8)
 
@@ -3166,7 +3162,7 @@ def print_node_tree(tree, root_node, indent_depth=0):
     print "TREE", "=" * 75
   print "TREE:", " " * (indent_depth * 2), root_node, tree[root_node]
   for key, value in tree[root_node].items():
-    if key[0] == '/': #Skip flags ###TODO Is this necessary?
+    if key[0] == '/': #Skip flags
       continue
     print_node_tree(tree, value, (indent_depth + 1))
 
@@ -3394,8 +3390,8 @@ class SymbolicNameFillingGuide:
     self._ctx = ctx
     self.name = symbolic_name
 
-    self.opening_key = "/open" # TODO make 2 bytes
-    self.closing_key = "/close" # TODO make 2 bytes
+    self.opening_key = "/o"
+    self.closing_key = "/c"
 
     # A dictionary of SVN_PATHS and SVN_REVNUMS whose format is:
     #
@@ -3566,7 +3562,7 @@ class SymbolicNameFillingGuide:
       return revnums
 
     for key, node_contents in self.node_tree[node].items():
-      if key[0] == '/': #Skip flags  ###TODO is this necessary?
+      if key[0] == '/':
         continue 
       revnums = revnums + \
           self._list_revnums_for_key(node_contents, revnum_type_key)
@@ -3803,7 +3799,6 @@ class CommitMapper(Singleton):
     if motivating_revnum:
       motivating_revnum = int(motivating_revnum)
       svn_commit.set_motivating_revnum(motivating_revnum)
-      ###TODO kff: get the actual related revnum here.
       ###TODO: This should be in SVNCommit
       msg = 'This commit was generated by cvs2svn to compensate for '     \
             'changes in r%d,\n'                                           \
@@ -3845,7 +3840,7 @@ class CommitMapper(Singleton):
     self.motivating_revnums[str(svn_revnum)] = str(motivating_revnum)
 
 
-# Based on Commit
+### TODO add digest to constructor, then use it in __cmp__
 class CVSCommit:
   """Each instance of this class contains a number of CVS Revisions
   that correspond to one or more Subversion Commits.  After all CVS
@@ -4024,11 +4019,8 @@ class CVSCommit:
             accounted_for_sym_names.append(c_rev.branch_name)
           RepositoryBranchesInHead().add_path(c_rev.svn_path)
 
-    ###TODO Make sure that changes and deletes HAVE to be separate
-    ### lists
     for c_rev in self.deletes:
       if c_rev.branch_name:
-        ###TODO Check c_rev.op to see if we're an add!
         if not RepositoryBranchesInHead().has_path(c_rev.svn_path):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
@@ -4497,8 +4489,7 @@ class SVNRepositoryMirror:
     # being mutable, the node and all subnodes were created by a copy
     # operation in the current revision.  In this and only this
     # circumstance, it is valid for pruning to occur.
-    ###TODO make this 2 characters long
-    self.mutable_flag = "/mutable"
+    self.mutable_flag = "/m"
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
 
@@ -4715,7 +4706,7 @@ class SVNRepositoryMirror:
 
     This makes nodes mutable only as needed, otherwise, mutates any
     mutable nodes it encounters."""
-    ###TODO For inconsistency checking, we could return whether or not
+    ###TODO For consistency checking, we could return whether or not
     ###we added a node representing a new path (or path element).
     ###This could be checked by the caller and an exception could be
     ###thrown if the response was unexpected.  Code defensively.
@@ -5068,10 +5059,6 @@ class SVNRepositoryMirror:
 
     return node_key, node_contents
 
-
-
-
-
   ###TODO This *might* be a bit pricey to do.  Look here for perf
   ###problems.
   def path_exists(self, path):
@@ -5107,8 +5094,6 @@ class SVNRepositoryMirror:
     self.invoke_delegates('start_commit', svn_commit)
 
     # Create tags and branches in the first commit
-    ###TODO don't do this if we're trunk_only
-    ###
     ###TODO: We MUST do this in a separate commit, so it's
     ### not mixed in with a user change.
     if not self.active and not self._ctx.trunk_only:
@@ -5151,8 +5136,6 @@ class SVNRepositoryMirror:
     delegates will be called in the order that they are added.  See
     SVNRepositoryMirrorDelegate for more information."""
     self.delegates.append(delegate)
-    ###TODO do we really need to set the mirror on the delegate?
-    delegate.set_mirror(self)
 
   def invoke_delegates(self, method, *args):
     """Iterate through each of our delegates, in the order that they
@@ -5169,8 +5152,7 @@ class SVNRepositoryMirror:
 
 class SVNRepositoryMirrorDelegate:
   """Abstract superclass for any delegate to SVNRepositoryMirror.
-  Subclasses must implement all of the methods below, and callers
-  must call set_mirror before calling any other method.
+  Subclasses must implement all of the methods below.
 
   For each method, a subclass implements, in its own way, the
   Subversion operation implied by the method's name.  For example, for
@@ -5180,10 +5162,6 @@ class SVNRepositoryMirrorDelegate:
   and the RepositoryDelegate would actually cause the path to be added
   to the Subversion repository that it is creating.
   """
-
-  def set_mirror(self, mirror):
-    """Set the SVNRepositoryMirror for this instance."""
-    self.mirror = mirror
 
   def start_commit(self, svn_commit):
     """Perform any actions needed to start SVNCommit SVN_COMMIT;
@@ -5248,7 +5226,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     self.set_eol_style = ctx.set_eol_style
     self.mime_mapper = ctx.mime_mapper
     self.path_encoding = ctx.encoding
-    self.mirror = None  # Use self.set_mirror() to initialize this.
     self.revision = 0
     
     self.dumpfile = open(self.dumpfile_path, 'wb')
@@ -5501,8 +5478,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
 
   def delete_path(self, path):
     """Emit the deletion of PATH."""
-    ###TODO kff: This just needs to take SVN_PATH, really.
-    ###
     ###TODO kff: Who is responsible for pruning behavior?  The caller,
     ### I think, but we should make sure that's what we want.
     self.dumpfile.write('Node-path: %s\n'
@@ -5642,7 +5617,7 @@ def pass8(ctx):
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
-    ###TODO WARNING: This may leave unclosed commits in the queue!
+    ###THIS CODE TO BE DELETED: This may leave unclosed commits in the queue!
     if ctx.trunk_only and not trunk_rev.match(c_rev.rev):
       ### note this could/should have caused a flush, but the next item
       ### will take care of that for us
@@ -6025,7 +6000,6 @@ def main():
   def clear_default_branches_db():
     # This is the only DB reference still reachable at this point;
     # lose it before removing the file.
-    ###TODO We should only use this db if we're not trunk-only.
     ctx.default_branches_db = None
 
   # Lock the current directory for temporary files.
