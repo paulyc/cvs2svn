@@ -3096,6 +3096,17 @@ def sort_file(infile, outfile):
   else:
     os.environ['LC_ALL'] = lc_all_tmp
 
+def print_node_tree(tree, root_node, indent_depth=0):
+  """For debugging purposes.  Prints all nodes in TREE that are
+  rooted at ROOT_NODE.  INDENT_DEPTH is merely for purposes of
+  debugging with the print statement in this function."""
+  if not indent_depth:
+    print "TREE", "=" * 75
+  print "TREE:", " " * (indent_depth * 2), root_node, tree[root_node]
+  for key, value in tree[root_node].items():
+    if key[0] == '/': #Skip flags
+      continue
+    print_node_tree(tree, value, (indent_depth + 1))
 
 def pass1(ctx):
   ###TODO create the CollectData object in visit_file and pass a
@@ -3231,7 +3242,7 @@ class SymbolingsReader:
       #print " ZOO:", key, offsets_db[key]
       self.offsets[key] = offsets_db[key]
 
-  def values_for_symbol(self, symbolic_name, svn_revnum, is_tag):
+  def symboling_for_symbol(self, symbolic_name, svn_revnum, is_tag):
     """Given SYMBOLIC_NAME and SVN_REVNUM, return all openings
     and closings for that symbolic_name that happened in the
     repository up to and including SVN_REVNUM. IS_TAG is a
@@ -3243,27 +3254,19 @@ class SymbolingsReader:
     discarded later).  That's perfectly fine, because we can still do
     a valid fill without the closing--we always try to fill what we
     can as soon as we can.
-
-    Returns a node tree whose leaf nodes contain a list whose first
-    element is the opening svn revision number for that file, and
-    whose (optional) second element is the closing svn revision number
-    for that file.
-
-    In other words, each node is either a dictionary (i.e. a directory
-    node with entries) or a list (i.e. a file node with openings and
-    (possibly) closings)."""
+    
+    Returns a fully functional and armed SymbolicName Fill object."""
     # set our read offset for self.symbolings to the offset for
     # symbolic_name (move our start point back one)
     self.symbolings.seek(self.offsets[symbolic_name])
 
-    things = { }
+    symbol_fill = SymbolicNameFill(self._ctx, symbolic_name)
     while (1):
       line = self.symbolings.readline().rstrip()
       if not line:
         break
       name, revnum, svn_path = line.split(" ", 2)
       revnum = int(revnum)
-      print "FITZ:", svn_path
       # Trivia note: There will never be an opening or closing whose
       # svn_revision == svn_revnum.  Why this is so is left as an
       # exercise for the reader. :-)
@@ -3271,59 +3274,115 @@ class SymbolingsReader:
           or name != symbolic_name):
         break
 
-      #keep rev (1st sight of PATH is the opening)
-      if not things.has_key(svn_path):
-        things[svn_path] = [revnum]
-      #keep rev (2nd sight of PATH is the closing)
-      else:
-        things[svn_path].append(revnum)
+      symbol_fill.add_path_and_revision(svn_path, revnum)
 
-    # get current offset of the read marker and set it to the offset for
-    # the beginning of the line we just read
-    if len(things) > 0:
+    # get current offset of the read marker and set it to the offset
+    # for the beginning of the line we just read if we used anything
+    # we read.
+    if not symbol_fill.is_empty():
       # Subtract one cause we rstripped the CR above.
       self.offsets[symbolic_name] = self.symbolings.tell() - len(line) - 1
 
-    # Now we've got dict of {PATH: [opening, closing],...}.  We need
-    # to turn that into a node tree with the openings and closings on
-    # the leaf nodes.
-    ### TODO break this out into a separate function
-    tree = { }
-    parent_key = '0'
-    tree[parent_key] = { }
+    symbol_fill.make_node_tree()
+    return symbol_fill
+  
 
-    print "DUG:", "=" * 75
-    for svn_path, open_close in things.items():
-      #print "NOG:", k, "\t\t\t\t", v
-      parent_key = '0'
+class SymbolicNameFill:
+  """A SymbolicNameFill is essentially a node tree representing a
+     series of opening and closing source revisions for a collection
+     of source paths in a symbolic name in a particular SVNCommit.
+
+     From this information, you can determine:
+
+     1. Which files and directories should be copied to fill a
+        particular symbolic name up to a particular SVNCommit.  Note
+        that this information can be used in conjunction with the
+        SVNRepositoryMirror to determine which files and directories
+        should either not be copied in the first place, or whih have
+        to be pruned after a copy has taken place.
+
+     2. The optimal revision to use as our copy source for copying an
+        entire node tree, sub-tree, or single path into a symbolic
+        name. """
+  def __init__(self, ctx, symbolic_name):
+    """ Initializes the SymbolicNameFill for SYMBOLIC_NAME and
+    prepares it for receiving openings and closings."""
+    self._ctx = ctx
+    self.name = symbolic_name
+
+    self.opening_key = "/open" # TODO make 2 bytes
+    self.closing_key = "/close" # TODO make 2 bytes
+
+    # A dictionary of SVN_PATHS and SVN_REVNUMS whose format is:
+    #
+    # { svn_path : { self.opening_key : svn_revnum,
+    #                self.closing_key : svn_revnum }
+    #                ...}
+    self.things = { }
+
+    # The key for the root node of the node tree
+    self.root_key = '0'
+    # The dictionary that holds our node tree, seeded with the root key.
+    self.tree = { self.root_key : { } }
+
+
+  def add_path_and_revision(self, svn_path, svn_revnum):
+    """ Collects opening and closing revisions for this
+    SymbolicNameFill.  SVN_PATH is the source path that needs to be
+    copied into self.symbolic_name, and SVN_REVNUM is either the first
+    svn revision number that we can copy from (our opening), or the
+    last (not inclusive) svn revision number that we can copy from
+    (our closing).
+
+    The opening for a given SVN_PATH must be passed before the
+    closing.
+
+    It is not necessary to pass a corresponding closing for every
+    opening.
+    """
+    #keep rev (1st sight of PATH is the opening)
+    if not self.things.has_key(svn_path):
+      self.things[svn_path] = {self.opening_key: svn_revnum}
+    #keep rev (2nd sight of PATH is the closing)
+    else:
+      self.things[svn_path][self.closing_key] = svn_revnum
+
+  def make_node_tree(self):
+    """ Generates the SymbolicNameFill's node tree from self.things.
+    Each leaf node contains the opening and (optionally) closing for
+    the path that ends in that leaf node."""
+    for svn_path, open_close in self.things.items():
+      parent_key = self.root_key
 
       path_so_far = ""
       # Walk up the path, one node at a time.
       components = svn_path.split('/')
       last_path_component = components[-1]
       for component in components:
-        path_so_far = os.path.join(path_so_far, component)
-        print "DUG:", path_so_far
+        path_so_far = path_so_far + '/' + component
 
         child_key = None
-        if not tree[parent_key].has_key(component):
+        if not self.tree[parent_key].has_key(component):
           child_key = gen_key()
-          tree[child_key] = { }
-          tree[parent_key][component] = child_key
+          self.tree[child_key] = { }
+          self.tree[parent_key][component] = child_key
         else:
-          child_key = tree[parent_key][component]
+          child_key = self.tree[parent_key][component]
 
+        # If this is the leaf, add the openings and closings.
         if component is last_path_component:
-          tree[child_key] = open_close
+          self.tree[child_key] = open_close
         parent_key = child_key
+    #print_node_tree(self.tree, self.root_key) 
 
-    tmp = tree.keys()
-    tmp.sort()
-    for k in tmp:
-      print "DUG:", k, "\t\t\t", tree[k]
-    return tree
+  def is_empty(self):
+    """Returns true if we haven't accumulated any openings or
+    closings, zero otherwise."""
+    return len(self.things)
 
-
+  ###TODO do something with this:
+  #These revision scores are used to determine the optimal copy
+  #revisions for each tree/subtree at branch or tag creation time.
 
 def generate_offsets_for_symbolings():
   """This function iterates through all the lines in
@@ -4237,12 +4296,12 @@ class SVNRepositoryMirror:
     if svn_commit.symbolic_name:
       if self.tags_db.has_key(svn_commit.symbolic_name):
         print "Filling tag:", svn_commit.symbolic_name
-        self.symbolings_reader.values_for_symbol(svn_commit.symbolic_name,
-                                                 svn_commit.revnum, 1)
+        self.symbolings_reader.symboling_for_symbol(svn_commit.symbolic_name,
+                                                    svn_commit.revnum, 1)
       else:
         print "Filling branch:", svn_commit.symbolic_name
-        self.symbolings_reader.values_for_symbol(svn_commit.symbolic_name,
-                                                 svn_commit.revnum, 0)
+        self.symbolings_reader.symboling_for_symbol(svn_commit.symbolic_name,
+                                                    svn_commit.revnum, 0)
         
     else: # This will actually commit CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
