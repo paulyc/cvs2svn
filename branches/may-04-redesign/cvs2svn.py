@@ -333,6 +333,7 @@ class CVSRevision:
        op              -->  (char) 'C' for change, 'D' for delete
        prev_rev        -->  (string) previous CVS Rev, e.g., "1.2"
        rev             -->  (string) this CVS rev, e.g., "1.3"
+       next_rev        -->  (string) next CVS Rev, e.g., "1.4"
        deltatext_code  -->  (char) 'N' if non-empty deltatext, else 'E'
        fname           -->  (string) relative path of file in CVS repos
        mode            -->  (string) "kkv", "kb", etc, or None.
@@ -345,12 +346,13 @@ class CVSRevision:
     and the other from multiple arguments, as long as the string
     represents the same data as the multiple arguments."""
     self._ctx = ctx
-    if len(args) == 11:
-      self.timestamp, self.digest, self.op, self.prev_rev, self.rev, \
-                      self.deltatext_code, self.fname, self.mode, \
-                      self.branch_name, self.tags, self.branches = args
+    if len(args) == 12:
+      (self.timestamp, self.digest, self.op, self.prev_rev, self.rev, 
+       self.next_rev, self.deltatext_code, self.fname, 
+       self.mode, self.branch_name, self.tags, self.branches) = args
     elif len(args) == 1:
-      data = args[0].split(' ', 9)
+      print args[0]
+      data = args[0].split(' ', 10)
       self.timestamp = int(data[0], 16)
       self.digest = data[1]
       self.op = data[2]
@@ -358,22 +360,25 @@ class CVSRevision:
       if self.prev_rev == "*":
         self.prev_rev = None
       self.rev = data[4]
-      self.deltatext_code = data[5]
-      self.mode = data[6]
+      self.next_rev = data[5]
+      if self.next_rev == "*":
+        self.next_rev = None
+      self.deltatext_code = data[6]
+      self.mode = data[7]
       if self.mode == "*":
         self.mode = None
-      self.branch_name = data[7]
+      self.branch_name = data[8]
       if self.branch_name == "*":
         self.branch_name = None
-      ntags = int(data[8])
-      tags = data[9].split(' ', ntags + 1)
+      ntags = int(data[9])
+      tags = data[10].split(' ', ntags + 1)
       nbranches = int(tags[ntags])
       branches = tags[ntags + 1].split(' ', nbranches)
       self.fname = branches[nbranches][:-1]  # strip \n
       self.tags = tags[:ntags]
       self.branches = branches[:nbranches]
     else:
-      raise TypeError, 'CVSRevision() takes 2 or 10 arguments (%d given)' % \
+      raise TypeError, 'CVSRevision() takes 2 or 12 arguments (%d given)' % \
           (len(args) + 1)
     self.cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
     self.svn_path = make_path(self._ctx, self.cvs_path, self.branch_name)
@@ -388,9 +393,10 @@ class CVSRevision:
   def write_revs_line(self, output):
     if not self.prev_rev:
       self.prev_rev = '*'
-    output.write('%08lx %s %s %s %s %s ' % \
+    output.write('%08lx %s %s %s %s %s %s ' % \
                  (self.timestamp, self.digest, self.op,
-                  self.prev_rev, self.rev, self.deltatext_code))
+                  self.prev_rev, self.rev, self.next_rev,
+                  self.deltatext_code))
     output.write('%s ' % (self.mode or "*"))
     output.write('%s ' % (self.branch_name or "*"))
     output.write('%d ' % (len(self.tags)))
@@ -496,6 +502,11 @@ class CollectData(rcsparse.Sink):
     # arithmetically (due to cvsadmin -o, which is why this is
     # necessary).
     self.prev_rev = { }
+
+    # This dict is essentially self.prev_rev with the values mapped in
+    # the other diretion, so following key -> value will yield you the
+    # next revision number
+    self.next_rev = { }
 
     # The same as self.prev_rev except that for the first revision R
     # on a branch, we consider the revision from which R sprouted to
@@ -717,9 +728,11 @@ class CollectData(rcsparse.Sink):
     if trunk_rev.match(revision):
       self.prev[revision] = next
       self.prev_rev[revision] = next
+      self.next_rev[next] = revision
     elif next:
       self.prev[next] = revision
       self.prev_rev[next] = revision
+      self.next_rev[revision] = next
 
     for b in branches:
       self.prev[b] = revision
@@ -833,6 +846,7 @@ class CollectData(rcsparse.Sink):
 
     c_rev = CVSRevision(self._ctx, timestamp, digest, op,
                         self.prev_rev.get(revision, '*'), revision,
+                        self.next_rev.get(revision, '*'),
                         deltatext_code, self.fname,
                         self.mode, self.rev_to_branch_name(revision),
                         self.get_tags(revision),
@@ -3758,13 +3772,13 @@ class SVNRepositoryMirror:
 
     # This corresponds to the 'revisions' table in a Subversion fs.
     self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'n')
-    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8)
+    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8, self.close)
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track metadata, not file contents.)
     self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'n')
-    Cleanup().register(SVN_MIRROR_NODES_DB, pass8)
+    Cleanup().register(SVN_MIRROR_NODES_DB, pass8, self.close)
 
     # Init a root directory with no entries at revision 0.
     self.youngest = 0
@@ -3824,6 +3838,9 @@ class SVNRepositoryMirror:
         # 2. Add a new path.
         # 3. Delete a path.
 
+  def close(self):
+    self.revs_db = None
+    self.nodes_db = None
 
 class SVNRepositoryDelegate:
   """Abstract superclass for any delegate to SVNRepository.  If you

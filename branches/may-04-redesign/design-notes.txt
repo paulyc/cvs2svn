@@ -58,26 +58,28 @@ log messages and file contents.  For each revision, it invokes
 CollectData.set_revision_info(), which writes a new line to
 cvs2svn-data.revs, like this:
 
-   3dc32955 5afe9b4ba41843d8eb52ae7db47a43eaa9573254 C 1.2 N * 0 0 foo/bar,v
+   3dc32955 5afe9b4ba41843d8eb52ae7db47a43eaa9573254 C 1.1 1.2 1.3 N * 0 0 foo/bar,v
 
 The fields are:
 
    1.  a fixed-width timestamp
    2.  a digest of the log message + author
    3.  the type of change ("C"hange, or "D"elete)
-   ###TODO This next def is WRONG
-   4.  the previous ("next" in RCS jargon) revision number or "*" if
-       there is no previous revision (That is, it's the first revision on a
-       file).
+   4.  the revision number of the previous revision along this line of
+       development (or "*", if it's the first revision on this line of
+       development).
    5.  the revision number
-   6.  "N" if this revision has non-empty deltatext, else "E" for empty
-   7.  the RCS keyword substitution mode ("kkv", "kb", etc), or "*" if none
-   8.  the branch on which this commit happened, or "*" if not on a branch
-   9.  the number of tags rooted at this revision (followed by their
+   6.  the revision number of the next revision along this line of
+       development (or "*", if it's the last revision on this line of
+       development).
+   7.  "N" if this revision has non-empty deltatext, else "E" for empty
+   8.  the RCS keyword substitution mode ("kkv", "kb", etc), or "*" if none
+   9.  the branch on which this commit happened, or "*" if not on a branch
+   10.  the number of tags rooted at this revision (followed by their
        names, space-delimited)  
-   10. the number of branches rooted at this revision (followed by
+   11. the number of branches rooted at this revision (followed by
        their names, space-delimited) 
-   11. the path of the RCS file in the repository
+   12. the path of the RCS file in the repository
 
 (Of course, in the above example, fields 9 and 10 are "0", so they have
 no additional data.)
