@@ -1876,7 +1876,7 @@ class SymbolicNameTracker:
     opening and closing score from there, and walk back up."""
 
     root_key = node
-    tree = {node : self.db[node]} # Make a little node tree here in-mem
+    tree = {} # Make a little node tree here in-mem
     self.copy_node_tree(self.db, tree, node)
     #self.print_node_tree(tree, root_key)
 
@@ -1935,10 +1935,10 @@ class SymbolicNameTracker:
   def copy_node_tree(self, src, dst, start):
     """Helper for jit_score_node.  Recursively copies START node and
     all nodes under it from SRC to DST."""
+    dst[start] = src[start] 
     for k, v in src[start].items(): # dup read of prev line
       if k[0] == '/': #Skip flags
         continue
-      dst[v] = src[v] 
       self.copy_node_tree(src, dst, v)
 
   # Helper for copy_descend().
