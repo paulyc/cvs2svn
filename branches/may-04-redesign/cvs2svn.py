@@ -3924,8 +3924,9 @@ class CVSCommit:
           # but hey, we're all idealists here, aren't we?
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit(self._ctx, "pre-commit branch CHANGE '%s'"
-                                   % c_rev.branch_name)
+            svn_commit = SVNCommit(self._ctx,
+                                   "pre-commit branch '%s' (op == '%s')"
+                                   % (c_rev.branch_name, c_rev.op))
             svn_commit.set_symbolic_name(c_rev.branch_name)
             svn_commit.flush()
 
@@ -3961,7 +3962,7 @@ class CVSCommit:
     self.primary_commit_revnum = svn_commit.revnum
 
     for c_rev in self.changes:
-      svn_commit.add_revision(c_rev)    
+      svn_commit.add_revision(c_rev)
       ###TODO QUX1 RepositoryHead().add_path(c_rev.svn_path)
       # Only make a change if we need to.  When 1.1.1.1 has an empty
       # deltatext, the explanation is almost always that we're looking
