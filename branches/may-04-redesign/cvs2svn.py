@@ -1641,7 +1641,7 @@ def generate_offsets_for_symbolings():
   seek to the various offsets in the file and sequentially read only
   the openings and closings that we need."""
 
-  ###TODO This is a fine example of a db that can be in-memory and
+  ###PERF This is a fine example of a db that can be in-memory and
   #just flushed to disk when we're done.  Later, it can just be sucked
   #back into memory.
   offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
@@ -1686,7 +1686,7 @@ class PersistenceManager(Singleton):
     Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8)
     self.svn_commit_metadata = Database(METADATA_DB, 'r')
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
-    ###TODO kff Elsewhere there are comments about sucking the tags db
+    ###PERF kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.
     ###TODO FITZ: We should set an is_tag var on SVNCommit...
     if not ctx.trunk_only:
@@ -2248,12 +2248,8 @@ class CVSRevisionAggregator:
   def __init__(self, ctx):
     self._ctx = ctx
     self.metadata_db = Database(METADATA_DB, 'r')
-    ###TODO Cleanup().register()
-    ###TODO WARNING: What happens when we call cleanup.register
-    ###multiple times on the same file?????????????
     if not ctx.trunk_only:
       self.last_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
-    ###TODO Cleanup().register()
     self.cvs_commits = {}
     self.pending_symbols = {}
     # A list of symbols for which we've already encountered the last
@@ -2436,7 +2432,7 @@ class SVNRepositoryMirror:
     self.empty_mutable_thang = { self.mutable_flag : 1 }
 
     if not ctx.trunk_only:
-      ###TODO IMPT: Suck this into memory.
+      ###PERF IMPT: Suck this into memory.
       self.tags_db = TagsDatabase('r')
       self.symbolings_reader = SymbolingsReader(self._ctx)
 
