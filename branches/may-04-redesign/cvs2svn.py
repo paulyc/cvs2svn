@@ -217,8 +217,6 @@ RESYNC_SUFFIX = '.resync'
 # DEFAULT_BRANCHES_DB, which is created before pass1.  To avoid
 # running with stale files, we will delete all of these files first
 # thing in pass1.
-###TODO when we make ctx a singleton, add DEFAULT_BRANCHES_DB to the list here
-# and allow it to be created lazily in pass1 when CollectData is instantiated.
 all_files = [CVS_REVS_DB, CVS_REVS_TO_SVN_REVNUMS, 
              DATAFILE + CLEAN_REVS_SUFFIX, DATAFILE + RESYNC_SUFFIX, 
              DATAFILE + REVS_SUFFIX, DATAFILE + SORTED_REVS_SUFFIX,
@@ -615,7 +613,6 @@ class CVSRevision:
 class CollectData(rcsparse.Sink):
   def __init__(self, ctx):
     self._ctx = ctx
-    ### TODO self.ctx.* can be accessed through self._ctx.
     self.cvsroot = ctx.cvsroot
     self.revs = open(DATAFILE + REVS_SUFFIX, 'w')
     Cleanup().register(DATAFILE + REVS_SUFFIX, pass2)
@@ -1734,8 +1731,7 @@ class PersistenceManager(Singleton):
   All information pertinent to each SVNCommit is stored in a series of
   on-disk databases so that SVNCommits can be retrieved on-demand.
 
-  CTX is the usual annoying semi-global ctx object, which may become a
-  singleton very soon, grrr."""
+  CTX is the usual annoying semi-global ctx object."""
   def init(self, ctx):
     self._ctx = ctx
     self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, DB_OPEN_CREATE)
@@ -4137,7 +4133,6 @@ def main():
         "  remove the 'cvs2svn.lock' directory.\n")
     sys.exit(1)
   try:
-    ###TODO: Remove the next 4 lines when we make ctx a singleton
     if os.path.isfile(DEFAULT_BRANCHES_DB):
       os.unlink(DEFAULT_BRANCHES_DB)
     ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, DB_OPEN_CREATE)
