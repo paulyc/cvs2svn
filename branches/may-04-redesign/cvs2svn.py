@@ -309,9 +309,6 @@ class Log(Singleton):
     self.logger.write(' '.join(map(str,args)) + "\n")
 
 
-###TODO Note that when we cleanup a db file owned by a singleton, we
-#should Probably zap the singleton itself (or at least the ref to the
-#db file).
 class Cleanup(Singleton):
   """This singleton class manages any files created by cvs2svn. When
   you first create a file, call Cleanup.register, passing the
@@ -332,7 +329,8 @@ class Cleanup(Singleton):
 
     Note that if a file is registered multiple times, only the first
     callback registered for that file will be called at cleanup
-    time."""
+    time.  Also note that if you register a database file you must
+    close the database before cleanup, e.g. using a callback."""
     if not self._log.has_key(which_pass):
       self._log[which_pass] = {}
     self._log[which_pass][file] = 1
