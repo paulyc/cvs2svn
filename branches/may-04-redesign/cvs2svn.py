@@ -95,6 +95,7 @@ DATAFILE = 'cvs2svn-data'
 DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 
 SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
+SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
 
 # Skeleton version of an svn filesystem.
 # See class RepositoryMirror for how these work.
@@ -230,6 +231,9 @@ class Singleton(object):
     return singleton
 
 
+###TODO Note that when we cleanup a db file owned by a singleton, we
+#should Probably zap the singleton itself (or at least the ref to the
+#db file).
 class Cleanup(Singleton):
   """This singleton class manages any files created by cvs2svn. When
   you first create a file, call Cleanup.register, passing the
@@ -2743,12 +2747,11 @@ def read_resync(fname):
   return resync
 
 
-class SymbolingsLogger:
+class SymbolingsLogger(Singleton):
   """Manages the file and all related temporary data structures that
   contains lines for symbol openings and closings."""
-  ### TODO cleanup file!
-  def __init__(self):
-    self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'w')
+  def init(self):
+    self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
     Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
     ### TODO Warning: Openings can get REALLY BIG (the pathological
     ### case is NUM_CVS_FILES * NUM_SYMBOLIC_NAMES *
@@ -2762,9 +2765,14 @@ class SymbolingsLogger:
     ### premature optimization at this point.
     self.openings = {} ### TODO describe openings format somewhere.
 
-  def log_names_for_rev(self, names, c_rev):
+  def log_names_for_rev(self, names, c_rev, svn_revnum):
+    """Write out SYMBOLIC_NAME SVN_REVNUM CVS_REV.UNIQUE_KEY().  This
+    allows us to run the logfile through sort and have all openings
+    and closings for a given symbolic name grouped by symbolic name in
+    svn commit order."""
     for name in names:
-      self.symbolings.write(name + ' ' + c_rev.unique_key() + '\n')
+      ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
+      self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, c_rev.unique_key())) 
 
   def clear_prev_rev(self, c_rev):
     # Remove the openings that we just closed
@@ -2773,7 +2781,7 @@ class SymbolingsLogger:
     if len(self.openings[c_rev.svn_path]) == 0:
       del self.openings[c_rev.svn_path]
 
-  def check_revision(self, c_rev):
+  def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens or closes a
     symbolic name."""
     ## TODO check symbolic_names
@@ -2783,14 +2791,22 @@ class SymbolingsLogger:
         self.openings[c_rev.svn_path] = { c_rev.rev: c_rev.symbolic_names()}
       else: # Add to the existing one
         self.openings[c_rev.svn_path][c_rev.rev] = c_rev.symbolic_names()
-      self.log_names_for_rev(c_rev.symbolic_names(), c_rev)
+      self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
       
     if ((c_rev.svn_path in self.openings) # This c_rev is a closing
         and c_rev.prev_rev                  # for a previous rev.
         and (self.openings[c_rev.svn_path].has_key(c_rev.prev_rev))): 
       self.log_names_for_rev(
-        self.openings[c_rev.svn_path][c_rev.prev_rev], c_rev)
+        self.openings[c_rev.svn_path][c_rev.prev_rev], c_rev, svn_revnum)
       self.clear_prev_rev(c_rev)
+
+  ###TODO Since we're a singleton and don't go out of scope, if we
+  ###don't explicitly close our file, we don't flush until we exit,
+  ###and, well, that causes problems when you try to sort a file that
+  ###is still open and partially buffered in memory.
+  def flush(self):
+    self.symbolings.close()
+    self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
 
 
 class LastSymbolicNameDatabase(Database):
@@ -2861,6 +2877,24 @@ class TagsDatabase(Database):
       self.tags_db[tag] = None
 
 
+def sort_file(infile, outfile):
+  # sort the log files
+
+  # GNU sort will sort our dates differently (incorrectly!) if our
+  # LC_ALL is anything but 'C', so if LC_ALL is set, temporarily set
+  # it to 'C'
+  if os.environ.has_key('LC_ALL'):
+    lc_all_tmp = os.environ['LC_ALL']
+  else:
+    lc_all_tmp = None
+  os.environ['LC_ALL'] = 'C'
+  run_command('sort %s > %s' % (infile, outfile))
+  if lc_all_tmp is None:
+    del os.environ['LC_ALL']
+  else:
+    os.environ['LC_ALL'] = lc_all_tmp
+
+
 def pass1(ctx):
   ###TODO create the CollectData object in visit_file and pass a
   ###different variable along via os.path.walk for accumulating
@@ -2922,24 +2956,10 @@ def pass2(ctx):
 
 
 def pass3(ctx):
-  # sort the log files
-
-  # GNU sort will sort our dates differently (incorrectly!) if our
-  # LC_ALL is anything but 'C', so if LC_ALL is set, temporarily set
-  # it to 'C'
-  if os.environ.has_key('LC_ALL'):
-    lc_all_tmp = os.environ['LC_ALL']
-  else:
-    lc_all_tmp = None
-  os.environ['LC_ALL'] = 'C'
-  run_command('sort %s > %s' % (ctx.log_fname_base + CLEAN_REVS_SUFFIX,
-                                ctx.log_fname_base + SORTED_REVS_SUFFIX))
+  sort_file(ctx.log_fname_base + CLEAN_REVS_SUFFIX,
+            ctx.log_fname_base + SORTED_REVS_SUFFIX)
   ### TODO pass8 is too late for this, but we may need it again after pass5
   Cleanup().register(ctx.log_fname_base + SORTED_REVS_SUFFIX, pass8)
-  if lc_all_tmp is None:
-    del os.environ['LC_ALL']
-  else:
-    os.environ['LC_ALL'] = lc_all_tmp
 
 def pass4(ctx):
   """Iterate through sorted revs."""
@@ -2957,19 +2977,22 @@ def pass4(ctx):
   last_sym_name_db.create_database()
 
 def pass5(ctx):
-  symlogger = SymbolingsLogger()
+  ###TODO we need to make sure that this file is deleted before
+  ###starting this pass.  Find a better way. :)
+  if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
+    os.unlink(SYMBOL_OPENINGS_CLOSINGS)
   aggregator = CVSRevisionAggregator(ctx)
 
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
-
-    symlogger.check_revision(c_rev)
     aggregator.process_revision(c_rev)
-
   aggregator.flush()
+  SymbolingsLogger().flush()
 
 
 def pass6(ctx):
+  sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
+  Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
   pass
 
 def pass7(ctx):
@@ -3249,6 +3272,9 @@ class CVSCommit:
       if c_rev.is_trunk_vendor_revision():
         self.default_branch_deletes.append(c_rev)
     svn_commit.flush()
+
+    for c_rev in self.revisions():
+      SymbolingsLogger().check_revision(c_rev, svn_commit.revnum)
 
   def _post_commit(self):
 
