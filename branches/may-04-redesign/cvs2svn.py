@@ -95,6 +95,13 @@ DATAFILE = 'cvs2svn-data'
 DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 
 SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
+SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
+
+# This file is a temporary file for storing symbolic_name -> closing
+# CVSRevision until the end of our pass where we can look up the
+# corresponding SVNRevNum for the closing revs and write these out to
+# the SYMBOL_OPENINGS_CLOSINGS.
+SYMBOL_CLOSINGS_TMP = 'cvs2svn-symbolic-names-closings-tmp.txt'
 
 # Skeleton version of an svn filesystem.
 # See class RepositoryMirror for how these work.
@@ -108,7 +115,7 @@ SVN_MIRROR_REVISIONS_DB = 'cvs2svn-svn-revisions.db'
 SVN_MIRROR_NODES_DB = 'cvs2svn-svn-nodes.db'
 
 # Offsets pointing to the beginning of each SYMBOLIC_NAME in
-# SYMBOL_OPENINGS_CLOSINGS
+# SYMBOL_OPENINGS_CLOSINGS_SORTED
 SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
 
 
@@ -2913,20 +2920,24 @@ class SymbolingsLogger(Singleton):
   def init(self):
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
     Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
+    self.closings = open(SYMBOL_CLOSINGS_TMP, 'w')
+    Cleanup().register(SYMBOL_CLOSINGS_TMP, pass5)
 
   def log_names_for_rev(self, names, c_rev, svn_revnum):
-    """Write out SYMBOLIC_NAME SVN_REVNUM CVS_REV.UNIQUE_KEY().  This
-    allows us to run the logfile through sort and have all openings
-    and closings for a given symbolic name grouped by symbolic name in
-    svn commit order."""
+    """Write out SYMBOLIC_NAME CVS_REV.UNIQUE_KEY().  This allows us
+    to run the logfile through sort and have all openings and closings
+    for a given symbolic name grouped by symbolic name in svn commit
+    order."""
+
     for name in names:
       ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
       self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, c_rev.unique_key())) 
 
       # If our c_rev has a next_rev, then that's the closing rev for
-      # this source revision.  Log it.
+      # this source revision.  Log it to closings for later processing
+      # since we don't know the svn_revnum yet.
       if c_rev.next_rev is not None:
-        self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, c_rev.unique_key(c_rev.next_rev))) 
+        self.closings.write('%s %s\n' % (name, c_rev.unique_key(c_rev.next_rev))) 
 
   def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens a symbolic name."""
@@ -2935,11 +2946,16 @@ class SymbolingsLogger(Singleton):
         or (len(c_rev.branches) > 0)): # OPENING activity here
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
       
-  ###TODO Since we're a singleton and don't go out of scope, if we
-  ###don't explicitly close our file, we don't flush until we exit,
-  ###and, well, that causes problems when you try to sort a file that
-  ###is still open and partially buffered in memory.
-  def flush(self):
+  def close(self):
+    # Iterate through the closings file, lookup the svn_revnum for
+    # each closing CVSRevision, and write a proper line out to the
+    # symbolings file.
+    self.closings.close()
+    for line in fileinput.FileInput(SYMBOL_CLOSINGS_TMP):
+      (name, rev_key) = line.rstrip().split(" ", 1)
+      svn_revnum = CommitMapper().get_svn_revnum(rev_key)
+      self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, rev_key)) 
+
     self.symbolings.close()
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
 
@@ -3147,18 +3163,19 @@ def pass5(ctx):
     c_rev = CVSRevision(ctx, line)
     aggregator.process_revision(c_rev)
   aggregator.flush()
-  SymbolingsLogger().flush()
+  SymbolingsLogger().close()
 
 
 def pass6(ctx):
-  ###TODO Renumber passes.  Again.
-  print "Nothing to do here"
+  sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
+  Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
+  pass
 
 
 def generate_offsets_for_symbolings():
   """This function iterates through all the lines in
-  SYMBOL_OPENINGS_CLOSINGS, writing out a file mapping
-  SYMBOLIC_NAME to the file offset in SYMBOL_OPENINGS_CLOSINGS
+  SYMBOL_OPENINGS_CLOSINGS_SORTED, writing out a file mapping
+  SYMBOLIC_NAME to the file offset in SYMBOL_OPENINGS_CLOSINGS_SORTED
   where SYMBOLIC_NAME is first encountered.  This will allow us to
   seek to the various offsets in the file and sequentially read only
   the openings and closings that we need."""
@@ -3173,7 +3190,7 @@ def generate_offsets_for_symbolings():
   offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
   Cleanup().register(SYMBOL_OFFSETS_DB, pass8)
   
-  file = open(SYMBOL_OPENINGS_CLOSINGS, 'r')
+  file = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
   old_sym = ""
   while 1:
     line = file.readline()
