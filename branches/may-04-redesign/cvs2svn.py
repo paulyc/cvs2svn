@@ -2944,7 +2944,7 @@ class SVNRepositoryMirror:
         if not ((len(components) == 2)
                 and ((components[0] == self._ctx.branches_base)
                      or (components[0] == self._ctx.tags_base))):
-          self.delete_path(dest_path, 1)
+          self.delete_path(dest_path)
           path_exists = 0
 
       if not path_exists:
@@ -2955,17 +2955,9 @@ class SVNRepositoryMirror:
         # Delete invalid entries that got swept in by the copy.
         valid_entries = symbol_fill.node_tree[key]
         bad_entries = self._get_invalid_entries(valid_entries, new_entries)
-        ###TODO OPTIMIZE: If we keep a list COPIED_PATHS of
-        ###DEST_PATHs that we've copied to, we can avoid the node
-        ###lookups below by uncommenting this for loop, doing
-        ###deletes here, and skip all the lookups and the deletes
-        ###below where THIS_PATH is in COPIED_PATHS.  As it stands
-        ###(with this commented out), the conditional below will
-        ###still do the deletes that would have been done
-        ###here. -Fitz
-        # for entry in bad_entries:
-        #   del_path = dest_path + '/' + entry
-        #   self.delete_path(del_path, 1)
+        for entry in bad_entries:
+          del_path = dest_path + '/' + entry
+          self.delete_path(del_path)
 
       self._fill(symbol_fill, key, name, src_path_so_far, src_revnum,
                  prune_ok, copied_paths)
@@ -2986,7 +2978,7 @@ class SVNRepositoryMirror:
         del_path = this_path + '/' + entry
         for path in copied_paths:
           if del_path.find(path) == 0: # del_path starts is child of PATH
-            self.delete_path(del_path, 1)
+            self.delete_path(del_path)
             break
 
   def _get_invalid_entries(self, valid_entries, all_entries):
