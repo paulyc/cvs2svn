@@ -658,7 +658,7 @@ class CollectData(rcsparse.Sink):
 
     file_stat = os.stat(filename)
     # The size of our file in bytes
-    self.file_size_kb = file_stat[stat.ST_SIZE]
+    self.file_size = file_stat[stat.ST_SIZE]
 
     # Whether or not the executable bit is set.
     self.file_executable = None
@@ -1031,7 +1031,7 @@ class CollectData(rcsparse.Sink):
                         self.prev_rev[revision], revision,
                         self.next_rev.get(revision),
                         self.file_in_attic, self.file_executable,
-                        self.file_size_kb,
+                        self.file_size,
                         deltatext_code, self.fname,
                         self.mode, self.rev_to_branch_name(revision),
                         self.taglist.get(revision, []),
