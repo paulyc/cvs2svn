@@ -94,7 +94,17 @@ vendor_revision = re.compile('^(1\\.1\\.1)\\.([0-9])+$')
 DATAFILE = 'cvs2svn-data'
 DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 
+# This text file contains records (1 per line) that describe svn
+# filesystem paths that are the opening and closing source revisions
+# for copies to tags and branches.  The format is as follows:
+#
+# SYMBOL_NAME SVN_REVNUM TYPE SVN_PATH
+#
+# Where type is either OPENING, CLOSING, or DEAD_OPENING.  The
+# SYMBOL_NAME and SVN_REVNUM are the primary and secondary sorting
+# criteria for creating SYMBOL_OPENINGS_CLOSINGS_SORTED. 
 SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
+# A sorted version of the above file.
 SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
 
 # This file is a temporary file for storing symbolic_name -> closing
