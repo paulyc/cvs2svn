@@ -903,7 +903,7 @@ class CollectData(rcsparse.Sink):
 
 ###TODO consider calling this in CollectData.
 def _clean_symbolic_name(name):
-  ###TODO use a regex or 2 replaces statements... translate has UTF8 probsa
+  ###TODO use a regex or 2 replaces statements... translate has UTF8 probs
   name = name.translate(symbolic_name_transtbl)
   return name
 
@@ -4711,7 +4711,7 @@ class SVNRepositoryMirror:
     """Copy SRC_PATH at subversion revision number SRC_REVNUM to
     DEST_PATH.
 
-    In the youngets revision of the repository, DEST_PATH's parent
+    In the youngest revision of the repository, DEST_PATH's parent
     *must* exist, but DEST_PATH *cannot* exist"""
 
     # get the contents of the node of our src_path
@@ -4802,6 +4802,9 @@ class SVNRepositoryMirror:
 
     # Create tags and branches in the first commit
     ###TODO don't do this if we're trunk_only
+    ###
+    ###TODO kff: Shouldn't we do this in a separate commit, so it's
+    ### not mixed in with a user change?
     if not self.active:
       self.mkdir(self._ctx.branches_base)
       self.mkdir(self._ctx.tags_base)
