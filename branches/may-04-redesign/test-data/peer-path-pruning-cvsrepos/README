@@ -9,17 +9,21 @@ symbolic names.  The layout is:
            six.txt
 
 Every file was imported in a standard way, then revisions 1.2 and 1.3
-were committed on every file.  Then a branch was made on every file
-except those in subdir bar/:
+were committed on every file.  Then this branch was made on four
+files (/one.txt, /two.txt, /foo/three.txt, /foo/four.txt):
 
-    BRANCH_1: sprouts from every file's 1.3 (so branch number 1.3.0.2)
+    BRANCH: sprouts from 1.3 (so branch number 1.3.0.2)
 
 Then a revision was committed on that branch, creating revision
 1.3.2.1 on those files.
 
-The bug we're working toward is the one described below, search for
-the word "Suppose".  But the test data isn't yet in a state to
-stimulate the bug, so conversions are currently correct, as expected.
+No branch was made on /bar/five.txt nor /bar/six.txt.  Thus, when
+BRANCH is created, subdir /bar should be deleted entirely.  But if you
+revert r1125 of cvs2svn.py, /bar won't be deleted.
+
+Search below for the word "Suppose" for more details.  (Note that we
+still don't have a test for the proposed 'if not prune_ok:'
+conditional, though.)
 
 --------------------8-<-------cut-here---------8-<-----------------------
 

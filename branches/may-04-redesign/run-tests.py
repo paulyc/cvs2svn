@@ -1301,6 +1301,15 @@ def no_spurious_svn_commits():
     '/branches/xiphophorus/added-on-branch.txt' : 'A',
     })
 
+def peer_path_pruning():
+  "make sure that filling prunes paths correctly"
+  repos, wc, logs = ensure_conversion('peer-path-pruning')
+  check_rev(logs, 7, sym_log_msg('BRANCH'), {
+    '/branches/BRANCH (from /trunk:5)'         : 'A',
+    '/branches/BRANCH/bar'                     : 'D',
+    '/branches/BRANCH/foo (from /trunk/foo:6)' : 'R',
+    })
+
 #----------------------------------------------------------------------
 
 ########################################################################
@@ -1339,6 +1348,7 @@ test_list = [ None,
               default_branches,
               compose_tag_three_sources,
               pass5_when_to_fill,
+              peer_path_pruning,
               XFail(empty_trunk),
               no_spurious_svn_commits,
              ]
