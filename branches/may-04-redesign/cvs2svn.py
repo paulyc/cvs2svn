@@ -2545,7 +2545,7 @@ class SVNRepositoryMirror:
     # magic therein
     svn_commit = SVNCommit(self._ctx,"Initialization", 1)
     svn_commit.set_date(date)
-    svn_commit.set_log_msg("New Repository initialized by cvs2svn.")
+    svn_commit.set_log_msg("New repository initialized by cvs2svn.")
 
     self._start_commit(svn_commit)
     self._mkdir(self._ctx.trunk_base)
