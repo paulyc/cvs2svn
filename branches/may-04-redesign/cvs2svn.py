@@ -2878,9 +2878,6 @@ class SVNRepositoryMirror:
           del_path = branch_dest + '/' + entry
           self.delete_path(del_path) # Delete but don't prune.
 
-  ###TODO IMPT We need a test here, to make sure that tag copies get the
-  ###correct version of a file when a file is tagged while the default
-  ###branch is non-trunk.
   def synchronize_default_branch(self, svn_commit):
     """Propagate any changes that happened on a non-trunk default
     branch to the trunk of the repository.  See
