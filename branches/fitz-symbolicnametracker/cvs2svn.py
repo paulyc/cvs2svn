@@ -1880,8 +1880,8 @@ class SymbolicNameTracker:
     self.copy_node_tree(self.db, tree, node)
     #self.print_node_tree(tree, root_key)
 
-    openings = self.score_node_tree(tree, node, self.opening_revs_key)
-    closings = self.score_node_tree(tree, node, self.closing_revs_key)
+    openings = self.list_revnums_in_node_tree(tree, node, self.opening_revs_key)
+    closings = self.list_revnums_in_node_tree(tree, node, self.closing_revs_key)
     return self.condense_scores(openings), self.condense_scores(closings)
 
   def condense_scores(self, scores):
@@ -1900,27 +1900,27 @@ class SymbolicNameTracker:
         s[k] = s[k] + 1
       else:
         s[k] = 1
-    a = []
-    for k, v in s.items(): # compose the tuples
-      a.append((k, v))
+    a = s.items()
     a.sort()
     return a
 
-  def score_node_tree(self, tree, node, score_key):
-    """ Given NODE in TREE, return all scores for SCORE_KEY for all
-    nodes under NODE, including the score for NODE itself."""
-    keys = []
-    if tree[node].has_key(score_key) and tree[node].has_key(self.file_key): 
-      # If here, then we're at a leaf: Score and return
-      score = tree[node][score_key]
-      keys.append(score)
-      return keys
+  def list_revnums_in_node_tree(self, tree, node, revnum_type_key):
+    """Scan TREE and return a list of all the revision numbers (including
+    duplicates) contained in REVNUM_TYPE_KEY values for all nodes under NODE,
+    including the score for NODE itself."""
+    revnums = []
+    if tree[node].has_key(revnum_type_key) and \
+        tree[node].has_key(self.file_key):
+      # If here, then we're at a leaf: Fetch revnum and return
+      revnums.append(tree[node][revnum_type_key])
+      return revnums
 
     for key, value in tree[node].items():
       if key[0] == '/': #Skip flags
         continue
-      keys = keys + self.score_node_tree(tree, value, score_key)
-    return keys
+      revnums = revnums + \
+          self.list_revnums_in_node_tree(tree, value, revnum_type_key)
+    return revnums
 
   def print_node_tree(self, tree, root_node, indent_depth=0):
     """For debugging purposes.  Prints all nodes in TREE that are
