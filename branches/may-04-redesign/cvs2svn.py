@@ -255,6 +255,7 @@ def _clean_symbolic_name(name):
   name = name.replace('\\',';')
   return name
 
+       
 class Singleton(object):
   """If you wish to have a class that you can only instantiate once,
   then this is your superclass."""
@@ -265,6 +266,33 @@ class Singleton(object):
     cls.__singleton__ = singleton = object.__new__(cls)
     singleton.init(*args, **kwds)
     return singleton
+
+# These constants represent the three log levels that this script supports
+LOG_QUIET = 0
+LOG_NORMAL = 1
+LOG_VERBOSE = 2
+class Log(Singleton):
+  """A Simple logging facility.  Each line will be timestamped is
+  self.use_timestamps is TRUE."""
+  def init(self):
+    self.log_level = LOG_NORMAL
+    # Set this to true if you want to see timestamps on each line output.
+    self.use_timestamps = None
+    self.logger = sys.stdout
+ 
+  def _timestamp(self):
+    """Output a detailed timestamp at the beginning of each line output."""
+    self.logger.write(time.strftime('[%Y-%m-%d %I:%m:%S %Z] - '))
+ 
+  def write(self, log_level, *args):
+    """This is the public method to use for writing to a file.  Only
+    messages whose LOG_LEVEL is <= self.log_level will be printed. If
+    there are multiple ARGS, they will be separated by a space."""
+    if log_level > self.log_level:
+      return
+    if self.use_timestamps:
+      self._timestamp()
+    self.logger.write(' '.join(map(str,args)) + "\n")
 
 
 ###TODO Note that when we cleanup a db file owned by a singleton, we
@@ -826,9 +854,10 @@ class CollectData(rcsparse.Sink):
             self.rev_data[prev][0] = t_c - 1	# new timestamp
             self.rev_data[prev][2] = t_p	# old timestamp
 
-            #print "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
-            #      % (relative_name(self.cvsroot, self.fname),
-            #         prev, time.ctime(t_p), time.ctime(t_c - 1))
+            msg =  "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
+                  % (relative_name(self.cvsroot, self.fname),
+                     prev, time.ctime(t_p), time.ctime(t_c - 1))
+            Log().write(LOG_VERBOSE, msg)
 
             current = prev
             prev = self.prev_rev[current]
@@ -996,7 +1025,7 @@ def visit_file(arg, dirname, files):
       cd.set_fname(os.path.join(dirname[:-6], fname))
     else:
       cd.set_fname(pathname)
-    print pathname
+    Log().write(LOG_NORMAL, pathname)
     try:
       p.parse(open(pathname, 'rb'), cd)
       stats[0] = stats[0] + 1
@@ -1190,9 +1219,7 @@ class SymbolingsLogger(Singleton):
       (name, rev_key) = line.rstrip().split(" ", 1)
       svn_revnum = CommitMapper().get_svn_revnum(rev_key)
 
-      print "'" + rev_key + "'"
       c_rev = cvs_revs_db.get_revision(rev_key)
-      print c_rev
       self._log(name, svn_revnum, c_rev.svn_path, CLOSING)
 
     self.symbolings.close()
@@ -1312,6 +1339,7 @@ def pass1(ctx):
   ###TODO create the CollectData object in visit_file and pass a
   ###different variable along via os.path.walk for accumulating
   ###errors.
+  Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
   cd = CollectData(DATAFILE, ctx)
   p = rcsparse.Parser()
   stats = [ 0 ]
@@ -1323,9 +1351,11 @@ def pass1(ctx):
              + "Error summary:\n"
              + "\n".join(cd.fatal_errors)
              + "\nExited due to fatal error(s).")
+  Log().write(LOG_QUIET, "Done")
  
 def pass2(ctx):
   "Pass 2: clean up the revision information."
+  Log().write(LOG_QUIET, "Re-synchronizing CVS revision timestamps...")
 
   # We may have recorded some changes in revisions' timestamp. We need to
   # scan for any other files which may have had the same log message and
@@ -1349,9 +1379,10 @@ def pass2(ctx):
     for record in resync[c_rev.digest]:
       if record[0] <= c_rev.timestamp <= record[1]:
         # bingo! remap the time on this (record[2] is the new time).
-        print "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
+        msg = "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
               % (relative_name(ctx.cvsroot, c_rev.fname),
                  c_rev.rev, time.ctime(c_rev.timestamp), time.ctime(record[2]))
+        Log().write(LOG_VERBOSE, msg)
 
         # adjust the time range. we want the COMMIT_THRESHOLD from the
         # bounds of the earlier/latest commit in this group.
@@ -1366,12 +1397,15 @@ def pass2(ctx):
     else:
       # the file/rev did not need to have its time changed.
       output.write(line)
+  Log().write(LOG_QUIET, "Done")
 
 def pass3(ctx):
+  Log().write(LOG_QUIET, "Sorting CVS revisions...")
   sort_file(ctx.log_fname_base + CLEAN_REVS_SUFFIX,
             ctx.log_fname_base + SORTED_REVS_SUFFIX)
   ### TODO pass8 is too late for this, but we may need it again after pass5
   Cleanup().register(ctx.log_fname_base + SORTED_REVS_SUFFIX, pass8)
+  Log().write(LOG_QUIET, "Done")
 
 def pass4(ctx):
   """Iterate through sorted revs and generate:
@@ -1389,6 +1423,7 @@ def pass4(ctx):
   ### TODO: Can't building the CVSRevisionDatabase be done in
   ### CollectData?  If so, then we can skip this pass entirely when
   ### doing --trunk-only
+  Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
   cvs_rev_db = CVSRevisionDatabase('n', ctx)
   if not ctx.trunk_only:
     tags_db = TagsDatabase('n')
@@ -1404,6 +1439,7 @@ def pass4(ctx):
 
   if not ctx.trunk_only:
     last_sym_name_db.create_database()
+  Log().write(LOG_QUIET, "Done")
 
 def pass5(ctx):
   """
@@ -1412,6 +1448,7 @@ def pass5(ctx):
   CVSRevisions that represent an opening or closing for a path on a
   branch or tag.  See SymbolingsLogger for more details.
   """
+  Log().write(LOG_QUIET, "Mapping CVS revisions to Subversion commits...")
   ###TODO we need to make sure that this file is deleted before
   ###starting this pass.  Find a better way. :)
   if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
@@ -1426,11 +1463,15 @@ def pass5(ctx):
   aggregator.flush()
   if not ctx.trunk_only:
     SymbolingsLogger(ctx).close()
+  Log().write(LOG_QUIET, "Done")
 
 def pass6(ctx):
+  Log().write(LOG_QUIET, "Sorting symbolic name source revisions...")
+
   if not ctx.trunk_only:
     sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
     Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
+  Log().write(LOG_QUIET, "Done")
 
 class SymbolingsReaderEmptyFillError(Exception):
   """Exception raised if we encounter an attempted fill of a symbolic
@@ -1807,13 +1848,15 @@ def generate_offsets_for_symbolings():
       break
     sym, svn_revnum, cvs_rev_key = line.split(" ", 2)
     if not sym == old_sym:
-      print sym
+      Log().write(LOG_VERBOSE, " ", sym)
       old_sym = sym
       offsets_db[sym] = file.tell() - len(line)
 
 def pass7(ctx):
+  Log().write(LOG_QUIET, "Determining offsets for all symbolic names...")
   if not ctx.trunk_only:
     generate_offsets_for_symbolings()
+  Log().write(LOG_QUIET, "Done.")
 
 ###TODO move this stuff out of here! pass8 should be here.
 
@@ -1959,8 +2002,7 @@ class CommitMapper(Singleton):
     """Record the bidirectional mapping between SVN_REVNUM and
     CVS_REVS.""" 
     for c_rev in cvs_revs:
-      print "    KFF:", c_rev.unique_key()
-    print "------------------------------------------------------------- KFF"
+      Log().write(LOG_VERBOSE, " ", c_rev.unique_key())
     self.svn2cvs_db[str(svn_revnum)] = [x.unique_key() for x in cvs_revs]
     for c_rev in cvs_revs:
       self.cvs2svn_db[c_rev.unique_key()] = svn_revnum
@@ -2150,9 +2192,8 @@ class CVSCommit:
           # but hey, we're all idealists here, aren't we?
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit(self._ctx,
-                                   "pre-commit branch '%s' (op == '%s')"
-                                   % (c_rev.branch_name, c_rev.op))
+            svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
+                                   % c_rev.branch_name)
             svn_commit.set_symbolic_name(c_rev.branch_name)
             self.secondary_commits.append(svn_commit)
 
@@ -2164,7 +2205,7 @@ class CVSCommit:
         if not RepositoryBranchesInHead().has_path(c_rev.svn_path):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit(self._ctx, "pre-commit branch DELETE '%s'"
+            svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
                                    % c_rev.branch_name)
             svn_commit.set_symbolic_name(c_rev.branch_name)
             self.secondary_commits.append(svn_commit)
@@ -2253,11 +2294,13 @@ class CVSCommit:
     SVNCommits generated in this CVSCommit."""
     self.done_symbols = done_symbols
     seconds = self.t_max - self.t_min
-    print ('CVS Revision grouping: %s, over %d seconds'
-           % (time.ctime(self.t_min), seconds))
+
+    Log().write(LOG_VERBOSE, '-' * 60)
+    Log().write(LOG_VERBOSE, 'CVS Revision grouping: %s, over %d seconds'
+                % (time.ctime(self.t_min), seconds))
     if seconds > COMMIT_THRESHOLD:
-      print ('%s: grouping spans more than %d seconds'
-             % (warning_prefix, COMMIT_THRESHOLD))
+      Log().write(LOG_QUIET, '%s: grouping spans more than %d seconds'
+                  % (warning_prefix, COMMIT_THRESHOLD))
 
     if ctx.trunk_only: # Only do the primary commit if we're trunk-only
       self._commit()
@@ -2397,7 +2440,8 @@ class SVNCommit:
     return not (self.symbolic_name or self.motivating_revnum)
 
   def flush(self):
-    print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self._description)
+    Log().write(LOG_VERBOSE, "Creating Subversion commit %d (%s)" 
+                % (self.revnum, self._description))
     CommitMapper(self._ctx).set_cvs_revs(self.revnum, self.cvs_revs)
 
     # If we're not a primary commit, then store our date and/or our
@@ -2938,8 +2982,6 @@ class SVNRepositoryMirror:
 
     # If our symbol fill had a dead opening...
     if symbol_fill.has_dead_opening:
-      print "FITZ:", symbolic_name
-      print "FITZ:", symbol_fill.branch_source
       branch_dest = self._dest_path_for_source_path(symbolic_name,
                                                     symbol_fill.branch_source)
       # ...and our branch still doesn't exist...
@@ -3666,43 +3708,45 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
   reality, we aren't doing anything other than printing out that we're
   doing something.  Kind of zen, really."""
   def __init__(self):
-    print "Starting Subversion repository."
+    Log().write(LOG_QUIET, "Starting Subversion repository.")
 
   def start_commit(self, svn_commit):
     """Prints out the Subversion revision number of the commit that is
     being started."""
-    print "=" * 60
-    print "Starting Subversion commit", svn_commit.revnum
+    Log().write(LOG_VERBOSE, "=" * 60)
+    Log().write(LOG_NORMAL, "Starting Subversion commit", svn_commit.revnum)
 
   def mkdir(self, path):
     """Print a line stating that we are creating directory PATH."""
-    print "  New Directory", path
+    Log().write(LOG_VERBOSE, "  New Directory", path)
 
   def add_path(self, c_rev):
     """Print a line stating that we are 'adding' c_rev.svn_path."""
-    print "  Adding", c_rev.svn_path
+    Log().write(LOG_VERBOSE, "  Adding", c_rev.svn_path)
 
   def change_path(self, c_rev):
     """Print a line stating that we are 'changing' c_rev.svn_path."""
-    print "  Changing", c_rev.svn_path
+    Log().write(LOG_VERBOSE, "  Changing", c_rev.svn_path)
 
   def delete_path(self, path):
     """Print a line stating that we are 'deleting' PATH."""
-    print "  Deleting", path
+    Log().write(LOG_VERBOSE, "  Deleting", path)
   
   def copy_path(self, src_path, dest_path, src_revnum):
     """Print a line stating that we are 'copying' revision SRC_REVNUM
     of SRC_PATH to DEST_PATH."""
-    print "  Copying revision", src_revnum, "of", src_path
-    print "                to", dest_path
+    Log().write(LOG_VERBOSE, "  Copying revision", src_revnum, "of", src_path)
+    Log().write(LOG_VERBOSE, "                to", dest_path)
   
   def finish(self):
     """State that we are done creating our repository."""
-    print "Finished creating Subversion repository."
+    Log().write(LOG_VERBOSE, "Finished creating Subversion repository.")
+    Log().write(LOG_QUIET, "Done.")
 
 
 def pass8(ctx):
-
+  ### TODO: This should say repository/dumpfile, depending on
+  ### our action.
   svncounter = 1
 
   # kff: toggle between these two lines to test the DumpfileDelegate or not
@@ -3715,16 +3759,10 @@ def pass8(ctx):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
       break
-    #print svn_commit
-
     repos.commit(svn_commit)
-
     svncounter += 1
+
   repos.finish()
-
-  ###TODO Move this to StdoutDelegate.finish.
-  print svncounter, 'commits processed.'
-
 
 _passes = [
   pass1,
@@ -3802,21 +3840,25 @@ def convert(ctx, start_pass=1):
   times = [ None ] * len(_passes)
   for i in range(start_pass - 1, len(_passes)):
     times[i] = time.time()
-    print '----- pass %d -----' % (i + 1)
+    Log().write(LOG_QUIET, '----- pass %d -----' % (i + 1))
     _passes[i](ctx)
     if not ctx.skip_cleanup:
       cleanup.cleanup(_passes[i])
   times.append(time.time())
+  Log().write(LOG_QUIET, '------------------')
 
   for i in range(start_pass, len(_passes)+1):
-    print 'pass %d: %d seconds' % (i, int(times[i] - times[i-1]))
-  print ' total:', int(times[len(_passes)] - times[start_pass-1]), 'seconds'
+    Log().write(LOG_QUIET, 'pass %d: %d seconds'
+                % (i, int(times[i] - times[i-1])))
+  Log().write(LOG_QUIET, ' total:',
+              int(times[len(_passes)] - times[start_pass-1]), 'seconds')
 
 
 def usage(ctx):
   print 'USAGE: %s [-v] [-s svn-repos-path] [-p pass] cvs-repos-path' \
         % os.path.basename(sys.argv[0])
   print '  --help, -h           print this usage message and exit with success'
+  print '  -q                   quiet'
   print '  -v                   verbose'
   print '  -s PATH              path for SVN repos'
   print '  -p NUM               start at pass NUM of %d' % len(_passes)
@@ -3856,6 +3898,7 @@ def main():
   ctx.log_fname_base = DATAFILE
   ctx.dumpfile = DUMPFILE
   ctx.verbose = 0
+  ctx.quiet = 0
   ctx.prune = 1
   ctx.existing_svnrepos = 0
   ctx.dump_only = 0
@@ -3878,8 +3921,10 @@ def main():
 
   start_pass = 1
 
+  Log().log_level = LOG_NORMAL
+
   try:
-    opts, args = getopt.getopt(sys.argv[1:], 'p:s:vh',
+    opts, args = getopt.getopt(sys.argv[1:], 'p:s:qvh',
                                [ "help", "create", "trunk=",
                                  "username=", "existing-svnrepos",
                                  "branches=", "tags=", "encoding=",
@@ -3905,7 +3950,13 @@ def main():
     elif (opt == '--help') or (opt == '-h'):
       ctx.print_help = 1
     elif opt == '-v':
+      ###TODO hunt down all uses of ctx.verbose in the code
+      # and see if we need to turn print statements to Log() statements.
+      Log().log_level = LOG_VERBOSE
       ctx.verbose = 1
+    elif opt == '-q':
+      Log().log_level = LOG_QUIET
+      ctx.quiet = 1
     elif opt == '-s':
       ctx.target = value
     elif opt == '--existing-svnrepos':
