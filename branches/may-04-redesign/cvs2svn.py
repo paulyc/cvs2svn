@@ -276,7 +276,12 @@ def _clean_symbolic_name(name):
   name = name.replace('\\',';')
   return name
 
-       
+def _path_join(*components):
+  """Join two or more pathname COMPONENTS, inserting '/' as needed.
+  Empty component are skipped."""
+  return string.join(filter(None, components), '/')
+
+
 class Singleton(object):
   """If you wish to have a class that you can only instantiate once,
   then this is your superclass."""
@@ -1473,13 +1478,13 @@ class SymbolicNameFillingGuide:
     scores = self._score_revisions(self._sum_revnum_counts(openings),
                                   self._sum_revnum_counts(closings))
 
-    revnum = self._best_rev(scores, preferred_revnum)
+    revnum, max_score = self._best_rev(scores, preferred_revnum)
   
     if revnum == SVN_INVALID_REVNUM:
       sys.stderr.write(error_prefix + ": failed to find a revision "
                        + "to copy from when copying %s\n" % name)
       sys.exit(1)
-    return revnum
+    return revnum, max_score
 
 
   def _best_rev(self, scores, preferred_rev):
@@ -1499,7 +1504,7 @@ class SymbolicNameFillingGuide:
         preferred_rev_score = count
     if preferred_rev_score == max_score:
       rev = preferred_rev
-    return rev
+    return rev, max_score
 
 
   def _score_revisions(self, openings, closings):
@@ -2492,6 +2497,29 @@ class SVNRepositoryMirrorUnexpectedOperationError(Exception):
   pass
 
 
+class FillSource:
+  """Representation of a fill source used by the symbol filler in
+  SVNRepositoryMirror."""
+  def __init__(self, prefix, key):
+    """Create an unscored fill source with a prefix and a key."""
+    self.prefix = prefix
+    self.key = key
+    self.score = None
+    self.revnum = None
+
+  def set_score(self, score, revnum):
+    """Set the SCORE and REVNUM."""
+    self.score = score
+    self.revnum = revnum
+
+  def __cmp__(self, other):
+    """Comparison operator used to sort FillSources in descending
+    score order."""
+    if self.score is None or other.score is None:
+      raise TypeError, 'Tried to compare unscored FillSource'
+    return other.score.__cmp__(self.score)
+
+
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
   SVNCommit at a time.  The mirror is skeletal; it does not contain
@@ -2834,7 +2862,21 @@ class SVNRepositoryMirror:
     symbol_fill = self.symbolings_reader.filling_guide_for_symbol(
       symbolic_name, self.youngest)
 
-    self._fill(symbol_fill, symbol_fill.root_key, symbolic_name)
+    sources = []
+    for entry, key in symbol_fill.node_tree[symbol_fill.root_key].items():
+      if entry == self._ctx.trunk_base:
+        sources.append(FillSource(entry, key))
+      elif entry == self._ctx.branches_base:
+        for entry2, key2 in symbol_fill.node_tree[key].items():
+          sources.append(FillSource(entry + '/' + entry2, key2))
+      else:
+        raise # Should never happen
+    if self.tags_db.has_key(symbolic_name):
+      dest_prefix = _path_join(self._ctx.tags_base, symbolic_name)
+    else:
+      dest_prefix = _path_join(self._ctx.branches_base, symbolic_name)
+    if sources:
+      self._fill(symbol_fill, dest_prefix, sources)
 
     # If our symbol fill had a dead opening revision...
     if symbol_fill.dead_opening_rev:
@@ -2908,106 +2950,94 @@ class SVNRepositoryMirror:
       dest = dest + '/' + '/'.join(components[1:])
     return dest
 
-  ###TODO IMPT This method is wonky and needs to be reviewed *carefully*
-  ### Review with kfogel
-  def _fill(self, symbol_fill, key, name, parent_path_so_far=None,
-            preferred_revnum=None, prune_ok=None, copied_paths=None):
-    """Descends through all nodes in SYMBOL_FILL.node_tree that are
-    rooted at KEY, which is a string key into SYMBOL_FILL.node_tree.
-    Generates copy (and delete) commands for all destination nodes
-    that don't exist in NAME.
+  def _fill(self, symbol_fill, dest_prefix, sources, path = None,
+            parent_source_prefix = None, preferred_revnum = None,
+            prune_ok = None):
+    """Fill the tag or branch at DEST_PREFIX + PATH with items from
+    SOURCES, and recurse into the child items.
 
-    PARENT_PATH_SO_FAR is the parent directory of the source path(s)
-    that may be copied in this invocation of the method.  If None,
-    that means that our source path starts from the root of the
-    repository.
+    DEST_PREFIX is the prefix of the destination directory, e.g.
+    '/tags/my_tag' or '/branches/my_branch', and SOURCES is a list of
+    FillSource classes that are candidates to be copied to the
+    destination.
 
-    PREFERRED_REVNUM is an int which is the source revision number
-    that the caller (who may have copied KEY's parent) used to
-    perform its copy.  If PREFERRED_REVNUM is None, then no revision
-    is preferable to any other (which probably means that no copies
-    have happened yet).
+    PATH is the path relative to DEST_PREFIX.  If PATH is None, we
+    are at the top level, e.g. '/tags/my_tag'.
+
+    PARENT_SOURCE_PREFIX is the source prefix that was used to copy
+    the parent directory, and PREFERRED_REVNUM is an int which is the
+    source revision number that the caller (who may have copied KEY's
+    parent) used to perform its copy.  If PREFERRED_REVNUM is None,
+    then no revision is preferable to any other (which probably means
+    that no copies have happened yet).
 
     PRUNE_OK means that a copy has been made in this recursion, and
     it's safe to prune directories that are not in
-    SYMBOL_FILL.node_tree, provided that said directory is a child of
-    one of the COPIED_PATHS.
+    SYMBOL_FILL.node_tree, provided that said directory has a source
+    prefix of one of the PARENT_SOURCE_PREFIX.
 
-    COPIED_PATHS is a list of paths that have already been copied in
-    this fill.  Paths underneath these paths are safe to prune.
-
-    PARENT_PATH_SO_FAR, PREFERRED_REVNUM, PRUNE_OK, and COPIED_PATHS
+    PATH, PARENT_SOURCE_PREFIX, PRUNE_OK, and PREFERRED_REVNUM
     should only be passed in by recursive calls."""
-    if copied_paths is None: copied_paths = [ ]
-    # If we set prune_ok, we need to set this as well to avoid
-    # spurious peer-level prunes.
-    peer_path_unsafe_for_pruning = 0
-    parent_key = key
-    for entry, key in symbol_fill.node_tree[parent_key].items():
+    # Calculate scores and revnums for all sources
+    for source in sources:
+      src_revnum, score = symbol_fill.get_best_revnum(source.key,
+                                                      preferred_revnum)
+      source.set_score(score, src_revnum)
 
-      if entry[0] == '/': #Skip flags
-        continue
-      if parent_path_so_far is not None: # Avoid a leading slash
-        src_path_so_far = parent_path_so_far + '/' + entry
-      else:
-        if entry == self._ctx.branches_base:
-          self._fill(symbol_fill, key, name, entry, preferred_revnum,
-                     prune_ok, copied_paths)
+    # Sort the sources in descending score order so that we will make
+    # a eventual copy from the source with the highest score.
+    sources.sort()
+    copy_source = sources[0]
+
+    src_path = _path_join(copy_source.prefix, path)
+    dest_path = _path_join(dest_prefix, path)
+    dest_exits = self._path_exists(dest_path)
+
+    # Figure out if we shall copy to this destination and delete any
+    # destination path that is in the way.
+    dest_entries = None # I.e. unknown
+    if dest_exits:
+      if prune_ok and (parent_source_prefix != copy_source.prefix or
+                       copy_source.revnum != preferred_revnum):
+        # We are about to replace the destination, so we need to remove
+        # it before we perform the copy.
+        self._delete_path(dest_path)
+        dest_entries = self._copy_path(src_path, dest_path, copy_source.revnum)
+        prune_ok = 1
+    else:
+      dest_entries = self._copy_path(src_path, dest_path, copy_source.revnum)
+      prune_ok = 1
+
+    # Create the SRC_ENTRIES hash from SOURCES.  The keys are path
+    # elements and the values are lists of FillSource classes where
+    # this path element exists.
+    src_entries = {}
+    for source in sources:
+      for entry, key in symbol_fill.node_tree[source.key].items():
+        if entry[0] == '/': # Skip flags
           continue
-        else:
-          src_path_so_far = entry
+        if not src_entries.has_key(entry):
+          src_entries[entry] = []
+        src_entries[entry].append(FillSource(source.prefix, key))
 
-      dest_path = self._dest_path_for_source_path(name, src_path_so_far)
-      src_revnum = symbol_fill.get_best_revnum(key, preferred_revnum)
-      # If the revnum of our parent's copy (src_revnum) is the same
-      # as our preferred_revnum, then we don't need to make a copy
-      # here--our parent's copy already has everything we need.
-      # Just continue bubbling down.
-      path_exists = self._path_exists(dest_path)
-      if src_revnum != preferred_revnum and prune_ok and path_exists:
-        components = dest_path.split('/')
-        # Take care to never delete and re-copy a directory in the top
-        # level of /tags or /branches--without this check, tags from
-        # multiple sources will not convert correctly.
-        if not ((len(components) == 2)
-                and ((components[0] == self._ctx.branches_base)
-                     or (components[0] == self._ctx.tags_base))):
-          self._delete_path(dest_path)
-          path_exists = 0
+    if prune_ok:
+      # Get the list of dest_entries if we don't have them already.
+      if dest_entries is None:
+        dest_entries = self._list(dest_path)
+      # Delete the entries in DEST_ENTRIES that are not in src_entries.
+      for entry in dest_entries:
+        if entry[0] == '/': # Skip flags
+          continue
+        if not src_entries.has_key(entry):
+          self._delete_path(_path_join(dest_path, entry))
 
-      if not path_exists:
-        # Do the copy
-        new_entries = self._copy_path(src_path_so_far, dest_path, src_revnum)
-        copied_paths.append(dest_path)
-        prune_ok = peer_path_unsafe_for_pruning = 1
-        # Delete invalid entries that got swept in by the copy.
-        valid_entries = symbol_fill.node_tree[key]
-        bad_entries = self._get_invalid_entries(valid_entries, new_entries)
-        for entry in bad_entries:
-          del_path = dest_path + '/' + entry
-          self._delete_path(del_path)
-
-      self._fill(symbol_fill, key, name, src_path_so_far, src_revnum,
-                 prune_ok, copied_paths)
-
-    if peer_path_unsafe_for_pruning:
-      return
-    # Any entries still present in the dest directory that we've just
-    # created by copying, but not in
-    # symbol_fill.node_tree[parent_key], don't belong and should be
-    # deleted as well.  If we haven't actually made a copy, do
-    # nothing.
-    if parent_path_so_far and prune_ok:
-      this_path = self._dest_path_for_source_path(name, parent_path_so_far)
-      ign, this_contents = self._node_for_path(this_path, self.youngest)
-      expected_contents = symbol_fill.node_tree[parent_key]
-      bad_entries = self._get_invalid_entries(expected_contents, this_contents)
-      for entry in bad_entries:
-        del_path = this_path + '/' + entry
-        for path in copied_paths:
-          if del_path.find(path) == 0: # del_path starts is child of PATH
-            self._delete_path(del_path)
-            break
+    # Recurse into the SRC_ENTRIES keys sorted in alphabetical order.
+    src_keys = src_entries.keys()
+    src_keys.sort()
+    for src_key in src_keys:
+      self._fill(symbol_fill, dest_prefix, src_entries[src_key],
+                 _path_join(path, src_key), copy_source.prefix,
+                 sources[0].revnum, prune_ok)
 
   def _get_invalid_entries(self, valid_entries, all_entries):
     """Return a list of keys in ALL_ENTRIES that do not occur in
@@ -3132,6 +3162,21 @@ class SVNRepositoryMirror:
       parent_node_contents = this_entry_val
       previous_component = component
     return 1
+
+  def _list(self, path):
+    """Return a list of the children of PATH (which must exist).  PATH
+    must not start with '/'."""
+    parent_node_key, parent_node_contents = self._get_youngest_root_node()
+    previous_component = "/"
+
+    components = string.split(path, '/')
+    for component in components:
+      this_entry_key = parent_node_contents[component]
+      this_entry_val = self.nodes_db[this_entry_key]
+      parent_node_key = this_entry_key
+      parent_node_contents = this_entry_val
+      previous_component = component
+    return this_entry_val.keys()
 
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the

@@ -1259,11 +1259,10 @@ def compose_tag_three_sources():
     })
 
   check_rev(logs, 8, sym_log_msg('T',1), {
-    '/tags/T (from /branches/b1:5)': 'A',
-    '/tags/T/tagged-on-b2 (from /branches/b2/tagged-on-b2:6)': 'R',
+    '/tags/T (from /trunk:7)': 'A',
+    '/tags/T/tagged-on-b2 (from /branches/b2/tagged-on-b2:7)': 'R',
     '/tags/T/tagged-on-trunk-1.1 (from /trunk/tagged-on-trunk-1.1:2)': 'R',
-    '/tags/T/tagged-on-trunk-1.2-a (from /trunk/tagged-on-trunk-1.2-a:7)': 'R',
-    '/tags/T/tagged-on-trunk-1.2-b (from /trunk/tagged-on-trunk-1.2-b:7)': 'R',
+    '/tags/T/tagged-on-b1 (from /branches/b1/tagged-on-b1:7)': 'R',
     })
 
 
