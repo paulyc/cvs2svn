@@ -2631,16 +2631,20 @@ class Commit:
       # the subversion repository.
       sym_tracker.enroot_tags(c_rev.svn_path, svn_rev, c_rev.tags)
       sym_tracker.enroot_branches(c_rev.svn_path, svn_rev, c_rev.branches)
-      ### FIXME: this will return path_deleted == None if no path
-      ### was deleted.  But we'll already have started the revision
-      ### by then, so it's a bit late to use the knowledge!  Need to
-      ### reorganize things so that starting the revision is a
-      ### callback with its own internal conditional, so anyone can
-      ### just invoke when they know they're really about to do
-      ### something.
+      ###TODO We generate a new revision unconditionally, even if this
+      ### is a deletion of an already-deleted path, so we have a place
+      ### to record the log message.  But, we should probably prefix
+      ### that log message with some explanation, otherwise it can
+      ### look mighty confusing to have a Subversion revision with no
+      ### changed paths and a log message that may or may not make
+      ### clear what happened.  The prependum to the log could say
+      ### something like:
       ###
-      ### Right now what happens is we get an empty revision
-      ### (assuming nothing else happened in this revision).
+      ###   "[This revision represents the redeletion of
+      ###     already-deleted files X, Y, and Z.  Therefore no paths
+      ###     were changed in this revision, but...]"
+      ###
+      ### etc, etc.
       path_deleted, closed_tags, closed_branches = \
                     dumper.delete_path(ctx, c_rev, c_rev.svn_path)
       if c_rev.is_trunk_vendor_revision():
@@ -2997,7 +3001,7 @@ class CommitMapper(Singleton):
     CVS_REV_UNIQUE_KEYS.""" 
     for key in cvs_rev_unique_keys:
       print "    KFF:", key
-    print "                                                  KFF"
+    print "------------------------------------------------------------- KFF"
     self.svn2cvs_db[str(svn_revnum)] = cvs_rev_unique_keys
     for cvs_rev_unique_key in cvs_rev_unique_keys:
       self.cvs2svn_db[cvs_rev_unique_key] = svn_revnum
@@ -3192,6 +3196,13 @@ class CVSCommit:
   def _commit(self):
     """Generates the primary SVNCommit that corresponds the this
     CVSCommit."""
+
+    # Generate an SVNCommit unconditionally.  Even if the only change
+    # in this CVSCommit is a deletion of an already-deleted file (that
+    # is, a CVS revision in state 'dead' whose predecessor was also in
+    # state 'dead'), the conversion will still generate a Subversion
+    # revision containing the log message for the second dead
+    # revision, because we don't want to lose that information.
     svn_commit = SVNCommit("commit")
 
     for c_rev in self.changes:
@@ -3214,7 +3225,6 @@ class CVSCommit:
               and RepositoryHead().has_path(c_rev.svn_path)):
         if c_rev.is_trunk_vendor_revision():
           self.default_branch_copies.append(c_rev)
-
 
     for c_rev in self.deletes:
       svn_commit.add_revision_key(c_rev.unique_key())
@@ -3374,7 +3384,7 @@ class CVSRevisionAggregator:
       if open_symbols.has_key(sym): # sym is still open--don't close it.
     ### TODO END MARK  decompose
         continue
-      SVNCommit("closing tag/branch").flush()
+      SVNCommit("closing tag/branch '%s'" % sym).flush()
       del self.pending_symbols[sym]
     #####################################################################
 
