@@ -131,11 +131,6 @@ CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
 # names), values are ignorable.
 TAGS_DB = 'cvs2svn-tags.db'
 
-# A path-based representation of the current head of the Subversion
-# repository.  Keys are Subversion paths, values are ignorable.
-# Intermediate directories are not stored, only leaf paths.
-SVN_REPOSITORY_HEAD_DB = 'cvs2svn-repository-head.db'
-
 # These two databases provide a bidirectional mapping between
 # CVSRevision.unique_key()s and Subversion revision numbers.
 #
@@ -503,6 +498,25 @@ class CVSRevision:
         return 1
     # else
     return None
+
+  ###TODO Create a test with only one file, and that should be added
+  ###on a branch... we may be able to lose the elif clause here.
+  def branch_file_needs_to_be_created_in_this_revision(self):
+    """Return true if the file belonging to this CVS Revision needs to
+    be created (on a branch) in this revision."""
+    # If the length of our current rev_num is different than the
+    # length of our previous revision's rev_num, we're now on a
+    # different line of development, so a copy will need to be made to
+    # create this file.
+    rev_len = len(self.rev)
+    prev_rev_len = len(self.prev_rev)
+    if not rev_len == prev_rev_len:
+      return 1
+    # If we're on the same line of development, but we're an add, we
+    # also return true.
+    elif self.op == OP_ADD:
+        return 1
+    return 0
 
 
 class CollectData(rcsparse.Sink):
@@ -1860,34 +1874,6 @@ def pass7(ctx):
 
 ###TODO move this stuff out of here! pass8 should be here.
 
-class RepositoryBranchesInHead(Singleton):
-  """Permanent storage for Subversion paths.
-
-  While we're in the process of generating SVNCommits, this should be
-  maintained to contain every branch path in the youngest revision of
-  the repository and nothing else -- i.e., no non-branch paths at all,
-  and no branch paths not in head.
-
-  This class is used for determining whether a branch fill will be
-  necessary when we see a commit on a branch."""
-  # We're a singleton, so we use init, not __init__
-  def init(self):
-    self.db = Database(SVN_REPOSITORY_HEAD_DB, 'n')
-    Cleanup().register(SVN_REPOSITORY_HEAD_DB, pass8) ##TODO earlier
-
-  def add_path(self, path):
-    """Remember that PATH exists."""
-    self.db[path] = None
-
-  def has_path(self, path):
-    """Return true if PATH exists."""
-    return self.db.has_key(path)
-
-  def remove_path(self, path):
-    """Forget that PATH exists."""
-    del self.db[path]
-
-
 class SVNCommitInternalInconsistencyError(Exception):
   """Exception raised if we encounter an impossible state in the
   SVNCommit Databases."""
@@ -2181,7 +2167,7 @@ class CVSCommit:
       # will exist.
       if c_rev.branch_name: ###TODO collapse if clauses
         ###TODO Check c_rev.op to see if we're an add!
-        if not RepositoryBranchesInHead().has_path(c_rev.svn_path):
+        if c_rev.branch_file_needs_to_be_created_in_this_revision():
           ### TODO: Possible correctness issue here.  If we have a
           # branch with a single file on it, and that file was deleted
           # in the previous CVS revision, and resurrected in this
@@ -2198,11 +2184,10 @@ class CVSCommit:
             self.secondary_commits.append(svn_commit)
 
             accounted_for_sym_names.append(c_rev.branch_name)
-          RepositoryBranchesInHead().add_path(c_rev.svn_path)
 
     for c_rev in self.deletes:
       if c_rev.branch_name:
-        if not RepositoryBranchesInHead().has_path(c_rev.svn_path):
+        if c_rev.branch_file_needs_to_be_created_in_this_revision():
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
             svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
@@ -2210,8 +2195,6 @@ class CVSCommit:
             svn_commit.set_symbolic_name(c_rev.branch_name)
             self.secondary_commits.append(svn_commit)
             accounted_for_sym_names.append(c_rev.branch_name)
-        else:
-          RepositoryBranchesInHead().remove_path(c_rev.svn_path)
 
   def _commit(self):
     """Generates the primary SVNCommit that corresponds the this
