@@ -3593,7 +3593,6 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
   reality, we aren't doing anything other than printing out that we're
   doing something.  Kind of zen, really."""
   def __init__(self, total_revs):
-    Log().write(LOG_QUIET, "Starting Subversion repository.")
     self.total_revs = total_revs
 
   def start_commit(self, svn_commit):
@@ -3780,16 +3779,16 @@ def pass7(ctx):
   Log().write(LOG_QUIET, "Done.")
 
 def pass8(ctx):
-  ### TODO: This should say repository/dumpfile, depending on
-  ### our action.
   svncounter = 2 # Repository initialization is 1.
-
   repos = SVNRepositoryMirror(ctx)
 
   if (ctx.target):
     repos.add_delegate(RepositoryDelegate(ctx))
+    Log().write(LOG_QUIET, "Starting Subversion Repository.")
   else:
     repos.add_delegate(DumpfileDelegate(ctx))
+    Log().write(LOG_QUIET, "Starting Subversion Dumpfile.")
+
   repos.add_delegate(StdoutDelegate(PersistenceManager(ctx).total_revs()))
 
   while(1):
