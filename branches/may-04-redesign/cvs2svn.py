@@ -327,12 +327,15 @@ class Cleanup(Singleton):
     """Register FILE for cleanup at the end of WHICH_PASS, running
     function CALLBACK prior to removal.  Registering a given FILE is
     idempotent; you may register as many times as you wish, but it
-    will only be cleaned up once."""
-    ###TODO We support idempotency for files, but not callbacks.  Fix.
+    will only be cleaned up once.
+
+    Note that if a file is registered multiple times, only the first
+    callback registered for that file will be called at cleanup
+    time."""
     if not self._log.has_key(which_pass):
       self._log[which_pass] = {}
     self._log[which_pass][file] = 1
-    if callback:
+    if callback and not self._callbacks.has_key(file):
       self._callbacks[file] = callback
 
   def cleanup(self, which_pass):
@@ -2411,13 +2414,13 @@ class SVNRepositoryMirror:
 
     # This corresponds to the 'revisions' table in a Subversion fs.
     self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'c')
-    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8, self.cleanup)
+    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8)
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track metadata, not file contents.)
     self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'c')
-    Cleanup().register(SVN_MIRROR_NODES_DB, pass8, self.cleanup)
+    Cleanup().register(SVN_MIRROR_NODES_DB, pass8)
 
     # Init a root directory with no entries at revision 0.
     self.youngest = 0
