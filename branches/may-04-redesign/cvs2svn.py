@@ -123,7 +123,7 @@ SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
 SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
 
 # Maps CVSRevision.unique_key() to corresponding line in s-revs.
-###TODO Or, we could map to an offset into s-revs, instead of dup'ing
+###PERF Or, we could map to an offset into s-revs, instead of dup'ing
 ### the s-revs data in this database.
 CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
 
@@ -1066,7 +1066,7 @@ class SymbolingsLogger(Singleton):
   def init(self, ctx):
     self._ctx = ctx
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
-    Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
+    Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8)
     self.closings = open(SYMBOL_CLOSINGS_TMP, 'w')
     Cleanup().register(SYMBOL_CLOSINGS_TMP, pass5)
 
@@ -1124,7 +1124,7 @@ class SymbolingsLogger(Singleton):
 
     TYPE should only be one of the following global constants:
     OPENING or CLOSING."""
-    ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
+    # 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
     self.symbolings.write('%s %.8d %s %s\n' % (name, svn_revnum,
                                                type, svn_path))
       
@@ -1182,10 +1182,6 @@ class LastSymbolicNameDatabase(Database):
         self.symbol_revs_db[rev_unique_key] = [sym]
 
 
-### TODO do we really need to map this?  We may have all the
-### information that we need already.  We need this for the
-### SymbolingsLogger, but we could map to an offset into s-revs,
-### instead of dup'ing the s-revs data in this database.
 class CVSRevisionDatabase:
   """A Database to store CVSRevision objects and retrieve them by their
   unique_key()."""
@@ -1448,7 +1444,6 @@ class SymbolicNameFillingGuide:
     if closings is None:
       closings = []
 
-    ###TODO, Review with kfogel for simplification
     # No easy out, so wish for lexical closures and calculate the scores :-). 
     scores = []
     opening_score_accum = 0
@@ -1666,7 +1661,7 @@ class CommitMapper(Singleton):
     was committed."""
     return int(self.cvs2svn_db[cvs_rev_unique_key])
 
-  ###TODO: Move this to SVNCommit?
+  ###TODO: Move this to SVNCommit.
   def _manufacture_log_msg(self, symbolic_name, is_tag=None):
     """Return a log message for a manufactured commit that fills SYMBOLIC_NAME.
     If IS_TAG is true, write the log message as though for a tag, else
@@ -1778,7 +1773,7 @@ class CVSCommit:
   def __init__(self, ctx, digest, author, log):
     self._ctx = ctx
 
-    self.digest = author
+    self.digest = author ### TODO Who! FIXME! This *can't* be correct.
     self.author = author
     self.log = log
 
@@ -2127,8 +2122,8 @@ class SVNCommit:
       print "  date:   '%s'" % date
       print "(for rev %s of '%s')" % (cvs_rev.rev, cvs_rev.fname)
       print "Consider rerunning with (for example) '--encoding=latin1'."
-      ### TODO: Is falling back to the original (unknown encoding) data
-      ### *really* a good idea?
+      # It's better to fall back to the original (unknown encoding) data
+      # than to either 1) quit or 2) record nothing at all.
       return { 'svn:author' : self._author,
                'svn:log'    : self._log_msg,
                'svn:date'   : date }
@@ -2365,18 +2360,9 @@ class SVNRepositoryMirror:
     self.revs_db[str(self.youngest)] = youngest_key
     self.nodes_db[youngest_key] = { }
 
-    ###TODO Will we still need these?
-    #
     # Set to 1 on a directory that's mutable in the revision currently
     # being constructed.  (Yes, this is exactly analogous to the
     # Subversion filesystem code's concept of mutability.)
-    #
-    # It is overloaded with a second piece of information:
-    #
-    # If the value of the flag is 2, then in addition to the node
-    # being mutable, the node and all subnodes were created by a copy
-    # operation in the current revision.  In this and only this
-    # circumstance, it is valid for pruning to occur.
     self.mutable_flag = "/m"
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
@@ -2953,7 +2939,7 @@ class SVNRepositoryMirror:
 
     return node_key, node_contents
 
-  ###TODO This *might* be a bit pricey to do.  Look here for perf
+  ###PERF This *might* be a bit pricey to do.  Look here for perf
   ###problems.
   def path_exists(self, path):
     """If PATH exists in self.youngest of the svn repository mirror,
