@@ -37,7 +37,8 @@ last_date = 0
 while line:
 
   if not line[0] == 'r':
-    continue
+    sys.stderr.write("Error: invalid input: '%s...'.\n" % line[0:30])
+    sys.exit(1)
   
   # This may get some trailing whitespace for small revision numbers,
   # but that's okay, we want our output to look tabular anyway.
@@ -62,7 +63,8 @@ while line:
     date_as_int += (offset_hours * 3600)
     date_as_int += (offset_minutes * 60)
   else:
-    sys.stderr.write("Error: unknown offset sign '%s'." % offset_sign)
+    sys.stderr.write("Error: unknown offset sign '%s'.\n" % offset_sign)
+    sys.exit(1)
 
   ok_not_ok = "    OK"
   if last_date > date_as_int:
