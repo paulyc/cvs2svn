@@ -350,18 +350,27 @@ class Cleanup(Singleton):
       os.unlink(file)
 
 
+# Always use these constants for opening databases.
+DB_OPEN_CREATE = 'c'
+DB_OPEN_READ = 'r'
+
 # A wrapper for anydbm that uses the marshal module to store items as
 # strings.
 class Database:
   def __init__(self, filename, mode):
-    ### pybsddb3 has a bug which prevents it from working with
-    ### Berkeley DB 4.2 (it passes the DB_TRUNCATE flag, which is
-    ### disallowed for databases protected by lock and transaction
-    ### support).  So let's fake it.
+    # pybsddb3 has a bug which prevents it from working with
+    # Berkeley DB 4.2 if you open the db with 'n' ("new".   This
+    # causes the DB_TRUNCATE flag to be passed, which is disallowed
+    # for databases protected by lock and transaction support).
+    #
+    # Theoretically, we should never receive the 'n' flag, because
+    # all callers should be using the DB_OPEN_* constants anyway.  But
+    # protect just in case.
     if mode == 'n':
-      if os.path.exists(filename):
-        os.remove(filename)
-      mode = 'c'
+      sys.stderr.write("Cannot open databases with 'n' flag ('%s').\n"
+                       % filename)
+      sys.exit(1)
+
     self.db = anydbm.open(filename, mode)
 
   def has_key(self, key):
@@ -586,7 +595,7 @@ class CollectData(rcsparse.Sink):
     self.resync = open(DATAFILE + RESYNC_SUFFIX, 'w')
     Cleanup().register(DATAFILE + RESYNC_SUFFIX, pass2)
     self.default_branches_db = ctx.default_branches_db
-    self.metadata_db = Database(METADATA_DB, 'c')
+    self.metadata_db = Database(METADATA_DB, DB_OPEN_CREATE)
     Cleanup().register(METADATA_DB, pass8)
     self.fatal_errors = []
     self.next_faked_branch_num = 999999
@@ -611,8 +620,8 @@ class CollectData(rcsparse.Sink):
     # it is forced to be treated as a tag by the user.
     self.forced_tag_branches = { }
 
-    self.cvs_rev_db = CVSRevisionDatabase('c')
-    self.tags_db = TagsDatabase('c')
+    self.cvs_rev_db = CVSRevisionDatabase(DB_OPEN_CREATE)
+    self.tags_db = TagsDatabase(DB_OPEN_CREATE)
 
     # See set_fname() for initializations of other variables.
 
@@ -1178,7 +1187,7 @@ class SymbolingsLogger(Singleton):
     # symbolings file.
 
     # Use this to get the c_rev.svn_path of our rev_key
-    cvs_revs_db = CVSRevisionDatabase('r', self._ctx)
+    cvs_revs_db = CVSRevisionDatabase(DB_OPEN_READ, self._ctx)
 
     self.closings.close()
     for line in fileinput.FileInput(SYMBOL_CLOSINGS_TMP):
@@ -1302,7 +1311,7 @@ class SymbolingsReader:
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
     # The offsets_db is really small, and we need to read and write
     # from it a fair bit, so suck it into memory
-    offsets_db = Database(SYMBOL_OFFSETS_DB, 'r') 
+    offsets_db = Database(SYMBOL_OFFSETS_DB, DB_OPEN_READ) 
     self.offsets = { }
     for key in offsets_db.db.keys():
       #print " ZOO:", key, offsets_db[key]
@@ -1645,7 +1654,7 @@ def generate_offsets_for_symbolings():
   ###PERF This is a fine example of a db that can be in-memory and
   #just flushed to disk when we're done.  Later, it can just be sucked
   #back into memory.
-  offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
+  offsets_db = Database(SYMBOL_OFFSETS_DB, DB_OPEN_CREATE) 
   Cleanup().register(SYMBOL_OFFSETS_DB, pass8)
   
   file = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
@@ -1679,20 +1688,21 @@ class PersistenceManager(Singleton):
   singleton very soon, grrr."""
   def init(self, ctx):
     self._ctx = ctx
-    self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, 'c')
+    self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, DB_OPEN_CREATE)
     Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8)
-    self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, 'c')
+    self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, DB_OPEN_CREATE)
     Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
-    self.svn_commit_names_dates = Database(SVN_COMMIT_NAMES_DATES, 'c')
+    self.svn_commit_names_dates = Database(SVN_COMMIT_NAMES_DATES,
+                                           DB_OPEN_CREATE)
     Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8)
-    self.svn_commit_metadata = Database(METADATA_DB, 'r')
-    self.cvs_revisions = CVSRevisionDatabase('r', ctx)
+    self.svn_commit_metadata = Database(METADATA_DB, DB_OPEN_READ)
+    self.cvs_revisions = CVSRevisionDatabase(DB_OPEN_READ, ctx)
     ###PERF kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.
     ###TODO FITZ: We should set an is_tag var on SVNCommit...
     if not ctx.trunk_only:
-      self.tags_db = TagsDatabase('r')
-      self.motivating_revnums = Database(MOTIVATING_REVNUMS, 'c')
+      self.tags_db = TagsDatabase(DB_OPEN_READ)
+      self.motivating_revnums = Database(MOTIVATING_REVNUMS, DB_OPEN_CREATE)
       Cleanup().register(MOTIVATING_REVNUMS, pass8)
     
     # "branch_name" -> svn_revnum in which branch was last filled.
@@ -2263,9 +2273,9 @@ class CVSRevisionAggregator:
   at least one SVNCommit."""
   def __init__(self, ctx):
     self._ctx = ctx
-    self.metadata_db = Database(METADATA_DB, 'r')
+    self.metadata_db = Database(METADATA_DB, DB_OPEN_READ)
     if not ctx.trunk_only:
-      self.last_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
+      self.last_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, DB_OPEN_READ)
     self.cvs_commits = {}
     self.pending_symbols = {}
     # A list of symbols for which we've already encountered the last
@@ -2425,13 +2435,13 @@ class SVNRepositoryMirror:
     self.delegates = [ ]
 
     # This corresponds to the 'revisions' table in a Subversion fs.
-    self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'c')
+    self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, DB_OPEN_CREATE)
     Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8)
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track metadata, not file contents.)
-    self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'c')
+    self.nodes_db = Database(SVN_MIRROR_NODES_DB, DB_OPEN_CREATE)
     Cleanup().register(SVN_MIRROR_NODES_DB, pass8)
 
     # Init a root directory with no entries at revision 0.
@@ -2449,7 +2459,7 @@ class SVNRepositoryMirror:
 
     if not ctx.trunk_only:
       ###PERF IMPT: Suck this into memory.
-      self.tags_db = TagsDatabase('r')
+      self.tags_db = TagsDatabase(DB_OPEN_READ)
       self.symbolings_reader = SymbolingsReader(self._ctx)
 
     # Note that we haven't started committing yet
@@ -3617,7 +3627,7 @@ def pass4(ctx):
     return
 
   Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
-  last_sym_name_db = LastSymbolicNameDatabase('c')
+  last_sym_name_db = LastSymbolicNameDatabase(DB_OPEN_CREATE)
 
   for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
@@ -4016,7 +4026,7 @@ def main():
     ###TODO: Remove the next 4 lines when we make ctx a singleton
     if os.path.isfile(DEFAULT_BRANCHES_DB):
       os.unlink(DEFAULT_BRANCHES_DB)
-    ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, 'c')
+    ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, DB_OPEN_CREATE)
     Cleanup().register(DEFAULT_BRANCHES_DB, pass8, clear_default_branches_db)
     convert(ctx, start_pass, end_pass)
     ctx.default_branches_db = None
