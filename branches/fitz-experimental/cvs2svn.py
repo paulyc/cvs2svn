@@ -1341,11 +1341,10 @@ class Dumper:
                           'Node-action: delete\n'
                           '\n' % (self.utf8_path(path + '/' + ent)))
 
-  def add_or_change_path(self, cvs_path, svn_path, cvs_rev, rcs_file,
-                         tags, branches, cvs_revnums):
-
+  def add_or_change_path(self, c_rev):
     # figure out the real file path for "co"
     try:
+      rcs_file = c_rev.fname
       f_st = os.stat(rcs_file)
     except os.error:
       dirname, fname = os.path.split(rcs_file)
@@ -1353,9 +1352,9 @@ class Dumper:
       f_st = os.stat(rcs_file)
 
     # We begin with only a "CVS revision" property.
-    if cvs_revnums:
+    if c_rev.ctx.cvs_revnums:
       prop_contents = 'K 15\ncvs2svn:cvs-rev\nV %d\n%s\n' \
-                      % (len(cvs_rev), cvs_rev)
+                      % (len(c_rev.rev), c_rev.rev)
     else:
       prop_contents = ''
     
@@ -1370,18 +1369,18 @@ class Dumper:
     ### use it to set svn:mime-type.
 
     basename = os.path.basename(rcs_file[:-2])
-    pipe_cmd = 'co -q -x,v -p%s %s' % (cvs_rev, escape_shell_arg(rcs_file))
+    pipe_cmd = 'co -q -x,v -p%s %s' % (c_rev.rev, escape_shell_arg(rcs_file))
     pipe = os.popen(pipe_cmd, PIPE_READ_MODE)
 
     # You might think we could just test
     #
-    #   if cvs_rev[-2:] == '.1':
+    #   if c_rev.rev[-2:] == '.1':
     #
     # to determine if this path exists in head yet.  But that wouldn't
     # be perfectly reliable, both because of 'cvs commit -r', and also
     # the possibility of file resurrection.
-    change = self.repos_mirror.change_path(svn_path, tags, branches,
-                                           self.add_dir)
+    change = self.repos_mirror.change_path(c_rev.svn_path(), c_rev.tags,
+                                           c_rev.branches, self.add_dir)
 
     if change.op == OP_ADD:
       action = 'add'
@@ -1393,7 +1392,8 @@ class Dumper:
                         'Node-action: %s\n'
                         'Prop-content-length: %d\n'
                         'Text-content-length: '
-                        % (self.utf8_path(svn_path), action, props_len))
+                        % (self.utf8_path(c_rev.svn_path()),
+                           action, props_len))
 
     pos = self.dumpfile.tell()
 
@@ -1438,7 +1438,7 @@ class Dumper:
     self.dumpfile.write('\n\n')
     return change.closed_tags, change.closed_branches
 
-  def delete_path(self, svn_path, tags, branches, prune=None):
+  def delete_path(self, c_rev, path_func):
     """If SVN_PATH exists in the head mirror, output the deletion to
     the dumpfile, else output nothing to the dumpfile.
 
@@ -1453,8 +1453,10 @@ class Dumper:
     Iff PRUNE is true, then the path deleted can be not None, yet
     shorter than SVN_PATH because of pruning."""
     deleted_path, closed_tags, closed_branches \
-                  = self.repos_mirror.delete_path(svn_path, tags,
-                                                  branches, prune)
+                  = self.repos_mirror.delete_path(path_func(),
+                                                  c_rev.tags,
+                                                  c_rev.branches,
+                                                  c_rev.ctx.prune)
     if deleted_path:
       print "    (deleted '%s')" % deleted_path
       self.dumpfile.write('Node-path: %s\n'
@@ -2322,15 +2324,8 @@ class Commit:
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
               and (c_rev.rev == "1.1.1.1")
               and dumper.probe_path(c_rev.svn_path())):
-        ###TODO Use CVSRevisions
         closed_tags, closed_branches = \
-                     dumper.add_or_change_path(c_rev.cvs_path(),
-                                               c_rev.svn_path(),
-                                               c_rev.rev,
-                                               c_rev.fname,
-                                               c_rev.tags,
-                                               c_rev.branches,
-                                               ctx.cvs_revnums)
+                     dumper.add_or_change_path(c_rev)
         if is_trunk_vendor_revision(ctx.default_branches_db,
                                     c_rev.cvs_path(), c_rev.rev):
           default_branch_copies.append(c_rev)
@@ -2361,10 +2356,8 @@ class Commit:
       ###
       ### Right now what happens is we get an empty revision
       ### (assuming nothing else happened in this revision).
-      ### TODO pass a cvs rev (which has a ctx object)
       path_deleted, closed_tags, closed_branches = \
-                    dumper.delete_path(c_rev.svn_path(), c_rev.tags,
-                                       c_rev.branches, ctx.prune)
+                    dumper.delete_path(c_rev, c_rev.svn_path)
       if is_trunk_vendor_revision(ctx.default_branches_db,
                                   c_rev.cvs_path(), c_rev.rev):
         default_branch_deletes.append(c_rev)
@@ -2389,8 +2382,7 @@ class Commit:
         for c_rev in default_branch_copies:
           if (dumper.probe_path(c_rev.svn_trunk_path())):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(c_rev.svn_trunk_path(), c_rev.tags,
-                                    c_rev.branches, ctx.prune)
+                 dumper.delete_path(c_rev, c_rev.svn_trunk_path)
             sym_tracker.close_tags(c_rev.svn_trunk_path(),
                                    svn_rev, closed_tags)
             sym_tracker.close_branches(c_rev.svn_trunk_path(),
@@ -2403,8 +2395,7 @@ class Commit:
           # branch, we already know we're deleting this from trunk.
           if (dumper.probe_path(c_rev.svn_trunk_path())):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(c_rev.svn_trunk_path(), c_rev.tags,
-                                    c_rev.branches, ctx.prune)
+                 dumper.delete_path(c_rev, c_rev.svn_trunk_path)
             sym_tracker.close_tags(c_rev.svn_trunk_path(), svn_rev,
                                    closed_tags)
             sym_tracker.close_branches(c_rev.svn_trunk_path(),
