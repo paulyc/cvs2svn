@@ -765,7 +765,10 @@ class CollectData(rcsparse.Sink):
       self.prev_rev[next] = revision
       self.next_rev[revision] = next
 
+    ###TODO hurm... now prev_rev seems to be doing exactly what prev
+    ###is doing...can't we get rid of one of them?
     for b in branches:
+      self.prev_rev[b] = revision
       self.prev[b] = revision
 
     # Ratchet up the highest vendor head revision, if necessary.
