@@ -156,6 +156,11 @@ SVN_REVNUMS_TO_CVS_REVS = 'cvs2svn-svn-revnums-to-cvs-revs.db'
 # that is filled in the SVNCommit that corresponds to that svn_revnum.
 SVN_COMMIT_NAMES = 'cvs2svn-svn-commit-names.db'
 
+# This database maps svn_revnums to the corresponding default branch
+# that trunk synchronizes with in the SVNCommit that corresponds to
+# that svn_revnum.
+SVN_DEFAULT_BRANCHES = 'cvs2svn-svn-default-branches.db'
+
 # os.popen() on Windows seems to require an access-mode string of 'rb'
 # in cases where the process will output binary information to stdout.
 # Without the 'b' we get IOErrors upon closing the pipe.  Unfortunately
@@ -448,7 +453,7 @@ class CVSRevision:
     return 0
 
   def is_trunk_vendor_revision(self):
-    """Return 1 if SELF.C_REV of SELF.CVS_PATH is a trunk (i.e., head)
+    """Return 1 if SELF.rev of SELF.cvs_path is a trunk (i.e., head)
     vendor revision according to DEFAULT_BRANCHES_DB, else return
     None."""
     if self._ctx.default_branches_db.has_key(self.cvs_path):
@@ -3258,21 +3263,22 @@ class SymbolingsReader:
       #print " ZOO:", key, offsets_db[key]
       self.offsets[key] = offsets_db[key]
 
-  def symbol_fill_for_symbol(self, symbolic_name, svn_revnum):
+  def filling_guide_for_symbol(self, symbolic_name, svn_revnum):
     """Given SYMBOLIC_NAME and SVN_REVNUM, return a new
-    SymbolicNameFill object.
+    SymbolicNameFillingGuide object.
 
     Note that if we encounter an opening rev in this fill, but the
     corresponding closing rev takes place later than SVN_REVNUM, the
-    closing will not be passed to SymbolicNameFill in this fill (and
-    will be discarded when encountered in a later fill).  This is
-    perfectly fine, because we can still do a valid fill without the
-    closing--we always try to fill what we can as soon as we can."""
+    closing will not be passed to SymbolicNameFillingGuide in this
+    fill (and will be discarded when encountered in a later fill).
+    This is perfectly fine, because we can still do a valid fill
+    without the closing--we always try to fill what we can as soon as
+    we can."""
     # set our read offset for self.symbolings to the offset for
     # symbolic_name
     self.symbolings.seek(self.offsets[symbolic_name])
 
-    symbol_fill = SymbolicNameFill(self._ctx, symbolic_name)
+    symbol_fill = SymbolicNameFillingGuide(self._ctx, symbolic_name)
     while (1):
       line = self.symbolings.readline().rstrip()
       if not line:
@@ -3292,36 +3298,37 @@ class SymbolingsReader:
       # Subtract one cause we rstripped the CR above.
       self.offsets[symbolic_name] = self.symbolings.tell() - len(line) - 1
     else:
-      raise SymbolingsReaderEmptyFillError, ("Read no valid openings "
-                                             + "or closings for '%s' "
-                                             % symbolic_name)
+      raise SymbolingsReaderEmptyFillError, \
+            ("Read no valid openings or closings for '%s' at svn_revnum '%d'"
+                                             % (symbolic_name, svn_revnum))
                                
     symbol_fill.make_node_tree()
     return symbol_fill
   
 
-class SymbolicNameFill:
-  """A SymbolicNameFill is essentially a node tree representing a
-  series of opening and closing source revisions for a collection of
-  source paths in a symbolic name in a particular SVNCommit.
-    
-    Returns a fully functional and armed SymbolicNameFill object.
+class SymbolicNameFillingGuide:
+  """A SymbolicNameFillingGuide is essentially a node tree
+  representing the source paths to be copied to fill
+  self.symbolic_name in the current SVNCommit.
 
-     From this information, you can determine:
+  After calling self.register() on a series of openings and closings,
+  call self.make_node_tree() to prepare self.node_tree for
+  examination.
 
-     1. Which files and directories should be copied to fill a
-        particular symbolic name up to a particular SVNCommit.  Note
-        that this information can be used in conjunction with the
-        SVNRepositoryMirror to determine which files and directories
-        should either not be copied in the first place, or whih have
-        to be pruned after a copy has taken place.
+  By walking self.node_tree and calling self.get_best_revnum() on each
+  node, the caller can determine what subversion revision number to
+  copy the path corresponding to that node from.  self.node_tree
+  should be treated as read-only.
 
-     2. The optimal revision to use as our copy source for copying an
-        entire node tree, sub-tree, or single path into a symbolic
-        name. """
+  The caller can then descend to sub-nodes to see if their "best
+  revnum" differs from their parents' and if it does, take appropriate
+  actions to "patch up" the subtrees."""
   def __init__(self, ctx, symbolic_name):
-    """ Initializes the SymbolicNameFill for SYMBOLIC_NAME and
-    prepares it for receiving openings and closings."""
+    """Initializes a SymbolicNameFillingGuide for SYMBOLIC_NAME and
+    prepares it for receiving openings and closings.
+
+    Returns a fully functional and armed SymbolicNameFillingGuide
+    object."""
     self._ctx = ctx
     self.name = symbolic_name
 
@@ -3340,18 +3347,18 @@ class SymbolicNameFill:
     # The dictionary that holds our node tree, seeded with the root key.
     self.node_tree = { self.root_key : { } }
 
-  def get_best_revnum(self, root_node, preferred_revnum):
+  def get_best_revnum(self, node, preferred_revnum):
     """ Determine the best subversion revision number to use when
-    copying the source tree beginning at ROOT_NODE. Returns a
+    copying the source tree beginning at NODE. Returns a
     subversion revision number.
 
     PREFERRED_REVNUM is passed to self._best_rev and used to
-    caluculate the best_revnum."""
+    calculate the best_revnum."""
     revnum = SVN_INVALID_REVNUM
 
     # Aggregate openings and closings from the rev tree
-    openings = self._list_revnums_for_key(root_node, self.opening_key)
-    closings = self._list_revnums_for_key(root_node, self.closing_key)
+    openings = self._list_revnums_for_key(node, self.opening_key)
+    closings = self._list_revnums_for_key(node, self.closing_key)
 
     # Score the lists
     scores = self._score_revisions(self._condense_scores(openings),
@@ -3397,18 +3404,18 @@ class SymbolicNameFill:
        [(REV1 SCORE1), (REV2 SCORE2), ...]
 
     where REV2 > REV1.  OPENINGS and CLOSINGS are the values of
-    self.opening__key and self.closing_key, or self.opening_key and
-    self.closing_key, from some file or directory node, or else None.
+    self.opening__key and self.closing_key from some file or
+    directory node, or else None.
 
     Each score indicates that copying the corresponding revision (or
     any following revision up to the next revision in the list) of the
     object in question would yield that many correct paths at or
     underneath the object.  There may be other paths underneath it
-    which are not correct and need to be deleted or recopied; those
-    can only be detected by descending and examining their scores.
+    which are not correct and would need to be deleted or recopied;
+    those can only be detected by descending and examining their
+    scores.
 
     If OPENINGS is false, return the empty list."""
-
     # First look for easy outs.
     if not openings:
       return []
@@ -3448,8 +3455,9 @@ class SymbolicNameFill:
         scores.insert(insert_index, (closing_rev, insert_score))
     return scores
 
-  def _condense_scores(self, scores):
-    """Takes an array of revisions (scores), for example:
+  ###TODO find a better name for this method.
+  def _condense_scores(self, rev_list):
+    """Takes an array of revisions (REV_LIST), for example:
 
       [21, 18, 6, 49, 39, 24, 24, 24, 24, 24, 24, 24]
 
@@ -3459,7 +3467,7 @@ class SymbolicNameFill:
       [(6, 1), (18, 1), (21, 1), (24, 7), (39, 1), (49, 1)]
     """
     s = {}
-    for k in scores: # Add up the scores
+    for k in rev_list: # Add up the scores
       if s.has_key(k):
         s[k] = s[k] + 1
       else:
@@ -3471,8 +3479,10 @@ class SymbolicNameFill:
   def _list_revnums_for_key(self, node, revnum_type_key):
     """Scan self.node_tree and return a list of all the revision
     numbers (including duplicates) contained in REVNUM_TYPE_KEY values
-    for all leaf nodes under NODE, including NODE itself (if NODE is a
-    leaf node."""
+    for all leaf nodes at and under NODE.
+
+    REVNUM_TYPE_KEY should be either self.opening_key or
+    self.closing_key."""
     revnums = []
 
     # If the node has self.opening_key, it must be a leaf node--all
@@ -3491,11 +3501,11 @@ class SymbolicNameFill:
     return revnums
 
   def register(self, svn_path, svn_revnum, type):
-    """ Collects opening and closing revisions for this
-    SymbolicNameFill.  SVN_PATH is the source path that needs to be
-    copied into self.symbolic_name, and SVN_REVNUM is either the first
-    svn revision number that we can copy from (our opening), or the
-    last (not inclusive) svn revision number that we can copy from
+    """Collects opening and closing revisions for this
+    SymbolicNameFillingGuide.  SVN_PATH is the source path that needs
+    to be copied into self.symbolic_name, and SVN_REVNUM is either the
+    first svn revision number that we can copy from (our opening), or
+    the last (not inclusive) svn revision number that we can copy from
     (our closing).  TYPE indicates whether this path is an opening or
     closing.
 
@@ -3514,9 +3524,9 @@ class SymbolicNameFill:
       self.things[svn_path][self.closing_key] = svn_revnum
 
   def make_node_tree(self):
-    """ Generates the SymbolicNameFill's node tree from self.things.
-    Each leaf node contains the opening and (optionally) closing for
-    the path that ends in that leaf node."""
+    """Generates the SymbolicNameFillingGuide's node tree from
+    self.things.  Each leaf node contains the opening and (optionally)
+    closing for the path that ends in that leaf node."""
     for svn_path, open_close in self.things.items():
       parent_key = self.root_key
 
@@ -3543,8 +3553,8 @@ class SymbolicNameFill:
 
   def is_empty(self):
     """Returns true if we haven't accumulated any openings or
-    closings, zero otherwise."""
-    return len(self.things)
+    closings, false otherwise."""
+    return not len(self.things)
 
   ###TODO do something with this:
   #These revision scores are used to determine the optimal copy
@@ -3621,6 +3631,8 @@ class CommitMapper(Singleton):
     Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
     self.svn_commit_names = Database(SVN_COMMIT_NAMES, 'c')
     Cleanup().register(SVN_COMMIT_NAMES, pass8)
+    self.svn_default_branches = Database(SVN_DEFAULT_BRANCHES, 'c')
+    Cleanup().register(SVN_DEFAULT_BRANCHES, pass8)
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
 
   def get_svn_revnum(self, cvs_rev_unique_key):
@@ -3648,6 +3660,10 @@ class CommitMapper(Singleton):
     if name:
       svn_commit.set_symbolic_name(name)
 
+    branch = self.svn_default_branches.get(str(svn_revnum), None)
+    if branch:
+      svn_commit.set_default_branch(branch)
+
     if len(svn_commit.cvs_revs) and name:
       msg = """An SVNCommit cannot have cvs_revisions *and* a
       corresponding symbolic name ('%s') to fill.""" % name
@@ -3668,6 +3684,10 @@ class CommitMapper(Singleton):
   def set_name(self, svn_revnum, name):
     """Store NAME as the value of SVN_REVNUM"""
     self.svn_commit_names[str(svn_revnum)] = name
+
+  def set_default_branch(self, svn_revnum, branch):
+    """Store BRANCH as the value of SVN_REVNUM"""
+    self.svn_default_branches[str(svn_revnum)] = branch
 
 
 # Based on Commit
@@ -3729,7 +3749,7 @@ class CVSCommit:
     #
     # Each of these is a list of c_revs, and a c_rev is appended for
     # each default branch commit that will need to be copied to trunk
-    # (or deleted from trunk) in the generated revision following the
+    # (or deleted from trunk) in some generated revision following the
     # "regular" revision.
     self.default_branch_copies = [ ]
     self.default_branch_deletes = [ ]
@@ -3870,7 +3890,6 @@ class CVSCommit:
   def _commit(self):
     """Generates the primary SVNCommit that corresponds the this
     CVSCommit."""
-
     # Generate an SVNCommit unconditionally.  Even if the only change
     # in this CVSCommit is a deletion of an already-deleted file (that
     # is, a CVS revision in state 'dead' whose predecessor was also in
@@ -3880,10 +3899,8 @@ class CVSCommit:
     svn_commit = SVNCommit(self._ctx, "commit")
 
     for c_rev in self.changes:
-      svn_commit.add_revision(c_rev)
-      # print ("    KFF adding or changing %s : '%s'"
-      #        % (c_rev.rev, c_rev.svn_path))
-
+      svn_commit.add_revision(c_rev)    
+      ###TODO QUX1 RepositoryHead().add_path(c_rev.svn_path)
       # Only make a change if we need to.  When 1.1.1.1 has an empty
       # deltatext, the explanation is almost always that we're looking
       # at an imported file whose 1.1 and 1.1.1.1 are identical.  On
@@ -3894,6 +3911,10 @@ class CVSCommit:
       # we were really paranoid, we could make sure 1.1's log message
       # is the CVS-generated "Initial revision\n", but I think the
       # conditions below are strict enough.)
+      ###TODO FIXME Verify that c_rev.svn_path is what we want here,
+      #and NOT c_rev.svn_trunk_path.  This will only work if you
+      #uncomment QUX1 (above) and QUX2 (below)
+      ###TODO We need a test for this.
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
               and (c_rev.rev == "1.1.1.1")
               and RepositoryHead().has_path(c_rev.svn_path)):
@@ -3902,35 +3923,50 @@ class CVSCommit:
 
     for c_rev in self.deletes:
       svn_commit.add_revision(c_rev)
-      # compute a repository path, dropping the ,v from the file name
-      # print "    KFF deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path)
-
+      ###TODO QUX2 if RepositoryHead().has_path(c_rev.svn_path):
+      ###TODO QUX2   RepositoryHead().remove_path(c_rev.svn_path)
       if c_rev.is_trunk_vendor_revision():
         self.default_branch_deletes.append(c_rev)
+
     svn_commit.flush()
 
     for c_rev in self.revisions():
       SymbolingsLogger(self._ctx).check_revision(c_rev, svn_commit.revnum)
 
+  ###TODO We need a test case where we have a file on a default branch
+  #and on the HEAD revision of the default branch in CVS, that file is
+  #in RCS state 'dead'
   def _post_commit(self):
     """Generates any SVNCommits that we can perform now that _commit
     has happened.  That is,
-    ###TODO This actually needs to happen somewhere else in the code.
+
     1) Handle non-trunk default branches.  Sometimes an RCS file has a
        non-trunk default branch, so a commit on that default branch
        would be visible in a default CVS checkout of HEAD.  If we
-       don't copy that commit over the Subversion's trunk, then there
+       don't copy that commit over to Subversion's trunk, then there
        will be no Subversion tree which corresponds to that CVS
        checkout.  Of course, in order to copy the path over, we may
        first need to delete the existing trunk there.
        """
-    seen_branches = { }
+    # Generate one SVNCommit for each default branch we encounter.
+    # Add each c_rev on that branch to the commit, and flush all
+    # commits at the end.
+    svn_commits = { }
     for c_rev in self.default_branch_copies + self.default_branch_deletes:
-      if not seen_branches.has_key(c_rev.branch_name):
+      if not svn_commits.has_key(c_rev.branch_name):
         svn_commit = SVNCommit(self._ctx, "post-commit def_br_[copy|delete]")
-        svn_commit.set_symbolic_name(c_rev.branch_name)
-        svn_commit.flush()
-        seen_branches[c_rev.branch_name] = None
+        svn_commit.set_default_branch(c_rev.branch_name)
+        svn_commit.add_revision(c_rev)
+        svn_commits[c_rev.branch_name] = svn_commit
+      else:
+        svn_commit = svn_commits[c_rev.branch_name]
+        svn_commit.add_revision(c_rev)
+
+    for svn_commit in svn_commits.values():
+      svn_commit.flush()
+
+
+
 
   def process_revisions(self, ctx, done_symbols):
     self.done_symbols = done_symbols
@@ -3947,6 +3983,15 @@ class CVSCommit:
 
 
 class SVNCommit:
+  """This represents one commit to the Subversion Repository.  There
+  are three types of SVNCommits:
+
+  1. Commits one or more CVSRevisions (cannot fill a symbolic name).
+
+  2. Creates or fills a symbolic name (cannot commit CVSRevisions).
+
+  3. Updates trunk to reflect the contents of a particular branch
+     (this is to handle RCS default branches)."""
   def __init__(self, ctx, description="", revnum=None, cvs_revs=None):
     """Instantiate an SVNCommit with CTX.  DESCRIPTION is for debugging only.
     If REVNUM, the SVNCommit will correspond to that revision number;
@@ -3968,13 +4013,21 @@ class SVNCommit:
       self.revnum = SVNRevNum().get_next_revnum()
     else:
       self.revnum = revnum
+    # The symbolic name that is filled in this SVNCommit, if any
     self.symbolic_name = None
+    # The branch with which trunk should be synced in this SVNCommit,
+    # if any.
+    self.default_branch = None
 
   def set_symbolic_name(self, name):
-    """Set NAME to be the symbolic name that is filled in this
-    SVNCommit."""
+    "Set self.symbolic_name to NAME."
     self.symbolic_name = name
     CommitMapper(self._ctx).set_name(self.revnum, name)
+
+  def set_default_branch(self, name):
+    "Set self.default_branch to NAME."
+    self.default_branch = name
+    CommitMapper(self._ctx).set_default_branch(self.revnum, name)
 
   def add_revision(self, cvs_rev):
     self.cvs_revs.append(cvs_rev)
@@ -4455,26 +4508,17 @@ class SVNRepositoryMirror:
 
 
   def fill_symbolic_name(self, symbolic_name):
-
-    """ Performs all copies necessary to create as much of the the tag
+    """Performs all copies necessary to create as much of the the tag
     or branch SYMBOLIC_NAME as possible given the current revision of
     the repository mirror."""
-    symbol_fill = self.symbolings_reader.symbol_fill_for_symbol(
+    symbol_fill = self.symbolings_reader.filling_guide_for_symbol(
       symbolic_name, self.youngest)
 
-    ###TODO The next 5 lines are unused. Idiot.
-    base_path = None
-    if self.tags_db.has_key(symbolic_name):
-      base_dest_path = self._ctx.tags_base
-    else:
-      base_dest_path = self._ctx.branches_base
-
     print "TON", "=" * 75
-    self._copy_paths_in_fill_tree(symbol_fill, symbol_fill.root_key,
-                               symbolic_name)
+    self._fill(symbol_fill, symbol_fill.root_key, symbolic_name)
 
   def _dest_path_for_source_path(self, symbolic_name, path):
-    """ Given source path PATH, returns the copy destination path
+    """Given source path PATH, returns the copy destination path
     under NAME.  Note that this assumes that trunk/tags/branches are
     only 1 path element long... For example, using --tags=foo/bar would
     cause incorrect dest path generation."""
@@ -4490,17 +4534,19 @@ class SVNRepositoryMirror:
     # directly to a top-level directory, so return None here.
     if len(components) == 1:
       return None
-    dest = base_dest_path + '/' + '/'.join(components[1:])
+    dest = base_dest_path + '/' + symbolic_name + '/' + '/'.join(components[1:])
     return dest
 
-  def _copy_paths_in_fill_tree(self, symbol_fill, root_node, name,
-                               path_so_far=None, preferred_revnum=None):
-    """Descends through all nodes in SYMBOL_FILL.NODE_TREE that are rooted at
-    ROOT_NODE.  Generates copy commands for all destination nodes that
-    don't exist in NAME.  PATH_SO_FAR should not be passed in as it is
-    created as the function recurses.  """
+  def _fill(self, symbol_fill, node, name,
+            path_so_far=None, preferred_revnum=None):
 
-    for node_key, node_contents in symbol_fill.node_tree[root_node].items():
+    """Descends through all nodes in SYMBOL_FILL.NODE_TREE that are
+    rooted at NODE.  Generates copy (and delete) commands for all
+    destination nodes that don't exist in NAME.  PATH_SO_FAR and
+    PREFERRED_REVNUM should not be passed in as it is created as the
+    function recurses."""
+
+    for node_key, node_contents in symbol_fill.node_tree[node].items():
       if node_key[0] == '/': #Skip flags
         continue
       if path_so_far is not None:
@@ -4508,22 +4554,22 @@ class SVNRepositoryMirror:
       else:
         src_path = node_key
       print "TON", "=" * 40
-      dest_path = dest_path = self._dest_path_for_source_path(name, src_path)
+      dest_path = self._dest_path_for_source_path(name, src_path)
       #      print "TON DES:", dest_path
 
       if (dest_path is not None and not self.path_exists(dest_path)):
-        ###TODO Review with Karl: Is this correct usage for
-        ###preferred_revnum?
         preferred_revnum = symbol_fill.get_best_revnum(node_contents,
                                                        preferred_revnum)
+
+        # TODO if old preferred_revnum == new preferred_revnum, we
+        # don't have to copy, do we?
 
         # TODO call self.copy_path (which calls the delegate)
         # TODO Then manage deletes (prunes) (which calls the delegate)
         print "TON: COPYING ", src_path, preferred_revnum
         print "TON:         to", dest_path
 
-      self._copy_paths_in_fill_tree(symbol_fill, node_contents,
-                                    name, src_path, preferred_revnum)
+      self._fill(symbol_fill, node_contents, name, src_path, preferred_revnum)
 
   ###TODO This *might* be a bit pricey to do.  Look here for perf
   ###problems.
@@ -4556,15 +4602,23 @@ class SVNRepositoryMirror:
     self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit.revnum)
     if svn_commit.symbolic_name:
+      print "COM: Filling name", svn_commit.symbolic_name, "in SVNCommit"
       self.fill_symbolic_name(svn_commit.symbolic_name)
-        
-    else: # This will actually commit CVSRevisions
+    elif svn_commit.symbolic_name:
+      print "COM: Default branch copies for branch",
+      svn_commit.default_branch, "in SVNCommit", svn_commit.revnum
+      pass ###TODO: handle default_branch copies/deletes
+    else: # This actually commits CVSRevisions
+      print "COM: Doing SVNCommit"
       for cvs_rev in svn_commit.cvs_revs:
         if cvs_rev.op == OP_ADD:
+          print "    COM: Doing add"
           self.add_path(cvs_rev)
         elif cvs_rev.op == OP_CHANGE:
+          print "    COM: Doing change"
           self.change_path(cvs_rev)
         else: # Must be a delete
+          print "    COM: Doing delete"
           ###TODO FIXME pass prune
           path = self.delete_path(cvs_rev)
           self.delegate.delete_path(cvs_rev)
