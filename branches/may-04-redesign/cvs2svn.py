@@ -3877,6 +3877,147 @@ class SVNRepositoryMirror:
     root_key = self.revs_db[self._youngest_key()]
     self._stabilize_directory(root_key)
 
+  def delete_path(self, cvs_rev, prune=None):
+    """Delete PATH from the tree.  PATH may not have a leading slash.
+
+    Return path_deleted where path_deleted is the path actually
+    deleted or None if PATH did not exist.  
+
+    If PRUNE is not None, then delete the highest possible directory,
+    which means the returned path may differ from PATH.  In other
+    words, if PATH was the last entry in its parent, then delete
+    PATH's parent, unless it too is the last entry in *its* parent, in
+    which case delete that parent, and so on up the chain, until a
+    directory is encountered that has an entry which is not a member
+    of the parent stack of the original target.
+
+    NOTE: This function does *not* allow you delete top-level entries
+    (like /trunk, /branches, /tags), not does it prune upwards beyond
+    those entries.
+
+    PRUNE is like the -P option to 'cvs checkout'."""
+
+    path = cvs_rev.svn_path
+    components = string.split(path, '/')
+    path_so_far = None
+
+    parent_key = self.revs_db[str(self.youngest)]
+    parent = self.nodes_db[parent_key]
+
+    # As we walk down to find the dest, we remember each parent
+    # directory's name and db key, in reverse order: push each new key
+    # onto the front of the list, so that by the time we reach the
+    # destination node, the zeroth item in the list is the parent of
+    # that destination.
+    #
+    # Then if we actually do the deletion, we walk the list from left
+    # to right, replacing as appropriate.
+    #
+    # The root directory has name None.
+    parent_chain = [ ]
+    parent_chain.insert(0, (None, parent_key))
+
+    def is_prunable(dir):
+      """Return true if DIR, a dictionary representing a directory,
+      has just zero or one non-special entry, else return false.
+      (In a pure world, we'd just ask len(DIR) > 1; it's only
+      because the directory might have mutable flags and other special
+      entries that we need this function at all.)"""
+      num_items = len(dir)
+      if num_items > 3:
+        return None
+      if num_items == 3 or num_items == 2:
+        real_entries = 0
+        for key in dir.keys():
+          if not key[0] == '/': real_entries = real_entries + 1
+        if real_entries > 1:
+          return None
+        else:
+          return 1
+      else:
+        return 1
+
+    # We never prune our top-level directories (/trunk, /tags, /branches)
+    if len(components) < 2:
+      return None
+    
+    for component in components[:-1]:
+      if path_so_far:
+        path_so_far = path_so_far + '/' + component
+      else:
+        path_so_far = component
+
+      # If we can't reach the dest, then we don't need to do anything.
+      if not parent.has_key(component):
+        return None
+
+      # Otherwise continue downward, dropping breadcrumbs.
+      this_entry_key = parent[component]
+      this_entry_val = self.nodes_db[this_entry_key]
+      parent_key = this_entry_key
+      parent = this_entry_val
+      parent_chain.insert(0, (component, parent_key))
+
+    # If the target is not present in its parent, then we're done.
+    last_component = components[-1]
+    if not parent.has_key(last_component):
+      return None
+
+    # The target is present, so remove it and bubble up, making a new
+    # mutable path and/or pruning as necessary.
+    pruned_count = 0
+    prev_entry_name = last_component
+    new_key = None
+    for parent_item in parent_chain:
+      pkey = parent_item[1]
+      pval = self.nodes_db[pkey]
+
+      # If we're pruning at all, and we're looking at a prunable thing
+      # (and that thing isn't one of our top-level directories --
+      # trunk, tags, branches) ...
+      if prune and (new_key is None) and is_prunable(pval) \
+         and parent_item != parent_chain[-2]:
+        # ... then up our count of pruned items, and do nothing more.
+        # All the action takes place when we hit a non-prunable
+        # parent.
+        pruned_count = pruned_count + 1
+      else:
+        # Else, we've hit a non-prunable, or aren't pruning, so bubble
+        # up the new gospel.
+        pval[self.mutable_flag] = 1
+        if new_key is None:
+          del pval[prev_entry_name]
+        else:
+          pval[prev_entry_name] = new_key
+        new_key = gen_key()
+
+      prev_entry_name = parent_item[0]
+      if new_key:
+        self.nodes_db[new_key] = pval
+
+    if new_key is None:
+      new_key = gen_key()
+      self.nodes_db[new_key] = self.empty_mutable_thang
+
+    # Install the new root entry.
+    self.revs_db[str(self.youngest)] = new_key
+
+    # Sanity check -- this should be a "can't happen".
+    if pruned_count > len(components):
+      sys.stderr.write("%s: deleting '%s' tried to prune %d components.\n"
+                       % (error_prefix, path, pruned_count))
+      sys.exit(1)
+
+    if pruned_count:
+      if pruned_count == len(components):
+        # We never prune away the root directory, so back up one component.
+        pruned_count = pruned_count - 1
+      retpath = string.join(components[:0 - pruned_count], '/')
+    else:
+      retpath = path
+
+    return retpath
+
   def change_path(self, cvs_rev):
     """Register a change in self.youngest for the CVS_REV's svn_path
     in the repository mirror."""
@@ -3928,9 +4069,6 @@ class SVNRepositoryMirror:
       #else:
         #print "ZOO: OLD NODE IN rev", self.youngest
 
-      ###TODO Shouldn't something like this be in delete_path?
-      #elif mutable == 2:
-      #  in_pruneable_subtree = 1
       parent_node_key = this_entry_key
       parent_node_contents = this_entry_contents
 
@@ -3957,15 +4095,11 @@ class SVNRepositoryMirror:
       self.revs_db[self._youngest_key()] = parent_key
     return parent_key, parent
 
-
-
-
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, changing the repository, and informing
     the delegate (if any)."""
 
-    ###TODO Move delegate action methods to the end of our action methods.
     self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit.revnum)
     if svn_commit.symbolic_name:
@@ -3979,13 +4113,16 @@ class SVNRepositoryMirror:
         elif cvs_rev.op == OP_CHANGE:
           self.change_path(cvs_rev)
         else: # Must be a delete
+          ###TODO FIXME pass prune
+          self.delete_path(cvs_rev)
           self.delegate.delete_path(cvs_rev)
-
 
   def close(self):
     self.delegate.finish()
     self.revs_db = None
     self.nodes_db = None
+
+
 
 class SVNRepositoryDelegate:
   """Abstract superclass for any delegate to SVNRepository.  If you
