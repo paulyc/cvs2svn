@@ -272,9 +272,6 @@ class StringWriter:
 
 class CVSRevision:
   def __init__(self, ctx, *args):
-    self._svn_path = None
-    self._svn_trunk_path = None
-    self._cvs_path = None
     self._ctx = ctx
     if len(args) == 10:
       self.timestamp, self.digest, self.op, self.prev_rev, self.rev, \
@@ -303,33 +300,15 @@ class CVSRevision:
     else:
       raise TypeError, 'CVSRevision() takes 2 or 10 arguments (%d given)' % \
           (len(args) + 1)
+    self.cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
+    self.svn_path = make_path(self._ctx, self.cvs_path, self.branch_name)
+    self.svn_trunk_path = make_path(self._ctx, self.cvs_path)
 
   # The 'primary key' of a CVS Revision is the revision number + the
   # filename.  To provide a unique key (say, for a dict), we just glom
   # them together in a string
   def unique_key(self):
     return self.rev + "/" + self.fname
-
-  # Return the subversion path of this revision, composed from the 
-  # branch this revision is on (perhaps trunk), and its cvs path.
-  def svn_path(self):
-    if not self._svn_path:
-      self._svn_path = make_path(self._ctx, self.cvs_path(), self.branch_name)
-    return self._svn_path
-
-  # Return the subversion path of this revision, as if it was on the
-  # trunk. Used to know where to replicate default branch revisions to.
-  def svn_trunk_path(self):
-    if not self._svn_trunk_path:
-      self._svn_trunk_path = make_path(self._ctx, self.cvs_path())
-    return self._svn_trunk_path
-
-  # Returns the path to self.fname minus the path to the CVS
-  # repository itself.
-  def cvs_path(self):
-    if not self._cvs_path:
-      self._cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
-    return self._cvs_path
 
   def write_revs_line(self, output):
     if not self.prev_rev:
@@ -354,20 +333,40 @@ class CVSRevision:
       return 1
     if name in self.branches:
       return 1
+###TODO WHY ISN'T REMOVING THIS CORRECT??????????????
     if self.branch_name == name:
       return 1
     return 0
 
+  def is_trunk_vendor_revision(self):
+    """Return 1 if SELF.C_REV of SELF.CVS_PATH is a trunk (i.e., head)
+    vendor revision according to DEFAULT_BRANCHES_DB, else return
+    None."""
+    if self._ctx.default_branches_db.has_key(self.cvs_path):
+      val = self._ctx.default_branches_db[self.cvs_path]
+      val_last_dot = val.rindex(".")
+      received_last_dot = self.rev.rindex(".")
+      default_branch = val[:val_last_dot]
+      received_branch = self.rev[:received_last_dot]
+      default_rev_component = int(val[val_last_dot + 1:])
+      received_rev_component = int(self.rev[received_last_dot + 1:])
+      if (default_branch == received_branch
+          and received_rev_component <= default_rev_component):
+        return 1
+    # else
+    return None
+
 
 class CollectData(rcsparse.Sink):
-  def __init__(self, cvsroot, log_fname_base, default_branches_db,
-               forced_branches, forced_tags):
-    self.cvsroot = cvsroot
+  def __init__(self, log_fname_base, ctx):
+    self._ctx = ctx
+    ### TODO self.ctx.* can be accessed through self._ctx.
+    self.cvsroot = ctx.cvsroot
     self.revs = open(log_fname_base + REVS_SUFFIX, 'w')
     Cleanup().register(log_fname_base + REVS_SUFFIX, pass2)
     self.resync = open(log_fname_base + RESYNC_SUFFIX, 'w')
     Cleanup().register(log_fname_base + RESYNC_SUFFIX, pass2)
-    self.default_branches_db = default_branches_db
+    self.default_branches_db = ctx.default_branches_db
     self.metadata_db = Database(METADATA_DB, 'n')
     Cleanup().register(METADATA_DB, pass8)
     self.fatal_errors = []
@@ -384,10 +383,10 @@ class CollectData(rcsparse.Sink):
 
     # A list of labels that are to be treated as branches even if they
     # are defined as tags in CVS.
-    self.forced_branches = forced_branches
+    self.forced_branches = ctx.forced_branches
     # A list of labels that are to be treated as tags even if they are
     # defined as branches in CVS.
-    self.forced_tags = forced_tags
+    self.forced_tags = ctx.forced_tags
     # A list of branches that may not contain any commits because
     # it is forced to be treated as a tag by the user.
     self.forced_tag_branches = { }
@@ -699,7 +698,7 @@ class CollectData(rcsparse.Sink):
     else:
       deltatext_code = DELTATEXT_EMPTY
 
-    c_rev = CVSRevision(None, timestamp, digest, op,
+    c_rev = CVSRevision(self._ctx, timestamp, digest, op,
                         self.rcs_prev[revision], revision,
                         deltatext_code, self.fname,
                         self.rev_to_branch_name(revision),
@@ -1561,7 +1560,7 @@ class Dumper:
 
     # Set MIME type, and maybe eol-style for text files.
     if ctx.mime_mapper:
-      mime_type = ctx.mime_mapper.get_type_from_filename(c_rev.cvs_path())
+      mime_type = ctx.mime_mapper.get_type_from_filename(c_rev.cvs_path)
       if mime_type:
         prop_contents = prop_contents + ('K 13\nsvn:mime-type\nV %d\n%s\n' % \
             (len(mime_type), mime_type))
@@ -1587,7 +1586,7 @@ class Dumper:
     # to determine if this path exists in head yet.  But that wouldn't
     # be perfectly reliable, both because of 'cvs commit -r', and also
     # the possibility of file resurrection.
-    change = self.repos_mirror.change_path(c_rev.svn_path(), c_rev.tags,
+    change = self.repos_mirror.change_path(c_rev.svn_path, c_rev.tags,
                                            c_rev.branches, self.add_dir)
 
     if change.op == OP_ADD:
@@ -1600,7 +1599,7 @@ class Dumper:
                         'Node-action: %s\n'
                         'Prop-content-length: %d\n'
                         'Text-content-length: '
-                        % (self.utf8_path(c_rev.svn_path()),
+                        % (self.utf8_path(c_rev.svn_path),
                            action, props_len))
 
     pos = self.dumpfile.tell()
@@ -2400,25 +2399,6 @@ class SymbolicNameTracker:
   #  for key in self.db.db.keys():
   #    print key, self.db[key]
 
-        
-def is_trunk_vendor_revision(default_branches_db, cvs_path, cvs_rev):
-  """Return 1 if CVS_REV of CVS_PATH is a trunk (i.e., head) vendor
-  revision according to DEFAULT_BRANCHES_DB, else return None."""
-  if default_branches_db.has_key(cvs_path):
-    val = default_branches_db[cvs_path]
-    val_last_dot = val.rindex(".")
-    received_last_dot = cvs_rev.rindex(".")
-    default_branch = val[:val_last_dot]
-    received_branch = cvs_rev[:received_last_dot]
-    default_rev_component = int(val[val_last_dot + 1:])
-    received_rev_component = int(cvs_rev[received_last_dot + 1:])
-    if (default_branch == received_branch
-        and received_rev_component <= default_rev_component):
-      return 1
-  # else
-  return None
-
-
 ### TODO add digest to constructor, then use it in __cmp__
 class Commit:
   def __init__(self, author, log):
@@ -2566,7 +2546,7 @@ class Commit:
         ### maintain a database mirroring just the head tree, but
         ### keyed on full paths, to reduce the check to a quick
         ### constant time query.
-        if not dumper.probe_path(c_rev.svn_path()):
+        if not dumper.probe_path(c_rev.svn_path):
           sym_tracker.fill_branch(dumper, ctx, c_rev.branch_name, [1, date])
 
     for c_rev in self.deletes:
@@ -2579,16 +2559,16 @@ class Commit:
         ### maintain a database mirroring just the head tree, but
         ### keyed on full paths, to reduce the check to a quick
         ### constant time query.
-        if not dumper.probe_path(c_rev.svn_path()):
+        if not dumper.probe_path(c_rev.svn_path):
           sym_tracker.fill_branch(dumper, ctx, c_rev.branch_name, [1, date])
 
     # Now that any branches we need exist, we can do the commits.
     for c_rev in self.changes:
       if svn_rev == SVN_INVALID_REVNUM:
         svn_rev = dumper.start_revision(props)
-      sym_tracker.enroot_tags(c_rev.svn_path(), svn_rev, c_rev.tags)
-      sym_tracker.enroot_branches(c_rev.svn_path(), svn_rev, c_rev.branches)
-      print "    adding or changing %s : '%s'" % (c_rev.rev, c_rev.svn_path())
+      sym_tracker.enroot_tags(c_rev.svn_path, svn_rev, c_rev.tags)
+      sym_tracker.enroot_branches(c_rev.svn_path, svn_rev, c_rev.branches)
+      print "    adding or changing %s : '%s'" % (c_rev.rev, c_rev.svn_path)
 
       # Only make a change if we need to.  When 1.1.1.1 has an empty
       # deltatext, the explanation is almost always that we're looking
@@ -2602,19 +2582,18 @@ class Commit:
       # conditions below are strict enough.)
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
               and (c_rev.rev == "1.1.1.1")
-              and dumper.probe_path(c_rev.svn_path())):
+              and dumper.probe_path(c_rev.svn_path)):
         closed_tags, closed_branches = \
                      dumper.add_or_change_path(ctx, c_rev)
-        if is_trunk_vendor_revision(ctx.default_branches_db,
-                                    c_rev.cvs_path(), c_rev.rev):
+        if c_rev.is_trunk_vendor_revision():
           default_branch_copies.append(c_rev)
-        sym_tracker.close_tags(c_rev.svn_path(), svn_rev, closed_tags)
-        sym_tracker.close_branches(c_rev.svn_path(), svn_rev,
+        sym_tracker.close_tags(c_rev.svn_path, svn_rev, closed_tags)
+        sym_tracker.close_branches(c_rev.svn_path, svn_rev,
                                    closed_branches)
 
     for c_rev in self.deletes:
       # compute a repository path, dropping the ,v from the file name
-      print "    deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path())
+      print "    deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path)
       if svn_rev == SVN_INVALID_REVNUM:
         svn_rev = dumper.start_revision(props)
       # Can this even happen on a deleted path? Yes, it can, e.g., a
@@ -2622,8 +2601,8 @@ class Commit:
       # avoid a "No origin records" error. And tags? Need to enroot so
       # that a tag set only on deleted revisions is still created in 
       # the subversion repository.
-      sym_tracker.enroot_tags(c_rev.svn_path(), svn_rev, c_rev.tags)
-      sym_tracker.enroot_branches(c_rev.svn_path(), svn_rev, c_rev.branches)
+      sym_tracker.enroot_tags(c_rev.svn_path, svn_rev, c_rev.tags)
+      sym_tracker.enroot_branches(c_rev.svn_path, svn_rev, c_rev.branches)
       ### FIXME: this will return path_deleted == None if no path
       ### was deleted.  But we'll already have started the revision
       ### by then, so it's a bit late to use the knowledge!  Need to
@@ -2635,12 +2614,11 @@ class Commit:
       ### Right now what happens is we get an empty revision
       ### (assuming nothing else happened in this revision).
       path_deleted, closed_tags, closed_branches = \
-                    dumper.delete_path(ctx, c_rev, c_rev.svn_path())
-      if is_trunk_vendor_revision(ctx.default_branches_db,
-                                  c_rev.cvs_path(), c_rev.rev):
+                    dumper.delete_path(ctx, c_rev, c_rev.svn_path)
+      if c_rev.is_trunk_vendor_revision():
         default_branch_deletes.append(c_rev)
-      sym_tracker.close_tags(c_rev.svn_path(), svn_rev, closed_tags)
-      sym_tracker.close_branches(c_rev.svn_path(), svn_rev, closed_branches)
+      sym_tracker.close_tags(c_rev.svn_path, svn_rev, closed_tags)
+      sym_tracker.close_branches(c_rev.svn_path, svn_rev, closed_branches)
 
     if svn_rev == SVN_INVALID_REVNUM:
       print '    no new revision created, as nothing to do'
@@ -2658,25 +2636,25 @@ class Commit:
         svn_rev = dumper.start_revision(props)
 
         for c_rev in default_branch_copies:
-          if (dumper.probe_path(c_rev.svn_trunk_path())):
+          if (dumper.probe_path(c_rev.svn_trunk_path)):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path())
-            sym_tracker.close_tags(c_rev.svn_trunk_path(),
+                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path)
+            sym_tracker.close_tags(c_rev.svn_trunk_path,
                                    svn_rev, closed_tags)
-            sym_tracker.close_branches(c_rev.svn_trunk_path(),
+            sym_tracker.close_branches(c_rev.svn_trunk_path,
                                        svn_rev, closed_branches)
-          dumper.copy_path(c_rev.svn_path(), previous_rev,
-                           c_rev.svn_trunk_path())
+          dumper.copy_path(c_rev.svn_path, previous_rev,
+                           c_rev.svn_trunk_path)
 
         for c_rev in default_branch_deletes:
           # Ignore the branch -- we don't need to know the default
           # branch, we already know we're deleting this from trunk.
-          if (dumper.probe_path(c_rev.svn_trunk_path())):
+          if (dumper.probe_path(c_rev.svn_trunk_path)):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path())
-            sym_tracker.close_tags(c_rev.svn_trunk_path(), svn_rev,
+                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path)
+            sym_tracker.close_tags(c_rev.svn_trunk_path, svn_rev,
                                    closed_tags)
-            sym_tracker.close_branches(c_rev.svn_trunk_path(),
+            sym_tracker.close_branches(c_rev.svn_trunk_path,
                                        svn_rev, closed_branches)
 
 
@@ -2746,10 +2724,10 @@ class SymbolingsLogger:
 
   def clear_prev_rev(self, c_rev):
     # Remove the openings that we just closed
-    del self.openings[c_rev.svn_path()][c_rev.prev_rev]
+    del self.openings[c_rev.svn_path][c_rev.prev_rev]
     # And drop the key entirely if we just removed the last bit of it.
-    if len(self.openings[c_rev.svn_path()]) == 0:
-      del self.openings[c_rev.svn_path()]
+    if len(self.openings[c_rev.svn_path]) == 0:
+      del self.openings[c_rev.svn_path]
 
   def check_revision(self, c_rev):
     """Examine a CVS Revision to see if it either opens or closes a
@@ -2757,17 +2735,17 @@ class SymbolingsLogger:
     ## TODO check symbolic_names
     if ((len(c_rev.tags) > 0)          # There is branch/tag 
         or (len(c_rev.branches) > 0)): # OPENING activity here
-      if not c_rev.svn_path() in self.openings: # Create a new entry
-        self.openings[c_rev.svn_path()] = { c_rev.rev: c_rev.symbolic_names()}
+      if not c_rev.svn_path in self.openings: # Create a new entry
+        self.openings[c_rev.svn_path] = { c_rev.rev: c_rev.symbolic_names()}
       else: # Add to the existing one
-        self.openings[c_rev.svn_path()][c_rev.rev] = c_rev.symbolic_names()
+        self.openings[c_rev.svn_path][c_rev.rev] = c_rev.symbolic_names()
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev)
       
-    if ((c_rev.svn_path() in self.openings) # This c_rev is a closing
+    if ((c_rev.svn_path in self.openings) # This c_rev is a closing
         and c_rev.prev_rev                  # for a previous rev.
-        and (self.openings[c_rev.svn_path()].has_key(c_rev.prev_rev))): 
+        and (self.openings[c_rev.svn_path].has_key(c_rev.prev_rev))): 
       self.log_names_for_rev(
-        self.openings[c_rev.svn_path()][c_rev.prev_rev], c_rev)
+        self.openings[c_rev.svn_path][c_rev.prev_rev], c_rev)
       self.clear_prev_rev(c_rev)
 
 
@@ -2791,8 +2769,9 @@ class LastSymbolicNameDatabase(Database):
       self.symbols[tag] = c_rev.unique_key()
     for branch in c_rev.branches:
       self.symbols[branch] = c_rev.unique_key()
-    if c_rev.branch_name:
-      self.symbols[c_rev.branch_name] = c_rev.unique_key()
+###TODO Make sure removing this is correct
+#   if c_rev.branch_name:
+#      self.symbols[c_rev.branch_name] = c_rev.unique_key()
 
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that
@@ -2845,8 +2824,7 @@ def pass1(ctx):
   ###TODO create the CollectData object in visit_file and pass a
   ###different variable along via os.path.walk for accumulating
   ###errors.
-  cd = CollectData(ctx.cvsroot, DATAFILE, ctx.default_branches_db,
-                   ctx.forced_branches, ctx.forced_tags)
+  cd = CollectData(DATAFILE, ctx)
   p = rcsparse.Parser()
   stats = [ 0 ]
   os.path.walk(ctx.cvsroot, visit_file, (cd, p, stats))
@@ -2952,7 +2930,7 @@ def pass6(ctx):
 def pass7(ctx):
   pass
 
-
+###TODO move this stuff out of here! pass8 should be here.
 class RepositoryHead(Singleton):
   # We're a singleton, so we use init, not __init__
   def init(self):
@@ -3016,6 +2994,41 @@ class CVSCommit:
     # outward as appropriate.
     self.t_min = 1L<<32
     self.t_max = 0
+
+    # State for handling default branches.
+    # 
+    # Here is a tempting, but ultimately nugatory, bit of logic, which
+    # I share with you so you may appreciate the less attractive, but
+    # refreshingly non-nugatory, logic which follows it:
+    #
+    # If some of the commits in this txn happened on a non-trunk
+    # default branch, then those files will have to be copied into
+    # trunk manually after being changed on the branch (because the
+    # RCS "default branch" appears as head, i.e., trunk, in practice).
+    # As long as those copies don't overwrite any trunk paths that
+    # were also changed in this commit, then we can do the copies in
+    # the same revision, because they won't cover changes that don't
+    # appear anywhere/anywhen else.  However, if some of the trunk dst
+    # paths *did* change in this commit, then immediately copying the
+    # branch changes would lose those trunk mods forever.  So in this
+    # case, we need to do at least that copy in its own revision.  And
+    # for simplicity's sake, if we're creating the new revision for
+    # even one file, then we just do all such copies together in the
+    # new revision.
+    #
+    # Doesn't that sound nice?
+    #
+    # Unfortunately, Subversion doesn't support copies with sources
+    # in the current txn.  All copies must be based in committed
+    # revisions.  Therefore, we generate the above-described new
+    # revision unconditionally.
+    #
+    # Each of these is a list of c_revs, and a c_rev is appended for
+    # each default branch commit that will need to be copied to trunk
+    # (or deleted from trunk) in the generated revision following the
+    # "regular" revision.
+    self.default_branch_copies = [ ]
+    self.default_branch_deletes = [ ]
 
   def __cmp__(self, other):
     # Commits should be sorted by t_max.  If both self and other have
@@ -3084,82 +3097,59 @@ class CVSCommit:
                 'svn:date' : date }
     return props
 
-  def process_revisions(self, ctx):
-    seconds = self.t_max - self.t_min
-    print 'CVS Revision grouping: %s, over %d seconds' % (time.ctime(self.t_min), seconds)
-    if seconds > COMMIT_THRESHOLD:
-      print '%s: grouping spans more than %d seconds' \
-            % (warning_prefix, COMMIT_THRESHOLD)
 
-    # State for handling default branches.
-    # 
-    # Here is a tempting, but ultimately nugatory, bit of logic, which
-    # I share with you so you may appreciate the less attractive, but
-    # refreshingly non-nugatory, logic which follows it:
-    #
-    # If some of the commits in this txn happened on a non-trunk
-    # default branch, then those files will have to be copied into
-    # trunk manually after being changed on the branch (because the
-    # RCS "default branch" appears as head, i.e., trunk, in practice).
-    # As long as those copies don't overwrite any trunk paths that
-    # were also changed in this commit, then we can do the copies in
-    # the same revision, because they won't cover changes that don't
-    # appear anywhere/anywhen else.  However, if some of the trunk dst
-    # paths *did* change in this commit, then immediately copying the
-    # branch changes would lose those trunk mods forever.  So in this
-    # case, we need to do at least that copy in its own revision.  And
-    # for simplicity's sake, if we're creating the new revision for
-    # even one file, then we just do all such copies together in the
-    # new revision.
-    #
-    # Doesn't that sound nice?
-    #
-    # Unfortunately, Subversion doesn't support copies with sources
-    # in the current txn.  All copies must be based in committed
-    # revisions.  Therefore, we generate the above-described new
-    # revision unconditionally.
-    #
-    # Each of these is a list of tuples.  Each tuple is of the form:
-    #
-    #   (cvs_path, branch_name, tags_rooted_here, branches_rooted_here)
-    #
-    # and a tuple is created for each default branch commit that will
-    # need to be copied to trunk (or deleted from trunk) in the
-    # generated revision following the "regular" revision.
-    default_branch_copies  = [ ]
-    default_branch_deletes = [ ]
+  def _default_branch_props(self):
+    msg = 'This commit was generated by cvs2svn to compensate for '     \
+          'changes in r%d,\n'                                           \
+          'which included commits to RCS files with non-trunk default ' \
+          'branches.\n' % SVNRevNum().revnum
+    props = { 'svn:author' : 'cvs2svn',
+              'svn:log' : msg,
+              'svn:date' : format_date(self.t_max) }
 
-    props = self._get_properties(c_rev)
+  def _pre_commit(self):    
+    """Generates any SVNCommits that must exist before the main
+    commit."""
 
-    # If any of the changes we are about to do are on branches, we need to
-    # check and maybe fill them (in their own revisions) *before* we start
-    # then data revision. So we have to iterate over changes and deletes twice.
     for c_rev in self.changes:
-      if c_rev.branch_name:
+      # If a commit is on a branch, we must ensure that the branch
+      # path being committed exists (in HEAD of the Subversion
+      # repository).  If it doesn't exist, we will need to fill the
+      # branch.  After the fill, the path on which we're committing
+      # will exist.
+      if c_rev.branch_name: ###TODO collapse if clauses
+        if not RepositoryHead().has_path(c_rev.svn_path):
+          ### TODO: Possible correctness issue here.  If we have a
+          # branch with a single file on it, and that file was deleted
+          # in the previous CVS revision, and resurrected in this
+          # revision, we may not have anything to fill here, and thus,
+          # given the current state of the code, we're generating an
+          # empty SVN commit.  This is likely a rare edge case, and
+          # generating the empty commit isn't the end of the world,
+          # but hey, we're all idealists here, aren't we?
+          SVNCommit().flush() # Create an empty commit
+          RepositoryHead().add_path(c_rev.svn_path)
 
-        if not RepositoryHead().has_path(c_rev.svn_path()):
-          RepositoryHead().add_path(c_rev.svn_path())
-          ### TODO ??? talk to karl about this
-          ### make a Subversion commit?
-
+    ###TODO Make sure that changes and deletes HAVE to be separate
+    ### lists
     for c_rev in self.deletes:
-      # compute a repository path, dropping the ,v from the file name
       if c_rev.branch_name:
+        if not RepositoryHead().has_path(c_rev.svn_path):
+          SVNCommit().flush() # Create an empty commit
+          #RepositoryHead().remove_path(c_rev.svn_path)
+        else:
+          RepositoryHead().remove_path(c_rev.svn_path)
 
-        if not RepositoryHead().has_path(c_rev.svn_path()):
-          RepositoryHead().remove_path(c_rev.svn_path())
-          ### TODO ??? talk to karl about this
-          ### make a Subversion commit?
 
-    # Tells whether we actually wrote anything to the dumpfile.
-    svn_rev = SVN_INVALID_REVNUM
-    # Now that any branches we need exist, we can do the commits.
+  def _commit(self):
+    """Generates the primary SVNCommit that corresponds the this
+    CVSCommit."""
+    svn_commit = SVNCommit()
+
     for c_rev in self.changes:
-      if svn_rev == SVN_INVALID_REVNUM:
-        svn_rev = dumper.start_revision(props)
-      sym_tracker.enroot_tags(c_rev.svn_path(), svn_rev, c_rev.tags)
-      sym_tracker.enroot_branches(c_rev.svn_path(), svn_rev, c_rev.branches)
-      print "    adding or changing %s : '%s'" % (c_rev.rev, c_rev.svn_path())
+      svn_commit.add_revision(c_rev)
+      print ("    adding or changing %s : '%s'"
+             % (c_rev.rev, c_rev.svn_path))
 
       # Only make a change if we need to.  When 1.1.1.1 has an empty
       # deltatext, the explanation is almost always that we're looking
@@ -3173,106 +3163,93 @@ class CVSCommit:
       # conditions below are strict enough.)
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
               and (c_rev.rev == "1.1.1.1")
-              and dumper.probe_path(c_rev.svn_path())):
-        closed_tags, closed_branches = \
-                     dumper.add_or_change_path(ctx, c_rev)
-        if is_trunk_vendor_revision(ctx.default_branches_db,
-                                    c_rev.cvs_path(), c_rev.rev):
-          default_branch_copies.append(c_rev)
-        sym_tracker.close_tags(c_rev.svn_path(), svn_rev, closed_tags)
-        sym_tracker.close_branches(c_rev.svn_path(), svn_rev,
-                                   closed_branches)
+              and RepositoryHead().has_path(c_rev.svn_path)):
+        if c_rev.is_trunk_vendor_revision():
+          self.default_branch_copies.append(c_rev)
+
 
     for c_rev in self.deletes:
+      svn_commit.add_revision(c_rev)
       # compute a repository path, dropping the ,v from the file name
-      print "    deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path())
-      if svn_rev == SVN_INVALID_REVNUM:
-        svn_rev = dumper.start_revision(props)
-      # Can this even happen on a deleted path? Yes, it can, e.g., a
-      # dead branchpoint revision. In which case, we need to enroot to
-      # avoid a "No origin records" error. And tags? Need to enroot so
-      # that a tag set only on deleted revisions is still created in 
-      # the subversion repository.
-      sym_tracker.enroot_tags(c_rev.svn_path(), svn_rev, c_rev.tags)
-      sym_tracker.enroot_branches(c_rev.svn_path(), svn_rev, c_rev.branches)
-      ### FIXME: this will return path_deleted == None if no path
-      ### was deleted.  But we'll already have started the revision
-      ### by then, so it's a bit late to use the knowledge!  Need to
-      ### reorganize things so that starting the revision is a
-      ### callback with its own internal conditional, so anyone can
-      ### just invoke when they know they're really about to do
-      ### something.
-      ###
-      ### Right now what happens is we get an empty revision
-      ### (assuming nothing else happened in this revision).
-      path_deleted, closed_tags, closed_branches = \
-                    dumper.delete_path(ctx, c_rev, c_rev.svn_path())
-      if is_trunk_vendor_revision(ctx.default_branches_db,
-                                  c_rev.cvs_path(), c_rev.rev):
-        default_branch_deletes.append(c_rev)
-      sym_tracker.close_tags(c_rev.svn_path(), svn_rev, closed_tags)
-      sym_tracker.close_branches(c_rev.svn_path(), svn_rev, closed_branches)
+      print "    deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path)
 
-    if svn_rev == SVN_INVALID_REVNUM:
-      print '    no new revision created, as nothing to do'
-    else:
-      print '    new revision:', svn_rev
-      if default_branch_copies or default_branch_deletes:
-        previous_rev = svn_rev
-        msg = 'This commit was generated by cvs2svn to compensate for '     \
-              'changes in r%d,\n'                                           \
-              'which included commits to RCS files with non-trunk default ' \
-              'branches.\n' % previous_rev
-        props = { 'svn:author' : 'cvs2svn',
-                  'svn:log' : msg,
-                  'svn:date' : date }
-        svn_rev = dumper.start_revision(props)
+      if c_rev.is_trunk_vendor_revision():
+        self.default_branch_deletes.append(c_rev)
+    svn_commit.flush()
 
-        for c_rev in default_branch_copies:
-          if (dumper.probe_path(c_rev.svn_trunk_path())):
-            ign, closed_tags, closed_branches = \
-                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path())
-            sym_tracker.close_tags(c_rev.svn_trunk_path(),
-                                   svn_rev, closed_tags)
-            sym_tracker.close_branches(c_rev.svn_trunk_path(),
-                                       svn_rev, closed_branches)
-          dumper.copy_path(c_rev.svn_path(), previous_rev,
-                           c_rev.svn_trunk_path())
+  def _post_commit(self):
 
-        for c_rev in default_branch_deletes:
-          # Ignore the branch -- we don't need to know the default
-          # branch, we already know we're deleting this from trunk.
-          if (dumper.probe_path(c_rev.svn_trunk_path())):
-            ign, closed_tags, closed_branches = \
-                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path())
-            sym_tracker.close_tags(c_rev.svn_trunk_path(), svn_rev,
-                                   closed_tags)
-            sym_tracker.close_branches(c_rev.svn_trunk_path(),
-                                       svn_rev, closed_branches)
+    """Generates any SVNCommits that we can perform now that _commit
+    has happened.  That is,
+    ###TODO This actually needs to happen somewhere else in the code.
+    1) Handle non-trunk default branches.  Sometimes an RCS file has a
+       non-trunk default branch, so a commit on that default branch
+       would be visible in a default CVS checkout of HEAD.  If we
+       don't copy that commit over the Subversion's trunk, then there
+       will be no Subversion tree which corresponds to that CVS
+       checkout.  Of course, in order to copy the path over, we may
+       first need to delete the existing trunk there.
+       """
+    
+    svn_commit = None
+    if self.default_branch_copies or self.default_branch_deletes:
+      svn_commit = SVNCommit()
+      svn_commit.flush()
+      print '    new revision:', svn_commit.revnum
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  def process_revisions(self, ctx):
+    seconds = self.t_max - self.t_min
+    print ('CVS Revision grouping: %s, over %d seconds'
+           % (time.ctime(self.t_min), seconds))
+    if seconds > COMMIT_THRESHOLD:
+      print ('%s: grouping spans more than %d seconds'
+             % (warning_prefix, COMMIT_THRESHOLD))
+
+    self._pre_commit()
+    self._commit()
+    self._post_commit()
 
 
 class SVNCommit:
   def __init__(self):
-    pass
+    self.c_revs = []
+    self.revnum = SVNRevNum().get_next_revnum()
+    print "SVNREV:", self.revnum
 
   def add_revision(self, c_rev):
-    pass
+    self.c_revs.append(c_rev)
 
-  def commit(self):
+  def flush(self):
+    ###TODO Write out svncommit -> cvsrevision mapping
+    ###TODO Write out cvsrevision -> svncommit mapping
     pass
 
 
 class SVNRevNum(Singleton):
   def init(self):
-    self._youngest = 0
+    self.revnum = 0
     
-  def increment(self):
-    self._youngest = self._youngest + 1
-    return self._youngest
-
-  def current_rev(self):
-    return self._youngest
+  def get_next_revnum(self):
+    self.revnum = self.revnum + 1
+    return self.revnum
 
 
 class CVSRevisionAggregator:
@@ -3282,18 +3259,21 @@ class CVSRevisionAggregator:
     self._ctx = ctx
     self.metadata_db = Database(METADATA_DB, 'r')
     ###TODO Cleanup().register()
-    self.symbol_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
+    ###TODO WARNING: What happens when we call cleanup.register
+    ###multiple times on the same file?????????????
+    self.last_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'r')
     ###TODO Cleanup().register()
-    self.groupings = { }
+    self.cvs_commits = {}
+    self.pending_symbols = {}
 
   def process_revision(self, c_rev):
     # Each time we read a new line, we scan the commits we've
     # accumulated so far to see if any are ready for processing now.
     ready_queue = [ ]
-    for digest_key, grouping in self.groupings.items():
-      if grouping.t_max + COMMIT_THRESHOLD < c_rev.timestamp:
-        ready_queue.append(grouping)
-        del self.groupings[digest_key]
+    for digest_key, cvs_commit in self.cvs_commits.items():
+      if cvs_commit.t_max + COMMIT_THRESHOLD < c_rev.timestamp:
+        ready_queue.append(cvs_commit)
+        del self.cvs_commits[digest_key]
         continue
       # If the inbound commit is on the same file as a pending commit,
       # close the pending commit to further changes. Don't flush it though,
@@ -3303,34 +3283,89 @@ class CVSRevisionAggregator:
       # if checked in too quickly, but it can also break apart the
       # commits. The correct fix would require tracking the dependencies
       # between change sets and committing them in proper order.
-      if grouping.has_file(c_rev.fname):
+      if cvs_commit.has_file(c_rev.fname):
         unused_id = digest_key + '-'
         # Find a string that does is not already a key in
-        # the self.groupings dict
-        while self.groupings.has_key(unused_id):
+        # the self.cvs_commits dict
+        while self.cvs_commits.has_key(unused_id):
           unused_id = unused_id + '-'
-        self.groupings[unused_id] = grouping
-        del self.groupings[digest_key]
+        self.cvs_commits[unused_id] = cvs_commit
+        del self.cvs_commits[digest_key]
 
     # Add this item into the set of still-available commits.
-    if self.groupings.has_key(c_rev.digest):
-      grouping = self.groupings[c_rev.digest]
+    if self.cvs_commits.has_key(c_rev.digest):
+      cvs_commit = self.cvs_commits[c_rev.digest]
     else:
       author, log = self.metadata_db[c_rev.digest]
-      self.groupings[c_rev.digest] = CVSCommit(self._ctx,
+      self.cvs_commits[c_rev.digest] = CVSCommit(self._ctx,
                                                c_rev.digest,
                                                author, log)
-      grouping = self.groupings[c_rev.digest]
-    grouping.add_revision(c_rev)
+      cvs_commit = self.cvs_commits[c_rev.digest]
+    cvs_commit.add_revision(c_rev)
 
     # If there are any elements in the ready_queue at this point, they
     # need to be processed, because this latest rev couldn't possibly
     # be part of any of them.  Sort them into time-order, then process
     # 'em.
     ready_queue.sort()
-    for grouping in ready_queue:
-      grouping.process_revisions(self._ctx)
-    
+    for cvs_commit in ready_queue:
+      cvs_commit.process_revisions(self._ctx)
+
+    ################################################################
+    # Iterating through self.changes and deletes, we check to see if
+    # the c_rev is in LastSymbolicNameDatabase.  If it is, then we
+    # create 1 SVNCommit (which creates the tag if it's a tag, and
+    # fills the remaining portion of the branch if it's a branch).
+    ################################################################
+
+    ### TODO MARK  decompose to END MARK
+    # Get the symbolic names that this c_rev is the last *source*
+    # CVSRevision for and add them to those left over from previous
+    # passes through the aggregator.
+    for sym in self.last_revs_db.get(c_rev.unique_key(), []):
+      self.pending_symbols[sym] = None
+
+    # Make a list of all symbols that still have *source* CVSRevisions
+    # in the pending commit queue (self.cvs_commits).
+    open_symbols = {}
+    for sym in self.pending_symbols.keys():
+      for cvs_commit in self.cvs_commits.values():
+        if cvs_commit.contains_symbolic_name(sym):
+          open_symbols[sym] = None
+          break
+
+    # Sort the pending symbols so that we will always process the
+    # symbols in the same order, regardless of the order in which the
+    # dict hashing algorithm hands them back to us.  We do this so
+    # that our tests will get the same results on all platforms.
+    sorted_pending_symbols_keys = self.pending_symbols.keys()
+    sorted_pending_symbols_keys.sort()
+    for sym in sorted_pending_symbols_keys:
+      if open_symbols.has_key(sym): # sym is still open--don't close it.
+    ### TODO END MARK  decompose
+        continue
+      SVNCommit().flush()
+      del self.pending_symbols[sym]
+    #####################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def pass8(ctx):
@@ -3367,6 +3402,7 @@ def pass8(ctx):
     c_rev = CVSRevision(ctx, line)
 
     aggregator.process_revision(c_rev)
+    ###TODO WARNING: This may leave unclosed commits in the queue!
     if ctx.trunk_only and not trunk_rev.match(c_rev.rev):
       ### note this could/should have caused a flush, but the next item
       ### will take care of that for us
