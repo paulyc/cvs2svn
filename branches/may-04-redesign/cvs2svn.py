@@ -3571,9 +3571,6 @@ class SymbolicNameFillingGuide:
     closings, false otherwise."""
     return not len(self.things)
 
-  ###TODO do something with this:
-  #These revision scores are used to determine the optimal copy
-  #revisions for each tree/subtree at branch or tag creation time.
 
 def generate_offsets_for_symbolings():
   """This function iterates through all the lines in
@@ -4367,20 +4364,6 @@ class SVNRepositoryMirror:
     self.revs_db[str(self.youngest)] = youngest_key
     self.nodes_db[youngest_key] = { }
 
-    ###TODO Will we still need this?
-    #
-    # When copying a directory (say, to create part of a branch), we
-    # pass change_path() a list of expected entries, so it can remove
-    # any that are in the source but don't belong on the branch.
-    # However, because creating a given region of a branch can involve
-    # copying from several sources, we don't want later copy
-    # operations to delete entries that were legitimately created by
-    # earlier copy ops.  So after a copy, the directory records
-    # legitimate entries under this key, in a dictionary (the keys are
-    # entry names, the values can be ignored).
-    ###TODO make this 2 characters long
-    self.approved_entries = "/approved-entries"
-
     ###TODO Will we still need these?
     #
     # Set to 1 on a directory that's mutable in the revision currently
@@ -4420,15 +4403,12 @@ class SVNRepositoryMirror:
     self.youngest = revnum
 
   def _stabilize_directory(self, key):
-    """Remove the mutable flag and the approved_entries dict from the
-    directory whose node key is KEY, effectively marking the directory
-    as immutable."""
+    """Remove the mutable flag from the directory whose node key is
+    KEY, effectively marking the directory as immutable."""
 
     dir = self.nodes_db[key]
     if dir.has_key(self.mutable_flag):
       del dir[self.mutable_flag]
-      if dir.has_key(self.approved_entries):
-        del dir[self.approved_entries]
       for entry_key in dir.keys():
         if not entry_key[0] == '/':
           self._stabilize_directory(dir[entry_key])
@@ -4442,27 +4422,25 @@ class SVNRepositoryMirror:
   def delete_path(self, path):
     """Delete PATH from the tree.  PATH may not have a leading slash.
 
-    Return path_deleted where path_deleted is the path actually
-    deleted or None if PATH did not exist.  
+    Return the path actually deleted or None if PATH did not exist.
+    This is the path on which self.delegate.delete_path will be
+    invoked (exactly once), and the delegate will not be invoked at
+    all if no path was deleted.
 
-    If self._ctx.prune is not None, then delete the highest possible directory,
-    which means the returned path may differ from PATH.  In other
-    words, if PATH was the last entry in its parent, then delete
+    If self._ctx.prune is not None, then delete the highest possible
+    directory, which means the returned path may differ from PATH.  In
+    other words, if PATH was the last entry in its parent, then delete
     PATH's parent, unless it too is the last entry in *its* parent, in
     which case delete that parent, and so on up the chain, until a
     directory is encountered that has an entry which is not a member
     of the parent stack of the original target.
 
     NOTE: This function does *not* allow you delete top-level entries
-    (like /trunk, /branches, /tags), not does it prune upwards beyond
+    (like /trunk, /branches, /tags), nor does it prune upwards beyond
     those entries.
 
     self._ctx.prune is like the -P option to 'cvs checkout'."""
-    ###TODO Review this with kfogel
-    components = string.split(path, '/')
-    path_so_far = None
-
-    parent_key = self.revs_db[str(self.youngest)]
+    parent_key = self.revs_db[self._youngest_key()]
     parent = self.nodes_db[parent_key]
 
     # As we walk down to find the dest, we remember each parent
@@ -4472,7 +4450,8 @@ class SVNRepositoryMirror:
     # that destination.
     #
     # Then if we actually do the deletion, we walk the list from left
-    # to right, replacing as appropriate.
+    # to right, replacing as appropriate (since we may have to
+    # bubble-down).
     #
     # The root directory has name None.
     parent_chain = [ ]
@@ -4484,24 +4463,24 @@ class SVNRepositoryMirror:
       (In a pure world, we'd just ask len(DIR) > 1; it's only
       because the directory might have mutable flags and other special
       entries that we need this function at all.)"""
-      num_items = len(dir)
-      if num_items > 3:
-        return None
-      if num_items == 3 or num_items == 2:
-        real_entries = 0
-        for key in dir.keys():
-          if not key[0] == '/': real_entries = real_entries + 1
-        if real_entries > 1:
+      num_items = 0
+      for key in dir.keys():
+        if key[0] == '/':
+          continue
+        if num_items == 1:
           return None
-        else:
-          return 1
-      else:
-        return 1
+        num_items = num_items + 1
+      return 1
 
+    path_so_far = None
+    components = string.split(path, '/')
+    ###TODO This is a problem if trunk/tags/branches is > 1 component long
+    ### See issue #7.
     # We never prune our top-level directories (/trunk, /tags, /branches)
     if len(components) < 2:
       return None
     
+    last_component = components[-1]
     for component in components[:-1]:
       if path_so_far:
         path_so_far = path_so_far + '/' + component
@@ -4520,7 +4499,6 @@ class SVNRepositoryMirror:
       parent_chain.insert(0, (component, parent_key))
 
     # If the target is not present in its parent, then we're done.
-    last_component = components[-1]
     if not parent.has_key(last_component):
       return None
 
@@ -4577,6 +4555,7 @@ class SVNRepositoryMirror:
     else:
       retpath = path
 
+    self.delegate.delete_path(retpath)
     return retpath
 
   def mkdir(self, path):
@@ -4703,17 +4682,13 @@ class SVNRepositoryMirror:
       if cvs_rev.op == OP_ADD or cvs_rev.op == OP_CHANGE:
         if self.path_exists(cvs_rev.svn_trunk_path):
           # Delete the path on trunk...
-          ###TODO delete_path should handle the delegate
           self.delete_path(cvs_rev.svn_trunk_path)
-          self.delegate.delete_path(cvs_rev.svn_trunk_path)
         # ...and copy over from branch
         self.copy_path(cvs_rev.svn_path, cvs_rev.svn_trunk_path,
                        svn_commit.revnum)
       elif cvs_rev.op == OP_DELETE:
         # delete trunk path
         self.delete_path(cvs_rev.svn_trunk_path)
-        ###TODO delete_path should handle the delegate
-        self.delegate.delete_path(cvs_rev.svn_trunk_path)
       else:
         msg = ("Unknown CVSRevision operation '%s' in default branch sync."
                % cvs_rev.op)
@@ -4949,11 +4924,7 @@ class SVNRepositoryMirror:
         elif cvs_rev.op == OP_CHANGE:
           self.change_path(cvs_rev)
         else: # Must be a delete
-          ###TODO IMPT! FIXME FIX self.delete_path to call the delegate!
-          ### delete_path, since it manages pruning, will handle that
-          ### correctly
           path = self.delete_path(cvs_rev.svn_path)
-          self.delegate.delete_path(cvs_rev.svn_path)
 
   def close(self):
     self.delegate.finish()
