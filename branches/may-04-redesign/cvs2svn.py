@@ -1392,14 +1392,14 @@ def pass5(ctx):
   ###starting this pass.  Find a better way. :)
   if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
     os.unlink(SYMBOL_OPENINGS_CLOSINGS)
-  aggregator = CVSRevisionAggregator(ctx)
 
-  ###TODO Can we move this to pass4?
+  aggregator = CVSRevisionAggregator(ctx)
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
     if not (ctx.trunk_only and c_rev.branch_name is not None):
       aggregator.process_revision(c_rev)
   aggregator.flush()
+
   if not ctx.trunk_only:
     SymbolingsLogger(ctx).close()
   Log().write(LOG_QUIET, "Done")
