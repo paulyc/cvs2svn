@@ -782,7 +782,7 @@ class CollectData(rcsparse.Sink):
 
     # Ratchet up the highest vendor head revision, if necessary.
     if self.default_branch:
-      if revision.find(self.default_branch) == 0:
+      if revision.find(self.default_branch + ".") == 0:
         # This revision is on the default branch, so record that it is
         # the new highest vendor head revision.
         rel_name = relative_name(self.cvsroot, self.fname)[:-2]
@@ -810,8 +810,8 @@ class CollectData(rcsparse.Sink):
     # so we have to record its data now.
     if not trunk_rev.match(revision):
       branch_number = revision[:revision.rindex(".")]
-      branch_name = "unlabeled-" + branch_number
       if not self.branch_names.has_key(branch_number):
+        branch_name = "unlabeled-" + branch_number
         self.set_branch_name(branch_number, branch_name)
 
   def tree_completed(self):
@@ -907,8 +907,8 @@ class CollectData(rcsparse.Sink):
       deltatext_code = DELTATEXT_EMPTY
 
     c_rev = CVSRevision(self._ctx, timestamp, digest, op,
-                        self.prev_rev.get(revision, '*'), revision,
-                        self.next_rev.get(revision, '*'),
+                        self.prev_rev[revision], revision,
+                        self.next_rev.get(revision),
                         deltatext_code, self.fname,
                         self.mode, self.rev_to_branch_name(revision),
                         self.get_tags(revision),
