@@ -1788,15 +1788,15 @@ class SymbolicNameTracker:
     for name in names:
       components = [name] + string.split(svn_path, '/')
       parent_key = self.root_key
+      parent = self.db[parent_key]
+      # If this symbolic name isn't even in the tracker anymore,
+      # bail (RepositoryMirror may return closed names for tags and
+      # branches that are already closed, and we should just ignore
+      # them).
+      if not parent.has_key(name):
+        return
       for component in components:
         self.bump_rev_count(parent_key, svn_rev, closing_key)
-        parent = self.db[parent_key]
-        # If this symbolic name isn't even in the tracker anymore,
-        # bail (RepositoryMirror may return closed names for tags and
-        # branches that are already closed, and we should just ignore
-        # them).
-        if parent_key == self.root_key and not parent.has_key(name):
-          return
         # Check for a "can't happen".
         if not parent.has_key(component):
           sys.stderr.write("%s: in path '%s', value for parent key '%s' "
@@ -2195,26 +2195,21 @@ class SymbolicNameTracker:
             print "Deleting", name
             self.cleanup_symbol(name)
 
-  # Removes the entire node tree rooted at /NAME from the
-  # SymbolicNameTracker.
   def cleanup_symbol(self, name):
-    parent_key = self.root_key
-    root_dir = self.db[parent_key]      # "/"
-    sym_key = root_dir[name]            # "NAME" 
-    self.del_node(sym_key)              # Recursively delete the node-tree
-    del self.db[sym_key]                # Delete the node itself
+    """Remove the entire node tree rooted at /NAME from the
+    SymbolicNameTracker."""
+    root_dir = self.db[self.root_key]
+    self.del_node(root_dir[name])       # Recursively delete the node-tree
     del root_dir[name]                  # Delete NAME from the root_dir
     self.db[self.root_key] = root_dir   # Save the new root_dir
 
-  # Recursively deletes all children of NODE, where NODE is a key in
-  # self.db.
   def del_node(self, node):
-    entries = self.db[node]
-    for key, value in entries.items():
+    """Recursively delete NODE and all its children from the db."""
+    for key, subnode in self.db[node].items():
       if key[0] == '/': # Skip flags
         continue
-      self.del_node(value)
-      del self.db[value]
+      self.del_node(subnode)
+    del self.db[node]
 
   # Left in temporarily for debugging purposes
   #def __del__(self):
@@ -2587,11 +2582,11 @@ def get_symbol_closing_revs(ctx):
   # = CVS rev unique_key: val = list of symbols that close in that
   # rev.
   symbol_revs = {}
-  for sym, value in symbols.items():
-    if symbol_revs.has_key(value):
-      symbol_revs[value].append(sym)
+  for sym, rev_unique_key in symbols.items():
+    if symbol_revs.has_key(rev_unique_key):
+      symbol_revs[rev_unique_key].append(sym)
     else:
-      symbol_revs[value] = [sym]
+      symbol_revs[rev_unique_key] = [sym]
   return symbol_revs
 
 def pass1(ctx):
@@ -2673,7 +2668,7 @@ def pass4(ctx):
   sym_tracker = SymbolicNameTracker()
   metadata_db = Database(METADATA_DB, 'r')
 
-  symbol_pkeys = get_symbol_closing_revs(ctx)
+  symbols_closed_by_revkey = get_symbol_closing_revs(ctx)
   # A dictionary of Commit objects, keyed by digest.  Each object
   # represents one logical commit, which may involve multiple files.
   #
@@ -2741,24 +2736,19 @@ def pass4(ctx):
     c.add(c_rev)
 
     #####################################################################
-    ###TODO rename symbol_pkeys
-    if symbol_pkeys.has_key(c_rev.unique_key()):
-      for key in symbol_pkeys[c_rev.unique_key()]:
-        pending_symbols[key] = None
+    for sym in symbols_closed_by_revkey.get(c_rev.unique_key(), []):
+      pending_symbols[sym] = None
 
-    ### TODO need to sort these
     open_symbols = {}
     for sym in pending_symbols.keys():
       for k, v in commits.items():
         if v.contains_symbolic_name(sym.name):
-          if not open_symbols.has_key(sym):
-            open_symbols[sym] = None
-            break
-      else:
-        pending_symbols[sym] = None
+          open_symbols[sym] = None
+          break
 
-    ### TODO need to sort these
-    for sym in pending_symbols.keys():
+    sorted_pending_symbols_keys = pending_symbols.keys()
+    sorted_pending_symbols_keys.sort()
+    for sym in sorted_pending_symbols_keys:
       if open_symbols.has_key(sym): # sym is still open--don't close it now.
         continue
       if sym.isTag:
@@ -2767,8 +2757,6 @@ def pass4(ctx):
         sym_tracker.fill_branch(dumper, ctx, sym.name, [1])
       sym_tracker.cleanup_symbol(sym.name)
       del pending_symbols[sym]
-
-    pending_symbols.update(open_symbols)
     #####################################################################
 
   # End of the sorted revs file.  Flush any remaining commits:

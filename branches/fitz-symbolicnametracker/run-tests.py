@@ -622,54 +622,44 @@ def simple_tags():
  
   # Verify the copy source for the tags we are about to check
   # No need to verify the copyfrom revision, as simple_commits did that
-  rev = 23
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 23, sym_log_msg('vendorbranch'), {
     '/branches/vendorbranch/proj (from /trunk/proj:22)': 'A',
-    }:
-    raise svntest.Failure
+    })
 
   fromstr = ' (from /branches/vendorbranch:24)'
 
-  if logs[rev].msg.find(sym_log_msg('vendorbranch')) != 0:
-    raise svntest.Failure
-
   # Tag on rev 1.1.1.1 of all files in proj
   rev = find_tag_rev(logs, 'T_ALL_INITIAL_FILES')
-  if not logs[rev].changed_paths == {
+  check_rev(logs, rev, sym_log_msg('T_ALL_INITIAL_FILES',1), {
     '/tags/T_ALL_INITIAL_FILES'+fromstr: 'A',
     '/tags/T_ALL_INITIAL_FILES/single-files': 'D',
     '/tags/T_ALL_INITIAL_FILES/partial-prune': 'D',
-    }:
-    raise svntest.Failure
+    })
 
   # The same, as a branch
-  rev = 25
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 25, sym_log_msg('B_FROM_INITIALS'), {
     '/branches/B_FROM_INITIALS'+fromstr: 'A',
     '/branches/B_FROM_INITIALS/single-files': 'D',
     '/branches/B_FROM_INITIALS/partial-prune': 'D',
-    }:
-    raise svntest.Failure
+    })
 
   # Tag on rev 1.1.1.1 of all files in proj, except one
   rev = find_tag_rev(logs, 'T_ALL_INITIAL_FILES_BUT_ONE')
-  if not logs[rev].changed_paths == {
+  check_rev(logs, rev, sym_log_msg('T_ALL_INITIAL_FILES_BUT_ONE',1), {
     '/tags/T_ALL_INITIAL_FILES_BUT_ONE'+fromstr: 'A',
     '/tags/T_ALL_INITIAL_FILES_BUT_ONE/single-files': 'D',
     '/tags/T_ALL_INITIAL_FILES_BUT_ONE/partial-prune': 'D',
     '/tags/T_ALL_INITIAL_FILES_BUT_ONE/proj/sub1/subsubB': 'D',
-    }:
-    raise svntest.Failure
+    })
 
   # The same, as a branch
-  rev = 28
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 26, sym_log_msg('B_FROM_INITIALS_BUT_ONE'), {
     '/branches/B_FROM_INITIALS_BUT_ONE'+fromstr: 'A',
     '/branches/B_FROM_INITIALS_BUT_ONE/single-files': 'D',
     '/branches/B_FROM_INITIALS_BUT_ONE/partial-prune': 'D',
     '/branches/B_FROM_INITIALS_BUT_ONE/proj/sub1/subsubB': 'D',
-    }:
-    raise svntest.Failure
+    })
+
 
 def simple_branch_commits():
   "simple branch commits"
