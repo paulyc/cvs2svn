@@ -1444,12 +1444,10 @@ class SymbolicNameFillingGuide:
     # The dictionary that holds our node tree, seeded with the root key.
     self.node_tree = { self.root_key : { } }
 
-
     # These variables will hold information necessary to create our
     # branch if we encounter a DEAD_OPENING in self.things
     #
     # See SymbolingsLogger._log_dead_opening for more information.
-
 
     # The subversion revision number to copy from if one of our
     # opening revisions was in state 'dead', false otherwise.
@@ -1986,7 +1984,7 @@ class CVSCommit:
           and c_rev.branch_name not in self.done_symbols \
           and fill_needed(c_rev):
         ###TODO Is this TODO valid? Check c_rev.op to see if we're an add!
-        ### TODO: Possible correctness issue here.  If we have a
+        ### TODO IMPT: Possible correctness issue here.  If we have a
         # branch with a single file on it, and that file was deleted
         # in the previous CVS revision, and resurrected in this
         # revision, we may not have anything to fill here, and thus,
@@ -2040,7 +2038,7 @@ class CVSCommit:
       for c_rev in self.revisions():
         SymbolingsLogger(self._ctx).log_revision(c_rev, svn_commit.revnum)
 
-  ###TODO We need a test case where we have a file on a default branch
+  ###TODO IMPT We need a test case where we have a file on a default branch
   #and on the HEAD revision of the default branch in CVS, that file is
   #in RCS state 'dead'
   def _post_commit(self):
@@ -2801,11 +2799,11 @@ class SVNRepositoryMirror:
         # ...we create the branch.
         self.copy_path(symbol_fill.branch_source, branch_dest,
                        symbol_fill.dead_opening_rev) 
-        ###TODO Don't we have to prune all the child directories now?
+        ###TODO IMPT Don't we have to prune all the child directories now?
         # Discuss with kfogel
 
 
-  ###TODO We need a test here, to make sure that tag copies get the
+  ###TODO IMPT We need a test here, to make sure that tag copies get the
   ###correct version of a file when a file is tagged while the default
   ###branch is non-trunk.
   def synchronize_default_branch(self, svn_commit):
@@ -2828,7 +2826,8 @@ class SVNRepositoryMirror:
                % cvs_rev.op)
         raise SVNRepositoryMirrorUnexpectedOperationError, msg
 
-  ###TODO We need to fix our code to allow trunk/branches/tags (wishlist)
+  ###TODO We need to fix our code to allow multiple component
+  ###trunk/branches/tags (wishlist)
   def _dest_path_for_source_path(self, symbolic_name, path):
     """Given source path PATH, returns the copy destination path under
     SYMBOLIC_NAME.
@@ -2855,7 +2854,7 @@ class SVNRepositoryMirror:
       dest = dest + '/' + '/'.join(components[1:])
     return dest
 
-  ###TODO This method is wonky and needs to be reviewed *carefully*
+  ###TODO IMPT This method is wonky and needs to be reviewed *carefully*
   ### Review with kfogel
   def _fill(self, symbol_fill, key, name, parent_path_so_far=None,
             preferred_revnum=None, prune_ok=None, copied_paths=None):
@@ -2987,8 +2986,6 @@ class SVNRepositoryMirror:
 
     components = path.split('/')
     last_component = components[-1]
-    ###TODO Do something more constructive than die if someone asks
-    ###for a node that doesn't exist
     for component in components:
      this_node_key = parent_node_contents[component]
      this_node_contents = self.nodes_db[this_node_key]
@@ -3059,8 +3056,6 @@ class SVNRepositoryMirror:
 
     components = path.split('/')
     last_component = components[-1]
-    ###TODO Do something more constructive than die if someone asks
-    ###for a node that doesn't exist
     for component in components:
       if component is last_component and ignore_leaf:
         break
@@ -3104,7 +3099,7 @@ class SVNRepositoryMirror:
     self.invoke_delegates('start_commit', svn_commit)
 
     # Create tags and branches in the first commit
-    ###TODO: We MUST do this in a separate commit, so it's
+    ###TODO IMPT: We MUST do this in a separate commit, so it's
     ### not mixed in with a user change.
     if not self.active and not self._ctx.trunk_only:
       self.mkdir(self._ctx.branches_base)
