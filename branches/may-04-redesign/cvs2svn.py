@@ -5315,7 +5315,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
                         'Node-copyfrom-rev: %d\n'
                         'Node-copyfrom-path: /%s\n'
                         '\n'
-                        % (self._utf8_path(dst_path),
+                        % (self._utf8_path(dest_path),
                            src_revnum,
                            self._utf8_path(src_path)))
   
