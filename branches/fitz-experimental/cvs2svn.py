@@ -2159,7 +2159,7 @@ class Commit:
   def has_file(self, fname):
     return self.files.has_key(fname)
 
-  def add(self, t, op, file, rev, deltatext_code, branch_name, tags, branches):
+  def add(self, c_rev):
     # Record the time range of this commit.
     #
     # ### ISSUE: It's possible, though unlikely, that the time range
@@ -2168,19 +2168,19 @@ class Commit:
     # problem, and anyway deciding where to break it up would be a
     # judgement call. For now, we just print a warning in commit() if
     # this happens.
-    if t < self.t_min:
-      self.t_min = t
-    if t > self.t_max:
-      self.t_max = t
+    if c_rev.timestamp < self.t_min:
+      self.t_min = c_rev.timestamp
+    if c_rev.timestamp > self.t_max:
+      self.t_max = c_rev.timestamp
 
-    if op == OP_CHANGE:
-      self.changes.append((file, rev, deltatext_code, branch_name,
-                           tags, branches))
+    if c_rev.op == OP_CHANGE:
+      self.changes.append((c_rev.fname, c_rev.rev, c_rev.deltatext_code, c_rev.branch_name,
+                           c_rev.tags, c_rev.branches, c_rev))
     else:
       # OP_DELETE
-      self.deletes.append((file, rev, deltatext_code, branch_name,
-                           tags, branches))
-    self.files[file] = 1
+      self.deletes.append((c_rev.fname, c_rev.rev, c_rev.deltatext_code, c_rev.branch_name,
+                           c_rev.tags, c_rev.branches, c_rev))
+    self.files[c_rev.fname] = 1
 
   def commit(self, dumper, ctx, sym_tracker):
     # commit this transaction
@@ -2191,11 +2191,11 @@ class Commit:
             % (warning_prefix, COMMIT_THRESHOLD)
 
     if ctx.dry_run:
-      for f, r, dt_code, br, tags, branches in self.changes:
+      for f, r, dt_code, br, tags, branches, c_rev in self.changes:
         # compute a repository path, dropping the ,v from the file name
         svn_path = make_path(ctx, relative_name(ctx.cvsroot, f[:-2]), br)
         print "    adding or changing '%s' : '%s'" % (r, svn_path)
-      for f, r, dt_code, br, tags, branches in self.deletes:
+      for f, r, dt_code, br, tags, branches, c_rev in self.deletes:
         # compute a repository path, dropping the ,v from the file name
         svn_path = make_path(ctx, relative_name(ctx.cvsroot, f[:-2]), br)
         print "    deleting '%s' : '%s'" % (r, svn_path)
@@ -2257,7 +2257,7 @@ class Commit:
       print "  author: '%s'" % self.author
       print "  log:    '%s'" % self.log
       print "  date:   '%s'" % date
-      for rcs_file, cvs_rev, dt_code, br, tags, branches in self.changes:
+      for rcs_file, cvs_rev, dt_code, br, tags, branches, c_rev in self.changes:
         print "    rev %s of '%s'" % (cvs_rev, rcs_file)
       print "Consider rerunning with (for example) '--encoding=latin1'."
       # Just fall back to the original data.
@@ -2272,7 +2272,7 @@ class Commit:
     # If any of the changes we are about to do are on branches, we need to
     # check and maybe fill them (in their own revisions) *before* we start
     # then data revision. So we have to iterate over changes and deletes twice.
-    for rcs_file, cvs_rev, dt_code, br, tags, branches in self.changes:
+    for rcs_file, cvs_rev, dt_code, br, tags, branches, c_rev in self.changes:
       # compute a repository path, dropping the ,v from the file name
       cvs_path = relative_name(ctx.cvsroot, rcs_file[:-2])
       svn_path = make_path(ctx, cvs_path, br)
@@ -2287,7 +2287,7 @@ class Commit:
         if not dumper.probe_path(svn_path):
           sym_tracker.fill_branch(dumper, ctx, br, [1, date])
 
-    for rcs_file, cvs_rev, dt_code, br, tags, branches in self.deletes:
+    for rcs_file, cvs_rev, dt_code, br, tags, branches, c_rev in self.deletes:
       # compute a repository path, dropping the ,v from the file name
       cvs_path = relative_name(ctx.cvsroot, rcs_file[:-2])
       svn_path = make_path(ctx, cvs_path, br)
@@ -2304,7 +2304,7 @@ class Commit:
 
 
     # Now that any branches we need exist, we can do the commits.
-    for rcs_file, cvs_rev, dt_code, br, tags, branches in self.changes:
+    for rcs_file, cvs_rev, dt_code, br, tags, branches, c_rev in self.changes:
       # compute a repository path, dropping the ,v from the file name
       cvs_path = relative_name(ctx.cvsroot, rcs_file[:-2])
       svn_path = make_path(ctx, cvs_path, br)
@@ -2340,7 +2340,7 @@ class Commit:
         sym_tracker.close_tags(svn_path, svn_rev, closed_tags)
         sym_tracker.close_branches(svn_path, svn_rev, closed_branches)
 
-    for rcs_file, cvs_rev, dt_code, br, tags, branches in self.deletes:
+    for rcs_file, cvs_rev, dt_code, br, tags, branches, c_rev in self.deletes:
       # compute a repository path, dropping the ,v from the file name
       cvs_path = relative_name(ctx.cvsroot, rcs_file[:-2])
       svn_path = make_path(ctx, cvs_path, br)
@@ -2623,9 +2623,7 @@ def pass4(ctx):
     else:
       author, log = metadata_db[c_rev.digest]
       c = commits[c_rev.digest] = Commit(author, log)
-    #c.add(c_rev)
-    c.add(c_rev.timestamp, c_rev.op, c_rev.fname, c_rev.rev, c_rev.deltatext_code, c_rev.branch_name,
-          c_rev.tags, c_rev.branches)
+    c.add(c_rev)
 
   # End of the sorted revs file.  Flush any remaining commits:
   if commits:
