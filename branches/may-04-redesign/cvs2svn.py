@@ -94,6 +94,8 @@ vendor_revision = re.compile('^(1\\.1\\.1)\\.([0-9])+$')
 DATAFILE = 'cvs2svn-data'
 DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 
+SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
+
 # Skeleton version of an svn filesystem.
 # See class RepositoryMirror for how these work.
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
@@ -298,6 +300,9 @@ class CVSRevision:
     for branch in self.branches:
       output.write('%s ' % (branch))
     output.write('%s\n' % self.fname)
+
+  def symbolic_names(self):
+    return self.tags + self.branches
 
   def contains_symbolic_name(self, name):
     if name in self.tags:
@@ -2664,6 +2669,55 @@ def read_resync(fname):
   return resync
 
 
+class SymbolingsLogger:
+  """Manages the file and all related temporary data structures that
+  contains lines for symbol openings and closings."""
+  ### TODO cleanup file!
+  def __init__(self):
+    self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'w')
+    ### TODO Warning: Openings can get REALLY BIG (the pathological
+    ### case is NUM_CVS_FILES * NUM_SYMBOLIC_NAMES *
+    ### AVG_SIZE_OF_SYMBOLIC_NAME).  This may be a memory issue, and
+    ### we may have to move openings (or part of openings) to disk.
+    ### Fortunately, we're not really hammering it, so the move to
+    ### disk won't be A Big Problem.
+
+    ### We could figure out the last (date-wise) CVS revision to a
+    ### file pass4 by keeping a db of last revs, but that would be
+    ### premature optimization at this point.
+    self.openings = {} ### TODO describe openings format somewhere.
+
+  def log_names_for_rev(self, names, c_rev):
+    for name in names:
+      self.symbolings.write(name + ' ' + c_rev.unique_key() + '\n')
+
+  def clear_prev_rev(self, c_rev):
+    # Remove the openings that we just closed
+    del self.openings[c_rev.svn_path()][c_rev.prev_rev]
+    # And drop the key entirely if we just removed the last bit of it.
+    if len(self.openings[c_rev.svn_path()]) == 0:
+      del self.openings[c_rev.svn_path()]
+
+  def check_revision(self, c_rev):
+    """Examine a CVS Revision to see if it either opens or closes a
+    symbolic name."""
+    ## TODO check symbolic_names
+    if ((len(c_rev.tags) > 0)          # There is branch/tag 
+        or (len(c_rev.branches) > 0)): # OPENING activity here
+      if not c_rev.svn_path() in self.openings: # Create a new entry
+        self.openings[c_rev.svn_path()] = { c_rev.rev: c_rev.symbolic_names()}
+      else: # Add to the existing one
+        self.openings[c_rev.svn_path()][c_rev.rev] = c_rev.symbolic_names()
+      self.log_names_for_rev(c_rev.symbolic_names(), c_rev)
+      
+    if ((c_rev.svn_path() in self.openings) # This c_rev is a closing
+        and c_rev.prev_rev                  # for a previous rev.
+        and (self.openings[c_rev.svn_path()].has_key(c_rev.prev_rev))): 
+      self.log_names_for_rev(
+        self.openings[c_rev.svn_path()][c_rev.prev_rev], c_rev)
+      self.clear_prev_rev(c_rev)
+
+
 def pass1(ctx):
   ###TODO create the CollectData object in visit_file and pass a
   ###different variable along via os.path.walk for accumulating
@@ -2753,6 +2807,7 @@ def pass4(ctx):
   # their corresponding values will be a key into the last CVS revision
   # that they were used in.
   symbols = {}
+  ###TODO cleanup files
   tags_db = Database(TAGS_DB, 'n')
   cvs_revs_db = Database(CVS_REVS_DB, 'n')
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
@@ -2784,8 +2839,15 @@ def pass4(ctx):
     else:
       symbol_revs_db[rev_unique_key] = [sym]
 
+
 def pass5(ctx):
-  pass
+  symlogger = SymbolingsLogger()
+
+  for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
+    c_rev = CVSRevision(ctx, line)
+
+    symlogger.check_revision(c_rev)
+
 
 def pass6(ctx):
   pass
