@@ -1160,6 +1160,13 @@ class SymbolingsLogger(Singleton):
     self.closings = open(SYMBOL_CLOSINGS_TMP, 'w')
     Cleanup().register(SYMBOL_CLOSINGS_TMP, pass5)
 
+    # This keys of this dictionary are Subversion repository *source*
+    # paths for which we've encountered an 'opening'. The values are
+    # the symbolic names that this path has opened.  The only paths
+    # that should be in this dict are paths whose corresponding
+    # CVSRevision is a default branch revision.
+    self.open_paths_with_default_branches = { }
+
   def log_names_for_rev(self, names, c_rev, svn_revnum):
     """Iterate through NAMES.  Based on the type of C_REV we have,
     either log an opening or, if C_REV.next_rev is not None, a
@@ -1167,6 +1174,7 @@ class SymbolingsLogger(Singleton):
     will have its revnum determined later."""
     for name in names:
       name = _clean_symbolic_name(name)
+      self._note_default_branch_opening(c_rev, name)
       if not c_rev.op == OP_DELETE:
         self._log(name, svn_revnum, c_rev.svn_path, OPENING)
       
@@ -1194,7 +1202,7 @@ class SymbolingsLogger(Singleton):
     # 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
     self.symbolings.write('%s %.8d %s %s\n' % (name, svn_revnum,
                                                type, svn_path))
-      
+
   def close(self):
     # Iterate through the closings file, lookup the svn_revnum for
     # each closing CVSRevision, and write a proper line out to the
@@ -1213,6 +1221,27 @@ class SymbolingsLogger(Singleton):
 
     self.symbolings.close()
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
+
+  def _note_default_branch_opening(self, c_rev, symbolic_name):
+    """If C_REV is a default branch revision, log C_REV.svn_trunk_path
+    as an opening for SYMBOLIC_NAME."""
+    path = c_rev.svn_trunk_path
+    if not self.open_paths_with_default_branches.has_key(path):
+      self.open_paths_with_default_branches[path] = [ ]
+    self.open_paths_with_default_branches[path].append(symbolic_name)
+      
+  def log_default_branch_closing(self, c_rev, svn_revnum):
+    """If self.open_paths_with_default_branches contains
+    C_REV.svn_trunk_path, then call log each name in
+    self.open_paths_with_default_branches[C_REV.svn_trunk_path] as a
+    closing with SVN_REVNUM as the closing revision number. """
+    path = c_rev.svn_trunk_path
+    if self.open_paths_with_default_branches.has_key(path):
+      # log each symbol as a closing
+      for name in self.open_paths_with_default_branches[path]:
+        self._log(name, svn_revnum, path, CLOSING)
+      # Remove them from the openings list as we're done with them.
+      del self.open_paths_with_default_branches[path]
 
 
 class LastSymbolicNameDatabase(Database):
@@ -1579,7 +1608,10 @@ class SymbolicNameFillingGuide:
       self.things[svn_path] = {self.opening_key: svn_revnum}
     # Only log a closing if we've already registered the opening for that path.
     elif type == CLOSING and self.things.has_key(svn_path):
-      self.things[svn_path][self.closing_key] = svn_revnum
+      # When we have a non-trunk default branch, we may have multiple
+      # closings--only register the first closing we encounter.
+      if not self.things[svn_path].has_key(self.closing_key):
+        self.things[svn_path][self.closing_key] = svn_revnum
 
   def make_node_tree(self):
     """Generates the SymbolicNameFillingGuide's node tree from
@@ -2036,6 +2068,8 @@ class CVSCommit:
       svn_commit.set_motivating_revnum(self.motivating_commit.revnum)
       for c_rev in self.default_branch_cvs_revisions:
         svn_commit.add_revision(c_rev)
+        SymbolingsLogger(self._ctx).log_default_branch_closing(
+          c_rev, svn_commit.revnum)
       self.secondary_commits.append(svn_commit)
     
   def process_revisions(self, ctx, done_symbols):
