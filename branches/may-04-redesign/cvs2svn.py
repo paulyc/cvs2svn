@@ -4082,7 +4082,7 @@ class SVNCommit:
     # in UTF8, but callers aren't required to set them in UTF8.
     # Therefore, accessor methods are used to set them, and
     # self.get_revprops() is used to to get them, in dictionary form.
-    self._author = 'cvs2svn'
+    self._author = self._ctx.username
     self._log_msg = "This log message means an SVNCommit was used too soon."
     self._max_date = 0  # Latest date seen so far.
 
