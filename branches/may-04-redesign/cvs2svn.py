@@ -3111,6 +3111,15 @@ class CVSCommit:
     """Generates any SVNCommits that must exist before the main
     commit."""
 
+    # There may be multiple c_revs in this commit that would cause
+    # branch B to be filled, but we only want to fill B once.  On the
+    # other hand, there might be multiple branches committed on in
+    # this commit.  Whatever the case, we should count exactly one
+    # commit per branch, because we only fill a branch once per
+    # CVSCommit.  This list tracks which branches we've already
+    # counted.
+    accounted_for_sym_names = [ ]
+
     for c_rev in self.changes:
       # If a commit is on a branch, we must ensure that the branch
       # path being committed exists (in HEAD of the Subversion
@@ -3127,7 +3136,9 @@ class CVSCommit:
           # empty SVN commit.  This is likely a rare edge case, and
           # generating the empty commit isn't the end of the world,
           # but hey, we're all idealists here, aren't we?
-          SVNCommit().flush() # Create an empty commit
+          if not c_rev.branch_name in accounted_for_sym_names:
+            SVNCommit("pre-commit branch '%s'" % c_rev.branch_name).flush()
+            accounted_for_sym_names.append(c_rev.branch_name)
           RepositoryHead().add_path(c_rev.svn_path)
 
     ###TODO Make sure that changes and deletes HAVE to be separate
@@ -3135,16 +3146,16 @@ class CVSCommit:
     for c_rev in self.deletes:
       if c_rev.branch_name:
         if not RepositoryHead().has_path(c_rev.svn_path):
-          SVNCommit().flush() # Create an empty commit
-          #RepositoryHead().remove_path(c_rev.svn_path)
+          if not c_rev.branch_name in accounted_for_sym_names:
+            SVNCommit("pre-commit branch '%s'" % c_rev.branch_name).flush()
+            accounted_for_sym_names.append(c_rev.branch_name)
         else:
           RepositoryHead().remove_path(c_rev.svn_path)
-
 
   def _commit(self):
     """Generates the primary SVNCommit that corresponds the this
     CVSCommit."""
-    svn_commit = SVNCommit()
+    svn_commit = SVNCommit("commit")
 
     for c_rev in self.changes:
       svn_commit.add_revision(c_rev)
@@ -3193,7 +3204,7 @@ class CVSCommit:
     
     svn_commit = None
     if self.default_branch_copies or self.default_branch_deletes:
-      svn_commit = SVNCommit()
+      svn_commit = SVNCommit("post-commit def_br_[copy|delete]")
       svn_commit.flush()
       print '    new revision:', svn_commit.revnum
 
@@ -3229,10 +3240,10 @@ class CVSCommit:
 
 
 class SVNCommit:
-  def __init__(self):
+  def __init__(self, description=""):
     self.c_revs = []
     self.revnum = SVNRevNum().get_next_revnum()
-    print "SVNREV:", self.revnum
+    self.description = description
 
   def add_revision(self, c_rev):
     self.c_revs.append(c_rev)
@@ -3240,7 +3251,7 @@ class SVNCommit:
   def flush(self):
     ###TODO Write out svncommit -> cvsrevision mapping
     ###TODO Write out cvsrevision -> svncommit mapping
-    pass
+    print "SVNREV:", self.revnum, self.description
 
 
 class SVNRevNum(Singleton):
@@ -3344,7 +3355,7 @@ class CVSRevisionAggregator:
       if open_symbols.has_key(sym): # sym is still open--don't close it.
     ### TODO END MARK  decompose
         continue
-      SVNCommit().flush()
+      SVNCommit("closing tag/branch").flush()
       del self.pending_symbols[sym]
     #####################################################################
 
