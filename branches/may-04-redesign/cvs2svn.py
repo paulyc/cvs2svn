@@ -3946,7 +3946,7 @@ def main():
     try: os.rmdir('cvs2svn.lock')
     except: pass
 
-    CommitMapper().cleanup()
+    CommitMapper(ctx).cleanup()
 
   if ctx.mime_types_file:
     ctx.mime_mapper.print_missing_mappings()
