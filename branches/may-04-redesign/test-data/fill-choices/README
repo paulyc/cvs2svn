@@ -23,10 +23,10 @@ every file:
 
     BRANCH_2: sprouts from every file's 1.3.2.1 (so branch number 1.3.2.1.0.2)
 
-The rest of the branches sprout from the above revisions, in various
-combinations.  Every one of the branches below exists on every file,
-the only question is does it sprout from trunk (i.e., 1.3) or from the
-first commit on BRANCH_1 (1.3.2.1).
+The rest of the branches below all sprout from either trunk, or from
+the first revision on BRANCH_1 (that is, from 1.3.2.1), in various
+combinations.  Every branch below exists on every file, the only
+question is where the branch is rooted for each file.
 
     BRANCH_3: Sprouts from trunk everywhere except sub1/sub2/*, where
               it sprouts from BRANCH_1 for all four files.
