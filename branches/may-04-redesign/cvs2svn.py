@@ -4189,6 +4189,10 @@ def main():
     try: os.rmdir('cvs2svn.lock')
     except: pass
 
+    # We need to call PersistenceManager's cleanup function before exit
+    # to make sure that the databases are closed properly.
+    PersistenceManager(ctx).cleanup()
+
   if ctx.mime_types_file:
     ctx.mime_mapper.print_missing_mappings()
 
