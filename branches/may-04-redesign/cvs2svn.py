@@ -352,43 +352,28 @@ class Database:
     return default
    
 
-class StringWriter:
-  """Provide a convenient method to accumulate string data from
-  methods that want to write to a stream."""
-  def __init__(self):
-    self.vals = []
-
-  def write(self, val):
-    self.vals.append(val)
-
-  def stringValue(self):
-    return "".join(self.vals)
-
-
 class CVSRevision:
   def __init__(self, ctx, *args):
     """Initialize a new CVSRevision with context CTX and ARGS.
     If there is one argument in ARGS, it is a string, in the format of
-    a line from a revs file.  If there are multiple ARGS, there must be
-    11 of them, comprising a parsed revs line:
+    a line from a revs file. Do *not* include a trailing newline.
 
+    If there are multiple ARGS, there must be 11 of them,
+    comprising a parsed revs line:
        timestamp       -->  (int) date stamp for this cvs revision
        digest          -->  (string) digest of author+logmsg
-       op              -->  (char) 'C' for change, 'D' for delete
-       prev_rev        -->  (string) previous CVS Rev, e.g., "1.2"
+       op              -->  (char) OP_ADD, OP_CHANGE, or OP_DELETE
+       prev_rev        -->  (string or None) previous CVS rev, e.g., "1.2"
        rev             -->  (string) this CVS rev, e.g., "1.3"
-       next_rev        -->  (string) next CVS Rev, e.g., "1.4"
+       next_rev        -->  (string or None) next CVS rev, e.g., "1.4"
        deltatext_code  -->  (char) 'N' if non-empty deltatext, else 'E'
        fname           -->  (string) relative path of file in CVS repos
-       mode            -->  (string) "kkv", "kb", etc, or None.
-       branch_name     -->  (string) branch on which this rev occurred
+       mode            -->  (string or None) "kkv", "kb", etc.
+       branch_name     -->  (string or None) branch on which this rev occurred
        tags            -->  (list of strings) all tags on this revision
        branches        -->  (list of strings) all branches rooted in this rev
 
-    The two forms of initialization are equivalent.  You can construct
-    essentially identical instances, one from a single string argument
-    and the other from multiple arguments, as long as the string
-    represents the same data as the multiple arguments."""
+    The two forms of initialization are equivalent."""
     self._ctx = ctx
     if len(args) == 12:
       (self.timestamp, self.digest, self.op, self.prev_rev, self.rev, 
@@ -417,7 +402,7 @@ class CVSRevision:
       tags = data[10].split(' ', ntags + 1)
       nbranches = int(tags[ntags])
       branches = tags[ntags + 1].split(' ', nbranches)
-      self.fname = branches[nbranches][:-1]  # strip \n
+      self.fname = branches[nbranches]
       self.tags = tags[:ntags]
       self.branches = branches[:nbranches]
     else:
@@ -437,18 +422,14 @@ class CVSRevision:
       revnum = self.rev
     return revnum + "/" + self.fname
 
-  def write_revs_line(self, output):
-    output.write('%08lx %s %s %s %s %s %s %s %s %d ' % \
-                 (self.timestamp, self.digest, self.op,
-                  (self.prev_rev or "*"), self.rev, (self.next_rev or "*"),
-                  self.deltatext_code, (self.mode or "*"),
-                  (self.branch_name or "*"), len(self.tags) ))
-    for tag in self.tags:
-      output.write('%s ' % (tag))
-    output.write('%d ' % (len(self.branches)))
-    for branch in self.branches:
-      output.write('%s ' % (branch))
-    output.write('%s\n' % self.fname)
+  def __str__(self):
+    return ('%08lx %s %s %s %s %s %s %s %s %d%s%s %d%s%s %s' % (
+      self.timestamp, self.digest, self.op,
+      (self.prev_rev or "*"), self.rev, (self.next_rev or "*"),
+      self.deltatext_code, (self.mode or "*"), (self.branch_name or "*"),
+      len(self.tags), self.tags and " " or "", " ".join(self.tags),
+      len(self.branches), self.branches and " " or "", " ".join(self.branches),
+      self.fname, ))
 
   def symbolic_names(self):
     return self.tags + self.branches
@@ -913,7 +894,7 @@ class CollectData(rcsparse.Sink):
                         self.mode, self.rev_to_branch_name(revision),
                         self.get_tags(revision),
                         self.get_branches(revision))
-    c_rev.write_revs_line(self.revs)
+    self.revs.write(str(c_rev) + "\n")
 
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
@@ -1261,9 +1242,7 @@ class CVSRevisionDatabase:
 
   def log_revision(self, c_rev):
     # Add c_rev to the cvs_rev index db
-    str = StringWriter()
-    c_rev.write_revs_line(str)
-    self.cvs_revs_db[c_rev.unique_key()] = str.stringValue()
+    self.cvs_revs_db[c_rev.unique_key()] = str(c_rev)
 
   def get_revision(self, unique_key):
     """Return the CVSRevision stored under UNIQUE_KEY. Return None if
@@ -1351,7 +1330,7 @@ def pass2(ctx):
 
   # process the revisions file, looking for items to clean up
   for line in fileinput.FileInput(ctx.log_fname_base + REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line)
+    c_rev = CVSRevision(ctx, line[:-1])
     if not resync.has_key(c_rev.digest):
       output.write(line)
       continue
@@ -1372,7 +1351,7 @@ def pass2(ctx):
         record[1] = max(record[1], c_rev.timestamp + COMMIT_THRESHOLD/2)
 
         c_rev.timestamp = record[2]
-        c_rev.write_revs_line(output)
+        output.write(str(c_rev) + "\n")
 
         # stop looking for hits
         break
@@ -1412,7 +1391,7 @@ def pass4(ctx):
     last_sym_name_db = LastSymbolicNameDatabase('n')
 
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line)
+    c_rev = CVSRevision(ctx, line[:-1])
 
     if not ctx.trunk_only:
       last_sym_name_db.log_revision(c_rev)
@@ -1439,7 +1418,7 @@ def pass5(ctx):
 
   ###TODO Can we move this to pass4?
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line)
+    c_rev = CVSRevision(ctx, line[:-1])
     if not (ctx.trunk_only and c_rev.branch_name is not None):
       aggregator.process_revision(c_rev)
   aggregator.flush()
