@@ -104,6 +104,7 @@ NODES_DB = 'cvs2svn-nodes.db'
 SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
 CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
 TAGS_DB = 'cvs2svn-tags.db'
+SVN_REPOSITORY_HEAD_DB = 'cvs2svn-repository-head.db'
 
 # os.popen() on Windows seems to require an access-mode string of 'rb'
 # in cases where the process will output binary information to stdout.
@@ -2770,6 +2771,73 @@ class SymbolingsLogger:
       self.clear_prev_rev(c_rev)
 
 
+class LastSymbolicNameDatabase(Database):
+  """ Passing every CVSRevision in s-revs to this class will result in
+  a Database whose key is the last CVS Revision a symbolicname was
+  seen in, and whose value is a list of all symbolicnames that were
+  last seen in that revision."""
+  def __init__(self, mode):
+    self.symbols = {}
+    self.symbol_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, mode)
+    Cleanup().register(SYMBOL_LAST_CVS_REVS_DB, pass8)
+
+  # Once we've gone through all the revs,
+  # symbols.keys() will be a list of all tags and branches, and
+  # their corresponding values will be a key into the last CVS revision
+  # that they were used in.
+  def log_revision(self, c_rev):
+    # Gather last CVS Revision for symbolic name info and tag info
+    for tag in c_rev.tags:
+      self.symbols[tag] = c_rev.unique_key()
+    for branch in c_rev.branches:
+      self.symbols[branch] = c_rev.unique_key()
+    if c_rev.branch_name:
+      self.symbols[c_rev.branch_name] = c_rev.unique_key()
+
+  # Creates an inversion of symbols above--a dictionary of lists (key
+  # = CVS rev unique_key: val = list of symbols that close in that
+  # rev.
+  def create_database(self):
+    for sym, rev_unique_key in self.symbols.items():
+      if self.symbol_revs_db.has_key(rev_unique_key):
+        ary = self.symbol_revs_db[rev_unique_key]
+        ary.append(sym)
+        self.symbol_revs_db[rev_unique_key] = ary
+      else:
+        self.symbol_revs_db[rev_unique_key] = [sym]
+
+
+class CVSRevisionDatabase(Database):
+  """ Passing every CVSRevision in s-revs to this class will result in
+  a Database mapping CVSRevision.unique_key() to the actual s-rev
+  string for the CVS Revision."""
+
+  def __init__(self, mode):
+    self.cvs_revs_db = Database(CVS_REVS_DB, mode)
+    Cleanup().register(CVS_REVS_DB, pass5)
+
+  def log_revision(self, c_rev):
+    # Add c_rev to the cvs_rev index db
+    str = StringWriter()
+    c_rev.write_revs_line(str)
+    self.cvs_revs_db[c_rev.unique_key()] = str.stringValue()
+
+
+class TagsDatabase(Database):
+  """ Passing every CVSRevision in s-revs to this class will result in
+  a Database that contains all Symbolic Names that are tags.  The key
+  is the tag name, the value is None."""
+
+  def __init__(self, mode):
+    self.symbols = {}
+    self.tags_db = Database(TAGS_DB, 'n')
+    Cleanup().register(TAGS_DB, pass8)
+  
+  def log_revision(self, c_rev):
+    for tag in c_rev.tags:
+      self.tags_db[tag] = None
+
+
 def pass1(ctx):
   ###TODO create the CollectData object in visit_file and pass a
   ###different variable along via os.path.walk for accumulating
@@ -2852,51 +2920,19 @@ def pass3(ctx):
     os.environ['LC_ALL'] = lc_all_tmp
 
 def pass4(ctx):
-  """Iterate through sorted revs, accumulating tags and branches as it
-  goes.  Creates a Database whose key is the last revision a
-  symbolicname was seen in, and whose value is a list of all
-  symbolicnames that were last seen in that revision."""
+  """Iterate through sorted revs."""
+  last_sym_name_db = LastSymbolicNameDatabase('n')
+  cvs_rev_db = CVSRevisionDatabase('n')
+  tags_db = TagsDatabase('n')
 
-  # Once we've gone through all the revs,
-  # symbols.keys() will be a list of all tags and branches, and
-  # their corresponding values will be a key into the last CVS revision
-  # that they were used in.
-  symbols = {}
-  ###TODO cleanup files
-  tags_db = Database(TAGS_DB, 'n')
-  Cleanup().register(TAGS_DB, pass8) ###TODO cleanup earlier?
-  cvs_revs_db = Database(CVS_REVS_DB, 'n')
-  Cleanup().register(CVS_REVS_DB, pass5)
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
-    # Gather last CVS Revision for symbolic name info and tag info
-    for tag in c_rev.tags:
-      symbols[tag] = c_rev.unique_key()
-      tags_db[tag] = None
-    for branch in c_rev.branches:
-      symbols[branch] = c_rev.unique_key()
-    if c_rev.branch_name:
-      symbols[c_rev.branch_name] = c_rev.unique_key()
+    last_sym_name_db.log_revision(c_rev)
+    cvs_rev_db.log_revision(c_rev)
+    tags_db.log_revision(c_rev)
 
-    # Add c_rev to the cvs_rev index db
-    str = StringWriter()
-    c_rev.write_revs_line(str)
-    cvs_revs_db[c_rev.unique_key()] = str.stringValue()
-
-  # Creates an inversion of symbols above--a dictionary of lists (key
-  # = CVS rev unique_key: val = list of symbols that close in that
-  # rev.
-  symbol_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'n')
-  Cleanup().register(SYMBOL_LAST_CVS_REVS_DB, pass8)
-  for sym, rev_unique_key in symbols.items():
-    if symbol_revs_db.has_key(rev_unique_key):
-      ary = symbol_revs_db[rev_unique_key]
-      ary.append(sym)
-      symbol_revs_db[rev_unique_key] = ary
-    else:
-      symbol_revs_db[rev_unique_key] = [sym]
-
+  last_sym_name_db.create_database()
 
 def pass5(ctx):
   symlogger = SymbolingsLogger()
