@@ -1850,6 +1850,11 @@ class CVSCommit:
     self.digest = author ### TODO Who! FIXME! This *can't* be correct.
     self.author = author
     self.log = log
+    
+    # Symbolic names for which the last source revision has already
+    # been seen and for which the CVSRevisionAggregator has already
+    # generated a fill SVNCommit.  See self.process_revisions().
+    self.done_symbols = [ ]
 
     self.files = { }
     # Lists of CVSRevisions
@@ -1983,15 +1988,34 @@ class CVSCommit:
           and c_rev.branch_name not in accounted_for_sym_names \
           and c_rev.branch_name not in self.done_symbols \
           and fill_needed(c_rev):
-        ###TODO Is this TODO valid? Check c_rev.op to see if we're an add!
-        ### TODO IMPT: Possible correctness issue here.  If we have a
-        # branch with a single file on it, and that file was deleted
-        # in the previous CVS revision, and resurrected in this
-        # revision, we may not have anything to fill here, and thus,
-        # given the current state of the code, we're generating an
-        # empty SVN commit.  This is likely a rare edge case, and
-        # generating the empty commit isn't the end of the world,
-        # but hey, we're all idealists here, aren't we?
+        ###TODO IMPT Check c_rev.op to see if we're an add.  Why?
+        ###
+        ### Here's why:
+        ###
+        ### It should be the case that when we have a file F that
+        ### is added on branch B (thus, F on trunk is in state
+        ### 'dead'), we generate an SVNCommit to fill B iff the branch
+        ### has never been filled before.
+        ###
+        ### Right now, though, we will sometimes generate an empty
+        ### SVNCommit, because we're not detecting whether B has ever
+        ### been filled before.
+        ###
+        ### Solution: In pass5(), keep a list of all unique branches
+        ### that we've ever filled (in memory is fine), and only
+        ### generate a fill in the above case if the symbol in
+        ### question isn't in this list.
+        ###
+        ### IOW:
+        ###
+        ### If this c_rev.op == OP_ADD, and c_rev.prev_rev is on a
+        ### different line of development and is in state 'dead',
+        ### *and* the branch has never been filled before, then fill
+        ### it now.  Otherwise, no need to fill it.
+        ###
+        ### This logic can probably all be implemented in
+        ### fill_needed(), since it's got the c_rev and it talks to
+        ### the PersistenceManager.
         svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
                                % c_rev.branch_name)
         svn_commit.set_symbolic_name(c_rev.branch_name)
