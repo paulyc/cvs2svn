@@ -356,12 +356,24 @@ class CVSRevision:
   def symbolic_names(self):
     return self.tags + self.branches
 
+  # Returns true if this CVSRevision is the opening CVSRevision for
+  # NAME (for this RCS file).
+  def opens_symbolic_name(self, name):
+    if name in self.tags:
+      return 1
+    if name in self.branches:
+      return 1
+    return 0
+
+  ###TODO This needs to be deleted when the redesign is done.
   def contains_symbolic_name(self, name):
     if name in self.tags:
       return 1
     if name in self.branches:
       return 1
-###TODO WHY ISN'T REMOVING THIS CORRECT??????????????
+    ###TODO REMOVING THIS IS NOT CORRECT because if we do, the
+    ###symbolicnametracker blows away the branch in the
+    ###symbolicnamesdb before the last commits on that branch.
     if self.branch_name == name:
       return 1
     return 0
@@ -2801,9 +2813,6 @@ class LastSymbolicNameDatabase(Database):
       self.symbols[tag] = c_rev.unique_key()
     for branch in c_rev.branches:
       self.symbols[branch] = c_rev.unique_key()
-###TODO Make sure removing this is correct
-#   if c_rev.branch_name:
-#      self.symbols[c_rev.branch_name] = c_rev.unique_key()
 
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that
@@ -3083,11 +3092,11 @@ class CVSCommit:
   def revisions(self):
     return self.changes + self.deletes
 
-  def contains_symbolic_name(self, name):
+  def opens_symbolic_name(self, name):
     """Returns true if any CVSRevision in this commit is on a tag or a
     branch or is the origin of a tag or branch."""
     for c_rev in self.revisions():
-      if c_rev.contains_symbolic_name(name):
+      if c_rev.opens_symbolic_name(name):
         return 1
     return 0
 
@@ -3177,7 +3186,8 @@ class CVSCommit:
           # empty SVN commit.  This is likely a rare edge case, and
           # generating the empty commit isn't the end of the world,
           # but hey, we're all idealists here, aren't we?
-          if not c_rev.branch_name in accounted_for_sym_names:
+          if ((not c_rev.branch_name in accounted_for_sym_names)
+              and (not c_rev.branch_name in self.done_symbols)):
             SVNCommit("pre-commit branch '%s'" % c_rev.branch_name).flush()
             accounted_for_sym_names.append(c_rev.branch_name)
           RepositoryHead().add_path(c_rev.svn_path)
@@ -3187,7 +3197,8 @@ class CVSCommit:
     for c_rev in self.deletes:
       if c_rev.branch_name:
         if not RepositoryHead().has_path(c_rev.svn_path):
-          if not c_rev.branch_name in accounted_for_sym_names:
+          if ((not c_rev.branch_name in accounted_for_sym_names)
+              and (not c_rev.branch_name in self.done_symbols)):
             SVNCommit("pre-commit branch '%s'" % c_rev.branch_name).flush()
             accounted_for_sym_names.append(c_rev.branch_name)
         else:
@@ -3255,7 +3266,8 @@ class CVSCommit:
       svn_commit.flush()
       print '    new revision:', svn_commit.revnum
 
-  def process_revisions(self, ctx):
+  def process_revisions(self, ctx, done_symbols):
+    self.done_symbols = done_symbols
     seconds = self.t_max - self.t_min
     print ('CVS Revision grouping: %s, over %d seconds'
            % (time.ctime(self.t_min), seconds))
@@ -3305,6 +3317,11 @@ class CVSRevisionAggregator:
     ###TODO Cleanup().register()
     self.cvs_commits = {}
     self.pending_symbols = {}
+    # A list of symbols for which we've already encountered the last
+    # CVSRevision that is a source for that symbol.  That is, the
+    # final fill for this symbol has been done, and we never need to
+    # fill it again.
+    self.done_symbols = [ ]
 
   def process_revision(self, c_rev):
     # Each time we read a new line, we scan the commits we've
@@ -3349,7 +3366,7 @@ class CVSRevisionAggregator:
     # 'em.
     ready_queue.sort()
     for cvs_commit in ready_queue:
-      cvs_commit.process_revisions(self._ctx)
+      cvs_commit.process_revisions(self._ctx, self.done_symbols)
 
     ################################################################
     # Iterating through self.changes and deletes, we check to see if
@@ -3370,7 +3387,7 @@ class CVSRevisionAggregator:
     open_symbols = {}
     for sym in self.pending_symbols.keys():
       for cvs_commit in self.cvs_commits.values():
-        if cvs_commit.contains_symbolic_name(sym):
+        if cvs_commit.opens_symbolic_name(sym):
           open_symbols[sym] = None
           break
 
@@ -3385,28 +3402,9 @@ class CVSRevisionAggregator:
     ### TODO END MARK  decompose
         continue
       SVNCommit("closing tag/branch '%s'" % sym).flush()
+      self.done_symbols.append(sym)
       del self.pending_symbols[sym]
     #####################################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def pass8(ctx):
   aggregator = CVSRevisionAggregator(ctx)

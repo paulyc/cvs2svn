@@ -704,6 +704,8 @@ def mixed_time_branch_with_added_file():
 
   # Empty revision, purely to store the log message of the dead 1.1 revision
   # required by the RCS file format
+  # NOTE: This log message is created by CVS when the file
+  # branch_B_MIXED_only is added to the branch
   check_rev(logs, 32, 'file branch_B_MIXED_only was initially added on '
       'branch B_MIXED.', {})
 
