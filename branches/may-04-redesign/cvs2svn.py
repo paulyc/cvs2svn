@@ -3921,8 +3921,6 @@ def main():
 
   start_pass = 1
 
-  Log().log_level = LOG_NORMAL
-
   try:
     opts, args = getopt.getopt(sys.argv[1:], 'p:s:qvh',
                                [ "help", "create", "trunk=",
