@@ -1247,9 +1247,8 @@ def print_node_tree(tree, root_node, indent_depth=0):
 def pass1(ctx):
   Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
   cd = CollectData(ctx)
-  p = rcsparse.Parser()
-  def visit_file(arg, dirname, files):
-    cd, p = arg
+  def visit_file(baton, dirname, files):
+    cd = baton
     for fname in files:
       if fname[-2:] != ',v':
         continue
@@ -1262,7 +1261,7 @@ def pass1(ctx):
         cd.set_fname(pathname)
       Log().write(LOG_NORMAL, pathname)
       try:
-        p.parse(open(pathname, 'rb'), cd)
+        rcsparse.parse(open(pathname, 'rb'), cd)
       except (rcsparse.common.RCSParseError, ValueError, RuntimeError):
         err = "%s: '%s' is not a valid ,v file" \
               % (error_prefix, pathname)
@@ -1271,7 +1270,7 @@ def pass1(ctx):
       except:
         print "Exception occurred while parsing %s" % pathname
         raise
-  os.path.walk(ctx.cvsroot, visit_file, (cd, p))
+  os.path.walk(ctx.cvsroot, visit_file, cd)
   if ctx.verbose:
     print 'processed', cd.num_files, 'files'
   if len(cd.fatal_errors) > 0:
