@@ -3104,7 +3104,7 @@ def print_node_tree(tree, root_node, indent_depth=0):
     print "TREE", "=" * 75
   print "TREE:", " " * (indent_depth * 2), root_node, tree[root_node]
   for key, value in tree[root_node].items():
-    if key[0] == '/': #Skip flags
+    if key[0] == '/': #Skip flags ###TODO Is this necessary?
       continue
     print_node_tree(tree, value, (indent_depth + 1))
 
@@ -3323,6 +3323,157 @@ class SymbolicNameFill:
     self.root_key = '0'
     # The dictionary that holds our node tree, seeded with the root key.
     self.node_tree = { self.root_key : { } }
+
+  def get_best_revnum(self, root_node, preferred_revnum):
+    """ Determine the best subversion revision number to use when
+    copying the source tree beginning at ROOT_NODE. Returns a
+    subversion revision number.
+
+    PREFERRED_REVNUM is passed to self._best_rev and used to
+    caluculate the best_revnum."""
+    revnum = SVN_INVALID_REVNUM
+
+    # Aggregate openings and closings from the rev tree
+    openings = self._list_revnums_for_key(root_node, self.opening_key)
+    closings = self._list_revnums_for_key(root_node, self.closing_key)
+
+    # Score the lists
+    scores = self._score_revisions(self._condense_scores(openings),
+                                  self._condense_scores(closings))
+
+    revnum = self._best_rev(scores, preferred_revnum)
+  
+    if revnum == SVN_INVALID_REVNUM:
+      sys.stderr.write(error_prefix + ": failed to find a revision "
+                       + "to copy from when copying %s\n" % name)
+      sys.exit(1)
+    return revnum
+
+
+  def _best_rev(self, scores, preferred_rev):
+    """Return the revision with the highest score from SCORES, a list
+    returned by _score_revisions(). When the maximum score is shared
+    by multiple revisions, the oldest revision is selected, unless
+    PREFERRED_REV is one of the possibilities, in which case, it is
+    selected."""
+    max_score = 0
+    max_rev = 1
+    preferred_rev_score = -1
+    rev = SVN_INVALID_REVNUM
+    for revnum, count in scores:
+      if revnum > max_rev:
+        max_rev = revnum
+      if count > max_score:
+        max_score = count
+        rev = revnum
+      if revnum <= preferred_rev:
+        preferred_rev_score = count
+    if (preferred_rev_score == max_score
+        and preferred_rev <= max_rev):
+      rev = preferred_rev
+    return rev
+
+
+  def _score_revisions(self, openings, closings):
+    """Return a list of revisions and scores based on OPENINGS and
+    CLOSINGS.  The returned list looks like:
+
+       [(REV1 SCORE1), (REV2 SCORE2), ...]
+
+    where REV2 > REV1.  OPENINGS and CLOSINGS are the values of
+    self.opening__key and self.closing_key, or self.opening_key and
+    self.closing_key, from some file or directory node, or else None.
+
+    Each score indicates that copying the corresponding revision (or
+    any following revision up to the next revision in the list) of the
+    object in question would yield that many correct paths at or
+    underneath the object.  There may be other paths underneath it
+    which are not correct and need to be deleted or recopied; those
+    can only be detected by descending and examining their scores.
+
+    If OPENINGS is false, return the empty list."""
+
+    # First look for easy outs.
+    if not openings:
+      return []
+
+    # Must be able to call len(closings) below.
+    if closings is None:
+      closings = []
+
+    ###TODO, Review with kfogel for simplification
+    # No easy out, so wish for lexical closures and calculate the scores :-). 
+    scores = []
+    opening_score_accum = 0
+    for i in range(len(openings)):
+      opening_rev, opening_score = openings[i]
+      opening_score_accum = opening_score_accum + opening_score
+      scores.append((opening_rev, opening_score_accum))
+    min = 0
+    for i in range(len(closings)):
+      closing_rev, closing_score = closings[i]
+      done_exact_rev = None
+      insert_index = None
+      insert_score = None
+      for j in range(min, len(scores)):
+        score_rev, score = scores[j]
+        if score_rev >= closing_rev:
+          if not done_exact_rev:
+            if score_rev > closing_rev:
+              insert_index = j
+              insert_score = scores[j-1][1] - closing_score
+            done_exact_rev = 1
+          scores[j] = (score_rev, score - closing_score)
+        else:
+          min = j + 1
+      if not done_exact_rev:
+        scores.append((closing_rev,scores[-1][1] - closing_score))
+      if insert_index is not None:
+        scores.insert(insert_index, (closing_rev, insert_score))
+    return scores
+
+  def _condense_scores(self, scores):
+    """Takes an array of revisions (scores), for example:
+
+      [21, 18, 6, 49, 39, 24, 24, 24, 24, 24, 24, 24]
+
+    and adds up every occurrence of each revision and returns a sorted
+    array of tuples containing (svn_revnum, count):
+
+      [(6, 1), (18, 1), (21, 1), (24, 7), (39, 1), (49, 1)]
+    """
+    s = {}
+    for k in scores: # Add up the scores
+      if s.has_key(k):
+        s[k] = s[k] + 1
+      else:
+        s[k] = 1
+    a = s.items()
+    a.sort()
+    return a
+
+  def _list_revnums_for_key(self, node, revnum_type_key):
+    """Scan self.node_tree and return a list of all the revision
+    numbers (including duplicates) contained in REVNUM_TYPE_KEY values
+    for all leaf nodes under NODE, including NODE itself (if NODE is a
+    leaf node."""
+    revnums = []
+
+    # If the node has self.opening_key, it must be a leaf node--all
+    # leaf nodes have at least an opening key (although they may not
+    # have a closing key.  Fetch revnum and return
+    if (self.node_tree[node].has_key(self.opening_key) and
+        self.node_tree[node].has_key(revnum_type_key)):
+      revnums.append(self.node_tree[node][revnum_type_key])
+      return revnums
+
+    for key, node_contents in self.node_tree[node].items():
+      if key[0] == '/': #Skip flags  ###TODO is this necessary?
+        continue 
+      revnums = revnums + \
+          self._list_revnums_for_key(node_contents, revnum_type_key)
+    return revnums
+
 
 
   def add_path_and_revision(self, svn_path, svn_revnum):
@@ -4325,32 +4476,40 @@ class SVNRepositoryMirror:
     dest = base_dest_path + '/' + '/'.join(components[1:])
     return dest
 
-  def _copy_paths_in_fill_tree(self, symbol_fill, root_node,
-                               name, path_so_far=None):
+  def _copy_paths_in_fill_tree(self, symbol_fill, root_node, name,
+                               path_so_far=None, preferred_revnum=None):
     """Descends through all nodes in SYMBOL_FILL.NODE_TREE that are rooted at
     ROOT_NODE.  Generates copy commands for all destination nodes that
     don't exist in NAME.  PATH_SO_FAR should not be passed in as it is
     created as the function recurses.  """
-    for key, value in symbol_fill.node_tree[root_node].items():
-      if key[0] == '/': #Skip flags
+
+    for node_key, node_contents in symbol_fill.node_tree[root_node].items():
+      if node_key[0] == '/': #Skip flags
         continue
       if path_so_far is not None:
-        src_path = path_so_far + '/' + key
+        src_path = path_so_far + '/' + node_key
       else:
-        src_path = key
+        src_path = node_key
       print "TON", "=" * 40
       dest_path = dest_path = self._dest_path_for_source_path(name, src_path)
-#      print "TON DES:", dest_path
+      #      print "TON DES:", dest_path
 
-      if (dest_path is not None
-          and not self.path_exists(dest_path)):
-        pass
-        print "TON: COPYING ", src_path
+      if (dest_path is not None and not self.path_exists(dest_path)):
+        ###TODO Review with Karl: Is this correct usage for
+        ###preferred_revnum?
+        preferred_revnum = symbol_fill.get_best_revnum(node_contents,
+                                                       preferred_revnum)
+
+        # TODO call self.copy_path (which calls the delegate)
+        # TODO Then manage deletes (prunes) (which calls the delegate)
+        print "TON: COPYING ", src_path, preferred_revnum
         print "TON:         to", dest_path
 
-      self._copy_paths_in_fill_tree(symbol_fill, value,
-                                    name, src_path)
+      self._copy_paths_in_fill_tree(symbol_fill, node_contents,
+                                    name, src_path, preferred_revnum)
 
+  ###TODO This *might* be a bit pricey to do.  Look here for perf
+  ###problems.
   def path_exists(self, path):
     """If PATH exists in self.youngest of the svn repository mirror,
     return true, else return None.
