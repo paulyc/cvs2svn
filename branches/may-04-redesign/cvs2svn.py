@@ -3613,21 +3613,31 @@ def pass7(ctx):
 
 ###TODO move this stuff out of here! pass8 should be here.
 
-###TODO Now that we're determining change/add/delete in the revs file,
-# do we even need this anymore?
-class RepositoryHead(Singleton):
+class RepositoryBranchesInHead(Singleton):
+  """Permanent storage for Subversion paths.
+
+  While we're in the process of generating SVNCommits, this should be
+  maintained to contain every branch path in the youngest revision of
+  the repository and nothing else -- i.e., no non-branch paths at all,
+  and no branch paths not in head.
+
+  This class is used for determining whether a branch fill will be
+  necessary when we see a commit on a branch."""
   # We're a singleton, so we use init, not __init__
   def init(self):
     self.db = Database(SVN_REPOSITORY_HEAD_DB, 'n')
     Cleanup().register(SVN_REPOSITORY_HEAD_DB, pass8) ##TODO earlier
 
   def add_path(self, path):
+    """Remember that PATH exists."""
     self.db[path] = None
 
   def has_path(self, path):
+    """Return true if PATH exists."""
     return self.db.has_key(path)
 
   def remove_path(self, path):
+    """Forget that PATH exists."""
     del self.db[path]
 
 
@@ -3913,7 +3923,7 @@ class CVSCommit:
       # will exist.
       if c_rev.branch_name: ###TODO collapse if clauses
         ###TODO Check c_rev.op to see if we're an add!
-        if not RepositoryHead().has_path(c_rev.svn_path):
+        if not RepositoryBranchesInHead().has_path(c_rev.svn_path):
           ### TODO: Possible correctness issue here.  If we have a
           # branch with a single file on it, and that file was deleted
           # in the previous CVS revision, and resurrected in this
@@ -3931,14 +3941,14 @@ class CVSCommit:
             svn_commit.flush()
 
             accounted_for_sym_names.append(c_rev.branch_name)
-          RepositoryHead().add_path(c_rev.svn_path)
+          RepositoryBranchesInHead().add_path(c_rev.svn_path)
 
     ###TODO Make sure that changes and deletes HAVE to be separate
     ### lists
     for c_rev in self.deletes:
       if c_rev.branch_name:
         ###TODO Check c_rev.op to see if we're an add!
-        if not RepositoryHead().has_path(c_rev.svn_path):
+        if not RepositoryBranchesInHead().has_path(c_rev.svn_path):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
             svn_commit = SVNCommit(self._ctx, "pre-commit branch DELETE '%s'"
@@ -3947,7 +3957,7 @@ class CVSCommit:
             svn_commit.flush()
             accounted_for_sym_names.append(c_rev.branch_name)
         else:
-          RepositoryHead().remove_path(c_rev.svn_path)
+          RepositoryBranchesInHead().remove_path(c_rev.svn_path)
 
   def _commit(self):
     """Generates the primary SVNCommit that corresponds the this
@@ -3963,7 +3973,6 @@ class CVSCommit:
 
     for c_rev in self.changes:
       svn_commit.add_revision(c_rev)
-      ###TODO QUX1 RepositoryHead().add_path(c_rev.svn_path)
       # Only make a change if we need to.  When 1.1.1.1 has an empty
       # deltatext, the explanation is almost always that we're looking
       # at an imported file whose 1.1 and 1.1.1.1 are identical.  On
@@ -3974,20 +3983,14 @@ class CVSCommit:
       # we were really paranoid, we could make sure 1.1's log message
       # is the CVS-generated "Initial revision\n", but I think the
       # conditions below are strict enough.)
-      ###TODO FIXME Verify that c_rev.svn_path is what we want here,
-      #and NOT c_rev.svn_trunk_path.  This will only work if you
-      #uncomment QUX1 (above) and QUX2 (below)
-      ###TODO We need a test for this.
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
               and (c_rev.rev == "1.1.1.1")
-              and RepositoryHead().has_path(c_rev.svn_path)):
+              and RepositoryBranchesInHead().has_path(c_rev.svn_path)):
         if c_rev.is_default_branch_revision():
           self.default_branch_cvs_revisions.append(c_rev)
 
     for c_rev in self.deletes:
       svn_commit.add_revision(c_rev)
-      ###TODO QUX2 if RepositoryHead().has_path(c_rev.svn_path):
-      ###TODO QUX2   RepositoryHead().remove_path(c_rev.svn_path)
       if c_rev.is_default_branch_revision():
         self.default_branch_cvs_revisions.append(c_rev)
 
