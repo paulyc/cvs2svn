@@ -493,23 +493,6 @@ class CVSRevision:
     # else
     return None
 
-  ###TODO Create a test with only one file, and that should be added
-  ###on a branch... we may be able to lose the elif clause here.
-  def branch_file_needs_to_be_created_in_this_revision(self):
-    """Return true if the file belonging to this CVS Revision needs to
-    be created (on a branch) in this revision."""
-    # If the number of dots in our current rev_num is different than the
-    # number of dots in our previous revision's rev_num, we're now on a
-    # different line of development, so a copy will need to be made to
-    # create this file.
-    if self.rev.count('.') != self.prev_rev.count('.'):
-      return 1
-    # If we're on the same line of development, but we're an add, we
-    # also return true.
-    if self.op == OP_ADD:
-      return 1
-    return 0
-
 
 class CollectData(rcsparse.Sink):
   def __init__(self, log_fname_base, ctx):
@@ -1890,6 +1873,11 @@ class CommitMapper(Singleton):
       self.tags_db = TagsDatabase('r')
       self.motivating_revnums = Database(MOTIVATING_REVNUMS, 'c')
       Cleanup().register(MOTIVATING_REVNUMS, pass8)
+    
+    # "branch_name" -> svn_revnum in which branch was last filled.
+    # This is used by CVSCommit._pre_commit, to prevent creating a fill
+    # revision which would have nothing to do.
+    self.last_filled = {}
 
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
@@ -1984,6 +1972,7 @@ class CommitMapper(Singleton):
   def set_name_and_date(self, svn_revnum, name, date):
     """Associate symbolic name NAME and DATE with SVN_REVNUM."""
     self.svn_commit_names_dates[str(svn_revnum)] = (name, date)
+    self.last_filled[name] = svn_revnum
 
   def _get_name_and_date(self, svn_revnum):
     """Return a tuple containing the symbolic name and date associated
@@ -2147,6 +2136,17 @@ class CVSCommit:
     # counted.
     accounted_for_sym_names = [ ]
 
+    def fill_needed(c_rev):
+      """If this is the first commit on a new branch (for this file),
+      then find out if we need to fill the branch, or if another file's first
+      commit on the branch has already done this for us."""
+      if c_rev.rev.count('.') != c_rev.prev_rev.count('.'):
+        cm = CommitMapper()
+        svn_revnum = cm.get_svn_revnum(c_rev.unique_key(c_rev.prev_rev))
+        if svn_revnum > cm.last_filled.get(c_rev.branch_name, 0):
+          return 1
+      return 0
+
     for c_rev in self.changes:
       # If a commit is on a branch, we must ensure that the branch
       # path being committed exists (in HEAD of the Subversion
@@ -2155,7 +2155,7 @@ class CVSCommit:
       # will exist.
       if c_rev.branch_name: ###TODO collapse if clauses
         ###TODO Check c_rev.op to see if we're an add!
-        if c_rev.branch_file_needs_to_be_created_in_this_revision():
+        if fill_needed(c_rev):
           ### TODO: Possible correctness issue here.  If we have a
           # branch with a single file on it, and that file was deleted
           # in the previous CVS revision, and resurrected in this
@@ -2175,7 +2175,7 @@ class CVSCommit:
 
     for c_rev in self.deletes:
       if c_rev.branch_name:
-        if c_rev.branch_file_needs_to_be_created_in_this_revision():
+        if fill_needed(c_rev):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
             svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
