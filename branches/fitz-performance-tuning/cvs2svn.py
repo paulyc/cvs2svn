@@ -1568,6 +1568,7 @@ class SymbolicNameTracker:
       entry_val[revlist_key] = rev_counts
 
     self.db[item_key] = entry_val
+    return entry_val
 
   # The verb form of "root" is "root", but that would be misleading in
   # this case; and the opposite of "uproot" is presumably "downroot",
@@ -1587,8 +1588,7 @@ class SymbolicNameTracker:
       components = [name] + string.split(svn_path, '/')
       parent_key = self.root_key
       for component in components:
-        self.bump_rev_count(parent_key, svn_rev, opening_key)
-        parent = self.db[parent_key]
+        parent = self.bump_rev_count(parent_key, svn_rev, opening_key)
         if not parent.has_key(component):
           new_child_key = gen_key()
           parent[component] = new_child_key
@@ -1630,8 +1630,7 @@ class SymbolicNameTracker:
       components = [name] + string.split(svn_path, '/')
       parent_key = self.root_key
       for component in components:
-        self.bump_rev_count(parent_key, svn_rev, closing_key)
-        parent = self.db[parent_key]
+        parent = self.bump_rev_count(parent_key, svn_rev, closing_key)
         # Check for a "can't happen".
         if not parent.has_key(component):
           sys.stderr.write("%s: in path '%s', value for parent key '%s' "
