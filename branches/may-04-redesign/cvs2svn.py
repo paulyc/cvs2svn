@@ -4397,10 +4397,9 @@ class SVNRepositoryMirrorUnexpectedOperationError(Exception):
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
   SVNCommit at a time.  The mirror is skeletal; it does not contain
-  file contents.  If you set the delegate, as soon as SVNRepository
-  performs a repository action method ([add|change|delete|copy]path),
-  it will call the delegate's corresponding repository action method.
-  See SVNRepositoryMirrorDelegate for more information.
+  file contents.  The creation of a dumpfile or Subversion repository
+  is handled by delegates.  See self.add_delegate method for how to
+  set delegates.
 
   You must invoke start_commit between SVNCommits.
 
@@ -4408,11 +4407,10 @@ class SVNRepositoryMirror:
       have leading or trailing slashes.
 
   """
-  def __init__(self, ctx, delegate=None):
+  def __init__(self, ctx):
     """Set up the SVNRepositoryMirror and prepare it for SVNCommits."""
     self._ctx = ctx
-    self.delegate = delegate
-    self.delegate.set_mirror(self)
+    self.delegates = [ ]
 
     # This corresponds to the 'revisions' table in a Subversion fs.
     self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'n')
@@ -4484,8 +4482,8 @@ class SVNRepositoryMirror:
     """Delete PATH from the tree.  PATH may not have a leading slash.
 
     Return the path actually deleted or None if PATH did not exist.
-    This is the path on which self.delegate.delete_path will be
-    invoked (exactly once), and the delegate will not be invoked at
+    This is the path on which our delegates' delete_path will be
+    invoked (exactly once), and the delegates will not be invoked at
     all if no path was deleted.
 
     If self._ctx.prune is not None, then delete the highest possible
@@ -4631,7 +4629,7 @@ class SVNRepositoryMirror:
     else:
       retpath = path
 
-    self.delegate.delete_path(retpath)
+    self.invoke_delegates('delete_path', retpath)
     return retpath
 
   def mkdir(self, path):
@@ -4639,24 +4637,24 @@ class SVNRepositoryMirror:
     # Since we make no distinction from a file and a directory in the
     # mirror, we can merely leverage self._add_or_change_path here
     self._add_or_change_path(path)
-    self.delegate.mkdir(path)
+    self.invoke_delegates('mkdir', path)
 
   def change_path(self, cvs_rev):
     """Register a change in self.youngest for the CVS_REV's svn_path
     in the repository mirror."""
     self._add_or_change_path(cvs_rev.svn_path)
-    self.delegate.change_path(cvs_rev)
+    self.invoke_delegates('change_path', cvs_rev)
 
   def add_path(self, cvs_rev):
     """Add the CVS_REV's svn_path to the repository mirror."""
     self._add_or_change_path(cvs_rev.svn_path)
-    self.delegate.add_path(cvs_rev)
+    self.invoke_delegates('add_path', cvs_rev)
 
   def _add_or_change_path(self, svn_path):
     """From the youngest revision, bubble down a chain of mutable
     nodes for SVN_PATH.  Create new (mutable) nodes as necessary, and
-    calls self.delegate.mkdir() once on each intermediate path it
-    creates.
+    calls self.invoke_delegates('mkdir', path)) once on each
+    intermediate path it creates.
 
     This makes nodes mutable only as needed, otherwise, mutates any
     mutable nodes it encounters."""
@@ -4685,9 +4683,9 @@ class SVNRepositoryMirror:
         # Update the parent node in the db
         self.nodes_db[parent_node_key] = parent_node_contents
         # If we create a new node and it's not a leaf node, then we've just
-        # created a new directory.  Let the delegate know.
+        # created a new directory.  Let the delegates know.
         if component is not last_component:
-          self.delegate.mkdir(path_so_far)
+          self.invoke_delegates('mkdir', path_so_far)
       else:
         # NOTE: The following clause is essentially _open_path, but to
         # use it here would mean that we would have to re-walk our
@@ -4962,7 +4960,7 @@ class SVNRepositoryMirror:
     key, new_node = self._new_mutable_node(src_node_contents)
     dest_node_contents[dest_basename] = key
     self.nodes_db[dest_node_key] = dest_node_contents
-    self.delegate.copy_path(src_path, dest_path, src_revnum)
+    self.invoke_delegates('copy_path', src_path, dest_path, src_revnum)
     return new_node
 
   def _node_for_path(self, path, revnum, ignore_leaf=None):
@@ -5020,14 +5018,14 @@ class SVNRepositoryMirror:
 
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
-    Repository revision number, and changing the repository.
-    Invoke the delegate's start_commit() method, if there is a delegate."""
+    Repository revision number, and changing the repository.  Invoke
+    the delegates' start_commit() method."""
 
     ###TODO Make a decision about whether or not the self.methods
     ###called here are going to be public or not.  If they're going to
     ###remain private, then prefix them with an underscore.
     self.start_commit(svn_commit.revnum)
-    self.delegate.start_commit(svn_commit)
+    self.invoke_delegates('start_commit', svn_commit)
 
     # Create tags and branches in the first commit
     ###TODO don't do this if we're trunk_only
@@ -5066,9 +5064,29 @@ class SVNRepositoryMirror:
     self.revs_db = None
     self.nodes_db = None
 
+  def add_delegate(self, delegate):
+    """Adds DELEGATE to self.delegates.
+
+    For every delegate you add, as soon as SVNRepositoryMirror
+    performs a repository action method, SVNRepositoryMirror will call
+    the delegate's corresponding repository action method.  Multiple
+    delegates will be called in the order that they are added.  See
+    SVNRepositoryMirrorDelegate for more information."""
+    self.delegates.append(delegate)
+    ###TODO do we really need to set the mirror on the delegate?
+    delegate.set_mirror(self)
+
+  def invoke_delegates(self, method, *args):
+    """Iterate through each of our delegates, in the order that they
+    were added, and call the delegate's method named METHOD with the
+    arguments in ARGS."""
+    for delegate in self.delegates:
+      getattr(delegate, method)(*args)
+
   def finish(self):
     """Calls the delegate finish method."""
-    self.delegate.finish()
+    self.invoke_delegates('finish')
+
 
 
 class SVNRepositoryMirrorDelegate:
@@ -5486,7 +5504,9 @@ def pass8(ctx):
 
   # kff: toggle between these two lines to test the DumpfileDelegate or not
   #repos = SVNRepositoryMirror(ctx, StdoutDelegate())
-  repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
+  repos = SVNRepositoryMirror(ctx)
+  repos.add_delegate(DumpfileDelegate(ctx))
+  repos.add_delegate(StdoutDelegate())
 
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
