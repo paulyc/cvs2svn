@@ -5382,8 +5382,8 @@ def pass8(ctx):
   svncounter = 1
 
   # kff: toggle between these two lines to test the DumpfileDelegate or not
-  # repos = SVNRepositoryMirror(ctx, StdoutDelegate())
-  repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
+  repos = SVNRepositoryMirror(ctx, StdoutDelegate())
+  # repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
 
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
