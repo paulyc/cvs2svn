@@ -1736,7 +1736,6 @@ class PersistenceManager(Singleton):
     self.cvs_revisions = CVSRevisionDatabase(DB_OPEN_READ, ctx)
     ###PERF kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.
-    ###TODO FITZ: We should set an is_tag var on SVNCommit...
     if not ctx.trunk_only:
       self.tags_db = TagsDatabase(DB_OPEN_READ)
       self.motivating_revnums = Database(MOTIVATING_REVNUMS, DB_OPEN_CREATE)
