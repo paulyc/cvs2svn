@@ -968,31 +968,6 @@ def relative_name(cvsroot, fname):
                    " cvsroot\n" % (error_prefix, cvsroot, fname))
   sys.exit(1)
 
-def visit_file(arg, dirname, files):
-  cd, p = arg
-  for fname in files:
-    if fname[-2:] != ',v':
-      continue
-    pathname = os.path.join(dirname, fname)
-    if dirname[-6:] == ATTIC:
-      # drop the 'Attic' portion from the pathname
-      ### we should record this so we can easily insert it back in
-      cd.set_fname(os.path.join(dirname[:-6], fname))
-    else:
-      cd.set_fname(pathname)
-    Log().write(LOG_NORMAL, pathname)
-    try:
-      p.parse(open(pathname, 'rb'), cd)
-    except (rcsparse.common.RCSParseError, ValueError, RuntimeError):
-      err = "%s: '%s' is not a valid ,v file" \
-            % (error_prefix, pathname)
-      sys.stderr.write(err + '\n')
-      cd.fatal_errors.append(err)
-    except:
-      print "Exception occurred while parsing %s" % pathname
-      raise
-
-
 # Return a string that has not been returned by gen_key() before.
 gen_key_base = 0L
 def gen_key():
@@ -1273,6 +1248,29 @@ def pass1(ctx):
   Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
   cd = CollectData(DATAFILE, ctx)
   p = rcsparse.Parser()
+  def visit_file(arg, dirname, files):
+    cd, p = arg
+    for fname in files:
+      if fname[-2:] != ',v':
+        continue
+      pathname = os.path.join(dirname, fname)
+      if dirname[-6:] == ATTIC:
+        # drop the 'Attic' portion from the pathname
+        ### we should record this so we can easily insert it back in
+        cd.set_fname(os.path.join(dirname[:-6], fname))
+      else:
+        cd.set_fname(pathname)
+      Log().write(LOG_NORMAL, pathname)
+      try:
+        p.parse(open(pathname, 'rb'), cd)
+      except (rcsparse.common.RCSParseError, ValueError, RuntimeError):
+        err = "%s: '%s' is not a valid ,v file" \
+              % (error_prefix, pathname)
+        sys.stderr.write(err + '\n')
+        cd.fatal_errors.append(err)
+      except:
+        print "Exception occurred while parsing %s" % pathname
+        raise
   os.path.walk(ctx.cvsroot, visit_file, (cd, p))
   if ctx.verbose:
     print 'processed', cd.num_files, 'files'
