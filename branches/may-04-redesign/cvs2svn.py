@@ -3546,12 +3546,14 @@ class RepositoryDelegate(DumpfileDelegate):
     self._write_dumpfile_header(self.loader_pipe)
 
   def _feed_pipe(self):
-      self.dumpfile.seek(0)
-      while 1:
-        data = self.dumpfile.read(128*1024) # Chunks size is arbitrary
-        if not len(data):
-          break
-        self.loader_pipe.write(data)
+    """Feed the revision stored in the dumpfile to the svnadmin
+    load pipe."""
+    self.dumpfile.seek(0)
+    while 1:
+      data = self.dumpfile.read(128*1024) # Chunk size is arbitrary
+      if not len(data):
+        break
+      self.loader_pipe.write(data)
 
   def start_commit(self, svn_commit):
     """Start a new commit.  If a commit is already in progress, close
