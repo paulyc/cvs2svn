@@ -463,14 +463,14 @@ class CVSRevision:
 
 
 class CollectData(rcsparse.Sink):
-  def __init__(self, log_fname_base, ctx):
+  def __init__(self, ctx):
     self._ctx = ctx
     ### TODO self.ctx.* can be accessed through self._ctx.
     self.cvsroot = ctx.cvsroot
-    self.revs = open(log_fname_base + REVS_SUFFIX, 'w')
-    Cleanup().register(log_fname_base + REVS_SUFFIX, pass2)
-    self.resync = open(log_fname_base + RESYNC_SUFFIX, 'w')
-    Cleanup().register(log_fname_base + RESYNC_SUFFIX, pass2)
+    self.revs = open(DATAFILE + REVS_SUFFIX, 'w')
+    Cleanup().register(DATAFILE + REVS_SUFFIX, pass2)
+    self.resync = open(DATAFILE + RESYNC_SUFFIX, 'w')
+    Cleanup().register(DATAFILE + RESYNC_SUFFIX, pass2)
     self.default_branches_db = ctx.default_branches_db
     self.metadata_db = Database(METADATA_DB, 'n')
     Cleanup().register(METADATA_DB, pass8)
@@ -1246,7 +1246,7 @@ def print_node_tree(tree, root_node, indent_depth=0):
 
 def pass1(ctx):
   Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
-  cd = CollectData(DATAFILE, ctx)
+  cd = CollectData(ctx)
   p = rcsparse.Parser()
   def visit_file(arg, dirname, files):
     cd, p = arg
@@ -1290,13 +1290,13 @@ def pass2(ctx):
   # occurred at "the same time" and change their timestamps, too.
 
   # read the resync data file
-  resync = read_resync(ctx.log_fname_base + RESYNC_SUFFIX)
+  resync = read_resync(DATAFILE + RESYNC_SUFFIX)
 
-  output = open(ctx.log_fname_base + CLEAN_REVS_SUFFIX, 'w')
-  Cleanup().register(ctx.log_fname_base + CLEAN_REVS_SUFFIX, pass3)
+  output = open(DATAFILE + CLEAN_REVS_SUFFIX, 'w')
+  Cleanup().register(DATAFILE + CLEAN_REVS_SUFFIX, pass3)
 
   # process the revisions file, looking for items to clean up
-  for line in fileinput.FileInput(ctx.log_fname_base + REVS_SUFFIX):
+  for line in fileinput.FileInput(DATAFILE + REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
     if not resync.has_key(c_rev.digest):
       output.write(line)
@@ -1329,10 +1329,10 @@ def pass2(ctx):
 
 def pass3(ctx):
   Log().write(LOG_QUIET, "Sorting CVS revisions...")
-  sort_file(ctx.log_fname_base + CLEAN_REVS_SUFFIX,
-            ctx.log_fname_base + SORTED_REVS_SUFFIX)
+  sort_file(DATAFILE + CLEAN_REVS_SUFFIX,
+            DATAFILE + SORTED_REVS_SUFFIX)
   ### TODO pass8 is too late for this, but we may need it again after pass5
-  Cleanup().register(ctx.log_fname_base + SORTED_REVS_SUFFIX, pass8)
+  Cleanup().register(DATAFILE + SORTED_REVS_SUFFIX, pass8)
   Log().write(LOG_QUIET, "Done")
 
 def pass4(ctx):
@@ -1346,7 +1346,7 @@ def pass4(ctx):
   Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
   last_sym_name_db = LastSymbolicNameDatabase('n')
 
-  for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
+  for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
     last_sym_name_db.log_revision(c_rev)
 
@@ -1367,7 +1367,7 @@ def pass5(ctx):
     os.unlink(SYMBOL_OPENINGS_CLOSINGS)
 
   aggregator = CVSRevisionAggregator(ctx)
-  for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
+  for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
     if not (ctx.trunk_only and c_rev.branch_name is not None):
       aggregator.process_revision(c_rev)
@@ -3754,7 +3754,6 @@ def main():
   ctx = _ctx()
   ctx.cvsroot = None
   ctx.target = None
-  ctx.log_fname_base = DATAFILE
   ctx.dumpfile = DUMPFILE
   ctx.verbose = 0
   ctx.quiet = 0
