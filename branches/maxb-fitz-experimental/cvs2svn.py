@@ -241,9 +241,7 @@ class CVSRevision:
     output.write('%08lx %s %s %s %s ' % \
                  (self.timestamp, self.digest, self.op,
                   self.rev, self.deltatext_code))
-    if not self.branch_name:
-      self.branch_name = "*"
-    output.write('%s ' % self.branch_name)
+    output.write('%s ' % (self.branch_name or "*"))
     output.write('%d ' % (len(self.tags)))
     for tag in self.tags:
       output.write('%s ' % (tag))
