@@ -1285,6 +1285,13 @@ def pass5_when_to_fill():
   repos, wc, logs = ensure_conversion('pass5-when-to-fill')
   
 
+def empty_trunk():
+  "don't break when the trunk is empty"
+  # The conversion will fail if the bug is present, and
+  # ensure_conversion would raise svntest.Failure.
+  repos, wc, logs = ensure_conversion('empty-trunk')
+  
+
 #----------------------------------------------------------------------
 
 ########################################################################
@@ -1323,6 +1330,7 @@ test_list = [ None,
               default_branches,
               compose_tag_three_sources,
               pass5_when_to_fill,
+              XFail(empty_trunk),
              ]
 
 if __name__ == '__main__':
