@@ -3278,15 +3278,15 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     self.path_encoding = ctx.encoding
     
     self.dumpfile = open(self.dumpfile_path, 'wb')
-    self._write_dumpfile_header()
+    self._write_dumpfile_header(self.dumpfile)
 
-  def _write_dumpfile_header(self):
+  def _write_dumpfile_header(self, dumpfile):
     # Initialize the dumpfile with the standard headers.
     #
     # Since the CVS repository doesn't have a UUID, and the Subversion
     # repository will be created with one anyway, we don't specify a
     # UUID in the dumpflie
-    self.dumpfile.write('SVN-fs-dump-format-version: 2\n\n')
+    dumpfile.write('SVN-fs-dump-format-version: 2\n\n')
 
   def _utf8_path(self, path):
     """Return a copy of PATH encoded in UTF-8.  PATH is assumed to be
@@ -3540,25 +3540,36 @@ class RepositoryDelegate(DumpfileDelegate):
     # This is 1 if a commit is in progress, otherwise None.
     self._commit_in_progress = None
 
-  def _close_dumpfile_and_load_into_repos(self):
-    self.dumpfile.close()
-    run_command('%s load %s -q < %s' % (self.svnadmin, self.target,
-                                        self.dumpfile_path))
+    self.dumpfile = open(self.dumpfile_path, 'w+b')
+    self.loader_pipe = os.popen('%s load -q %s' %
+        (self.svnadmin, self.target), PIPE_WRITE_MODE)
+    self._write_dumpfile_header(self.loader_pipe)
+
+  def _feed_pipe(self):
+      self.dumpfile.seek(0)
+      while 1:
+        data = self.dumpfile.read(128*1024) # Chunks size is arbitrary
+        if not len(data):
+          break
+        self.loader_pipe.write(data)
 
   def start_commit(self, svn_commit):
     """Start a new commit.  If a commit is already in progress, close
     the dumpfile, load it into the svn repository, open a new
     dumpfile, and write the header into it."""
     if self._commit_in_progress:
-      self._close_dumpfile_and_load_into_repos()
-      self.dumpfile = open(self.dumpfile_path, 'wb') # start new dumpfile
-      self._write_dumpfile_header()
+      self._feed_pipe()
+    self.dumpfile.seek(0)
+    self.dumpfile.truncate()
     DumpfileDelegate.start_commit(self, svn_commit)
     self._commit_in_progress = 1
   
   def finish(self):
     """Loads the last commit into the repository."""
-    self._close_dumpfile_and_load_into_repos()
+    self._feed_pipe()
+    self.dumpfile.close()
+    if self.loader_pipe.close() is not None:
+      sys.exit('%s: svnadmin load failed' % (error_prefix))
 
 
 class StdoutDelegate(SVNRepositoryMirrorDelegate):
