@@ -2942,27 +2942,28 @@ class SymbolingsLogger(Singleton):
   thing would be to copy the branch from somewhere between 24 and 29,
   inclusive.
   """
-  def init(self):
+  def init(self, ctx):
+    self._ctx = ctx
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
     Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
     self.closings = open(SYMBOL_CLOSINGS_TMP, 'w')
     Cleanup().register(SYMBOL_CLOSINGS_TMP, pass5)
 
   def log_names_for_rev(self, names, c_rev, svn_revnum):
-    """Write out SYMBOLIC_NAME CVS_REV.UNIQUE_KEY().  This allows us
-    to run the logfile through sort and have all openings and closings
-    for a given symbolic name grouped by symbolic name in svn commit
-    order."""
+    """Write out SYMBOLIC_NAME SVN_REVNUM CVS_REV.SVN_PATH.  This
+    allows us to run the logfile through sort and have all openings
+    and closings for a given symbolic name grouped by symbolic name in
+    svn commit order."""
 
     for name in names:
-      ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
-      self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, c_rev.unique_key())) 
+      self._log(name, svn_revnum, c_rev.svn_path)
 
       # If our c_rev has a next_rev, then that's the closing rev for
       # this source revision.  Log it to closings for later processing
       # since we don't know the svn_revnum yet.
       if c_rev.next_rev is not None:
-        self.closings.write('%s %s\n' % (name, c_rev.unique_key(c_rev.next_rev))) 
+        self.closings.write('%s %s\n' %
+                            (name, c_rev.unique_key(c_rev.next_rev))) 
 
   def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens a symbolic name."""
@@ -2970,16 +2971,28 @@ class SymbolingsLogger(Singleton):
     if ((len(c_rev.tags) > 0)          # There is branch/tag 
         or (len(c_rev.branches) > 0)): # OPENING activity here
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
+
+  def _log(self, name, svn_revnum, svn_path):
+    ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
+    self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, svn_path))
       
   def close(self):
     # Iterate through the closings file, lookup the svn_revnum for
     # each closing CVSRevision, and write a proper line out to the
     # symbolings file.
+
+    # Use this to get the c_rev.svn_path of our rev_key
+    cvs_revs_db = CVSRevisionDatabase('r', self._ctx)
+
     self.closings.close()
     for line in fileinput.FileInput(SYMBOL_CLOSINGS_TMP):
       (name, rev_key) = line.rstrip().split(" ", 1)
       svn_revnum = CommitMapper().get_svn_revnum(rev_key)
-      self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, rev_key)) 
+
+      print "'" + rev_key + "'"
+      c_rev = cvs_revs_db.get_revision(rev_key)
+      print c_rev
+      self._log(name, svn_revnum, c_rev.svn_path)
 
     self.symbolings.close()
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
@@ -3020,9 +3033,10 @@ class LastSymbolicNameDatabase(Database):
 
 
 ### TODO do we really need to map this?  We may have all the
-### information that we need already.
-
-class CVSRevisionDatabase(Database):
+### information that we need already.  We need this for the
+### SymbolingsLogger, but we could map to an offset into s-revs,
+### instead of dup'ing the s-revs data in this database.
+class CVSRevisionDatabase:
   """ Passing every CVSRevision in s-revs to this class will result in
   a Database mapping CVSRevision.unique_key() to the actual s-rev
   string for the CVS Revision."""
@@ -3032,6 +3046,7 @@ class CVSRevisionDatabase(Database):
     argument to Database or anydbm.open()).  CTX is required if you
     wish to call the get_revision() method."""
     self._ctx = ctx
+    ###TODO Properly subclass Database
     self.cvs_revs_db = Database(CVS_REVS_DB, mode)
     Cleanup().register(CVS_REVS_DB, pass8)
 
@@ -3042,9 +3057,11 @@ class CVSRevisionDatabase(Database):
     self.cvs_revs_db[c_rev.unique_key()] = str.stringValue()
 
   def get_revision(self, unique_key):
-    """Return the CVSRevision stored under UNIQUE_KEY.
-    ###TODO Should we error if no such key, or just return None?"""
+    """Return the CVSRevision stored under UNIQUE_KEY. Return None if
+    unique_key isn't in our datastore."""
     val = self.cvs_revs_db[unique_key]
+    if val is None:
+      return None
     return CVSRevision(self._ctx, val)
 
 
@@ -3054,13 +3071,12 @@ class TagsDatabase(Database):
   is the tag name, the value is None."""
 
   def __init__(self, mode):
-    self.symbols = {}
-    self.tags_db = Database(TAGS_DB, 'n')
+    Database.__init__(self, TAGS_DB, mode)
     Cleanup().register(TAGS_DB, pass8)
   
   def log_revision(self, c_rev):
     for tag in c_rev.tags:
-      self.tags_db[tag] = None
+      self.db[tag] = None
 
 
 def sort_file(infile, outfile):
@@ -3188,13 +3204,125 @@ def pass5(ctx):
     c_rev = CVSRevision(ctx, line)
     aggregator.process_revision(c_rev)
   aggregator.flush()
-  SymbolingsLogger().close()
+  SymbolingsLogger(ctx).close()
 
 
 def pass6(ctx):
   sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
   Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
   pass
+
+
+class SymbolingsReader:
+  """Provides an interface to the SYMBOL_OPENINGS_CLOSINGS_SORTED file
+  and the SYMBOL_OFFSETS_DB.  Does the heavy lifting of finding and
+  returning the correct opening and closing Subversion revision
+  numbers for a given symbolic name."""
+  def __init__(self, ctx):
+    """Opens the SYMBOL_OPENINGS_CLOSINGS_SORTED for reading, and
+    reads the offsets database into memory."""
+    self._ctx = ctx
+    self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
+    # The offsets_db is really small, and we need to read and write
+    # from it a fair bit, so suck it into memory
+    offsets_db = Database(SYMBOL_OFFSETS_DB, 'r') 
+    self.offsets = { }
+    for key in offsets_db.db.keys():
+      #print " ZOO:", key, offsets_db[key]
+      self.offsets[key] = offsets_db[key]
+
+  def values_for_symbol(self, symbolic_name, svn_revnum, is_tag):
+    """Given SYMBOLIC_NAME and SVN_REVNUM, return all openings
+    and closings for that symbolic_name that happened in the
+    repository up to and including SVN_REVNUM. IS_TAG is a
+    boolean that indicates if we're dealing with a tag.
+
+    Note that if a CVSRevision has an opening rev that will be
+    returned here, and the closing rev takes place later than
+    SVN_REVNUM, the closing will not be returned (it will be
+    discarded later).  That's perfectly fine, because we can still do
+    a valid fill without the closing--we always try to fill what we
+    can as soon as we can.
+
+    Returns a node tree whose leaf nodes contain a list whose first
+    element is the opening svn revision number for that file, and
+    whose (optional) second element is the closing svn revision number
+    for that file.
+
+    In other words, each node is either a dictionary (i.e. a directory
+    node with entries) or a list (i.e. a file node with openings and
+    (possibly) closings)."""
+    # set our read offset for self.symbolings to the offset for
+    # symbolic_name (move our start point back one)
+    self.symbolings.seek(self.offsets[symbolic_name])
+
+    things = { }
+    while (1):
+      line = self.symbolings.readline().rstrip()
+      if not line:
+        break
+      name, revnum, svn_path = line.split(" ", 2)
+      revnum = int(revnum)
+      print "FITZ:", svn_path
+      # Trivia note: There will never be an opening or closing whose
+      # svn_revision == svn_revnum.  Why this is so is left as an
+      # exercise for the reader. :-)
+      if (revnum > svn_revnum
+          or name != symbolic_name):
+        break
+
+      #keep rev (1st sight of PATH is the opening)
+      if not things.has_key(svn_path):
+        things[svn_path] = [revnum]
+      #keep rev (2nd sight of PATH is the closing)
+      else:
+        things[svn_path].append(revnum)
+
+    # get current offset of the read marker and set it to the offset for
+    # the beginning of the line we just read
+    if len(things) > 0:
+      # Subtract one cause we rstripped the CR above.
+      self.offsets[symbolic_name] = self.symbolings.tell() - len(line) - 1
+
+    # Now we've got dict of {PATH: [opening, closing],...}.  We need
+    # to turn that into a node tree with the openings and closings on
+    # the leaf nodes.
+    ### TODO break this out into a separate function
+    tree = { }
+    parent_key = '0'
+    tree[parent_key] = { }
+
+    print "DUG:", "=" * 75
+    for svn_path, open_close in things.items():
+      #print "NOG:", k, "\t\t\t\t", v
+      parent_key = '0'
+
+      path_so_far = ""
+      # Walk up the path, one node at a time.
+      components = svn_path.split('/')
+      last_path_component = components[-1]
+      for component in components:
+        path_so_far = os.path.join(path_so_far, component)
+        print "DUG:", path_so_far
+
+        child_key = None
+        if not tree[parent_key].has_key(component):
+          child_key = gen_key()
+          tree[child_key] = { }
+          tree[parent_key][component] = child_key
+        else:
+          child_key = tree[parent_key][component]
+
+        if component is last_path_component:
+          tree[child_key] = open_close
+        parent_key = child_key
+
+    tmp = tree.keys()
+    tmp.sort()
+    for k in tmp:
+      print "DUG:", k, "\t\t\t", tree[k]
+    return tree
+
 
 
 def generate_offsets_for_symbolings():
@@ -3225,7 +3353,7 @@ def generate_offsets_for_symbolings():
     if not sym == old_sym:
       print sym
       old_sym = sym
-      offsets_db[sym] = file.tell() - len(line) + 1
+      offsets_db[sym] = file.tell() - len(line)
 
 def pass7(ctx):
   generate_offsets_for_symbolings()
@@ -3557,7 +3685,7 @@ class CVSCommit:
     svn_commit.flush()
 
     for c_rev in self.revisions():
-      SymbolingsLogger().check_revision(c_rev, svn_commit.revnum)
+      SymbolingsLogger(self._ctx).check_revision(c_rev, svn_commit.revnum)
 
   def _post_commit(self):
     """Generates any SVNCommits that we can perform now that _commit
@@ -3790,7 +3918,9 @@ class SVNRepositoryMirror:
   file contents.  If you set the delegate, as soon as SVNRepository
   performs a repository action method ([add|change|delete|copy]path),
   it will call the delegate's corresponding repository action method.
-  See SVNRepositoryDelegate for more information."""
+  See SVNRepositoryDelegate for more information.
+
+  You must invoke start_commit between SVNCommits."""
   def __init__(self, ctx, delegate=None):
     """Set up the SVNRepositoryMirror and prepare it for SVNCommits."""
     self._ctx = ctx
@@ -3844,6 +3974,10 @@ class SVNRepositoryMirror:
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
 
+    self.tags_db = TagsDatabase('r')
+
+    self.symbolings_reader = SymbolingsReader(self._ctx)
+
   def _youngest_key(self):
     "Returns the value of self.youngest as a string."
     return str(self.youngest)
@@ -3896,7 +4030,7 @@ class SVNRepositoryMirror:
     those entries.
 
     PRUNE is like the -P option to 'cvs checkout'."""
-
+    ###TODO Review this with kfogel
     path = cvs_rev.svn_path
     components = string.split(path, '/')
     path_so_far = None
@@ -4030,58 +4164,56 @@ class SVNRepositoryMirror:
     self.delegate.add_path(cvs_rev)
 
   def _add_or_change_path(self, cvs_rev):
-    """add_path and change_path are identical except for the fact that
-    add_path needs to create a new entry for at least the leaf node."""
+    """From the youngest revision, bubble down a chain of mutable
+    nodes for CVS_REV.SVN_PATH.  Create new (mutable) nodes as
+    necessary.
+
+    This makes nodes mutable only as needed, otherwise, mutates any
+    mutable nodes it encounters."""
+    ###TODO For inconsistency checking, we could return whether or not
+    ###we added a node representing a new path (or path element).
+    ###This could be checked by the caller and an exception could be
+    ###thrown if the response was unexpected.  Code defensively.
     parent_node_key, parent_node_contents = self._get_youngest_root_node()
 
-    path_so_far = ""
     # Walk up the path, one node at a time.
     components = cvs_rev.svn_path.split('/')
     for component in components:
-      path_so_far = os.path.join(path_so_far, component)
-      #print "ZOO:", path_so_far
+      this_node_key = this_node_contents = None
       # If the parent_node_contents doesn't have an entry for this
       # component, create a new node for the component and add it to
       # the parent_node_contents.
       if not parent_node_contents.has_key(component):
-        child_node_key = self._make_node()
-        parent_node_contents[component] = child_node_key
-        self.nodes_db[parent_node_key] = parent_node_contents
-
-      # One way or another, parent dir now has an entry for component,
-      # so grab it, see if it's mutable, and DTRT if it's not.  (Note
-      # it's important to reread the entry value from the db, even
-      # though we might have just written it -- if we tweak existing
-      # data structures, we could modify self.empty_mutable_thang,
-      # which must not happen.) ###TODO Is this true if we use
-      # dict.update?
-      this_entry_key = parent_node_contents[component]
-      this_entry_contents = self.nodes_db[this_entry_key]
-      mutable = this_entry_contents.get(self.mutable_flag)
-      if not mutable:
-        #print "ZOO: NEW NODE IN rev", self.youngest
-        # Create a new, mutable node.
-        this_entry_key = self._make_node(this_entry_contents)
-        # Replace the old node key in the parent node
-        parent_node_contents[component] = this_entry_key
+        this_node_key, this_node_contents = self._new_mutable_node()
+        parent_node_contents[component] = this_node_key
         # Update the parent node in the db
         self.nodes_db[parent_node_key] = parent_node_contents
-      #else:
-        #print "ZOO: OLD NODE IN rev", self.youngest
+      else:
+        # One way or another, parent dir now has an entry for component,
+        # so grab it, see if it's mutable, and DTRT if it's not.
+        this_node_key = parent_node_contents[component]
+        this_node_contents = self.nodes_db[this_node_key]
+        mutable = this_node_contents.get(self.mutable_flag)
+        if not mutable:
+          this_node_key, this_node_contents \
+                         = self._new_mutable_node(this_node_contents)
+          parent_node_contents[component] = this_node_key
+          self.nodes_db[parent_node_key] = parent_node_contents
 
-      parent_node_key = this_entry_key
-      parent_node_contents = this_entry_contents
+      parent_node_key = this_node_key
+      parent_node_contents = this_node_contents
 
 
-  def _make_node(self, node_contents=None):
+  def _new_mutable_node(self, node_contents=None):
     """Creates a new (mutable) node in the nodes_db and returns the
-    node's key."""
-    if node_contents is None:
-      node_contents = { }
+    node's key.  If NODE_CONTENTS is not None, then dict.update() the
+    contents of the new node with NODE_CONTENTS before returning."""
+    contents = dict(self.empty_mutable_thang)
+    if node_contents is not None:
+      contents.update(node_contents)
     key = gen_key()
-    node_contents.update(self.empty_mutable_thang)
-    self.nodes_db[key] = node_contents
-    return key
+    self.nodes_db[key] = contents
+    return key, contents
 
   def _get_youngest_root_node(self):
     """Gets the root node key for the youngest revision.  If it's
@@ -4091,7 +4223,7 @@ class SVNRepositoryMirror:
     parent_key = self.revs_db[self._youngest_key()]
     parent = self.nodes_db[parent_key]
     if not parent.has_key(self.mutable_flag):
-      parent_key = self._make_node(parent)
+      parent_key, parent = self._new_mutable_node(parent)
       self.revs_db[self._youngest_key()] = parent_key
     return parent_key, parent
 
@@ -4103,9 +4235,15 @@ class SVNRepositoryMirror:
     self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit.revnum)
     if svn_commit.symbolic_name:
-      ## This will entail nothing more than copying and deleting.
-      pass # This is a branch/tag create/fill/finish
-
+      if self.tags_db.has_key(svn_commit.symbolic_name):
+        print "Filling tag:", svn_commit.symbolic_name
+        self.symbolings_reader.values_for_symbol(svn_commit.symbolic_name,
+                                                 svn_commit.revnum, 1)
+      else:
+        print "Filling branch:", svn_commit.symbolic_name
+        self.symbolings_reader.values_for_symbol(svn_commit.symbolic_name,
+                                                 svn_commit.revnum, 0)
+        
     else: # This will actually commit CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
         if cvs_rev.op == OP_ADD:
@@ -4114,7 +4252,7 @@ class SVNRepositoryMirror:
           self.change_path(cvs_rev)
         else: # Must be a delete
           ###TODO FIXME pass prune
-          self.delete_path(cvs_rev)
+          path = self.delete_path(cvs_rev)
           self.delegate.delete_path(cvs_rev)
 
   def close(self):
@@ -4222,10 +4360,7 @@ class StdoutDelegate(SVNRepositoryDelegate):
 def pass8(ctx):
 
   svncounter = 1
-
-  
   repos = SVNRepositoryMirror(ctx, StdoutDelegate())
-  ###TODO switch to 1 for debugging
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
@@ -4233,25 +4368,10 @@ def pass8(ctx):
     #print svn_commit
 
     repos.commit(svn_commit)
-    #sue-dough code
 
-    # If our svn_commit has c_revs
-    #   do a standard commit. Whoop-de-fsckin' doo.
-
-    # else if it has a symbolic name
-    #   Read name tree
-    #   store new offset
-    #   score name tree
-    #   make copy
-    
-    # else ERROR
     svncounter += 1
   repos.close()
 #  sys.exit(239)
-
-
-
-
 
 
 
