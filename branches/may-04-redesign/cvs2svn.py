@@ -2,8 +2,6 @@
 #
 # cvs2svn: ...
 #
-# $LastChangedRevision$
-#
 # ====================================================================
 # Copyright (c) 2000-2004 CollabNet.  All rights reserved.
 #
@@ -17,6 +15,8 @@
 # individuals.  For exact contribution history, see the revision
 # history and logs, available at http://cvs2svn.tigris.org/.
 # ====================================================================
+
+VERSION = 'r' + "$LastChangedRevision$"[22:-2]
 
 import rcsparse
 import os
@@ -3802,6 +3802,7 @@ def usage(ctx):
   print 'USAGE: %s [-v] [-s svn-repos-path] [-p pass] cvs-repos-path' \
         % os.path.basename(sys.argv[0])
   print '  --help, -h           print this usage message and exit with success'
+  print '  --version            print the version number'
   print '  -q                   quiet'
   print '  -v                   verbose'
   print '  -s PATH              path for SVN repos'
@@ -3875,14 +3876,17 @@ def main():
                                  "trunk-only", "no-prune",
                                  "dump-only", "dumpfile=", "svnadmin=",
                                  "skip-cleanup", "cvs-revnums",
-                                 "bdb-txn-nosync"])
+                                 "bdb-txn-nosync", "version"])
   except getopt.GetoptError, e:
     sys.stderr.write(error_prefix + ': ' + str(e) + '\n\n')
     usage(ctx)
     sys.exit(1)
 
   for opt, value in opts:
-    if opt == '-p':
+    if opt == '--version':
+        print '%s version %s' % (os.path.basename(sys.argv[0]), VERSION)
+        sys.exit(0)
+    elif opt == '-p':
       # Don't cleanup if we're doing incrementals.
       ctx.skip_cleanup = 1
       if value.find(':') > 0:
