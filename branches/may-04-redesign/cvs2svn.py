@@ -901,6 +901,12 @@ class CollectData(rcsparse.Sink):
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
 
+###TODO consider calling this in CollectData.
+def _clean_symbolic_name(name):
+  ###TODO use a regex or 2 replaces statements... translate has UTF8 probsa
+  name = name.translate(symbolic_name_transtbl)
+  return name
+
 def run_command(command):
   if os.system(command):
     sys.exit('Command failed: "%s"' % command)
@@ -2965,6 +2971,7 @@ class SymbolingsLogger(Singleton):
     svn commit order."""
 
     for name in names:
+      name = _clean_symbolic_name(name)
       self._log(name, svn_revnum, c_rev.svn_path, OPENING)
 
       # If our c_rev has a next_rev, then that's the closing rev for
@@ -2977,8 +2984,9 @@ class SymbolingsLogger(Singleton):
   def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens a symbolic name."""
     ## TODO check symbolic_names
-    if ((len(c_rev.tags) > 0)          # There is branch/tag 
-        or (len(c_rev.branches) > 0)): # OPENING activity here
+    if ((len(c_rev.tags) > 0)          # There is branch/tag OPENING activity
+        or (len(c_rev.branches) > 0)   # here, but it's not 'dead'--a file 
+        and (c_rev.op != OP_DELETE)):  # added on a branch
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
 
   def _log(self, name, svn_revnum, svn_path, type):
@@ -3274,6 +3282,10 @@ class SymbolingsReader:
     This is perfectly fine, because we can still do a valid fill
     without the closing--we always try to fill what we can as soon as
     we can."""
+    # It's possible to have a branch start with a file that was added
+    # on a branch
+    if not self.offsets.has_key(symbolic_name):
+      return SymbolicNameFillingGuide(self._ctx, symbolic_name)
     # set our read offset for self.symbolings to the offset for
     # symbolic_name
     self.symbolings.seek(self.offsets[symbolic_name])
@@ -4071,11 +4083,13 @@ class SVNCommit:
 
   def set_symbolic_name(self, name):
     "Set self.symbolic_name to NAME."
+    name = _clean_symbolic_name(name)
     self.symbolic_name = name
     CommitMapper(self._ctx).set_name(self.revnum, name)
 
   def set_default_branch(self, name):
     "Set self.default_branch to NAME."
+    name = _clean_symbolic_name(name)
     self.default_branch = name
     CommitMapper(self._ctx).set_default_branch(self.revnum, name)
 
@@ -4280,6 +4294,11 @@ class CVSRevisionAggregator:
       del self.pending_symbols[sym]
 
 
+class SVNRepositoryMirrorPathExistsError(Exception):
+  """Exception raised if an attempt is made to add a path to the
+  repository mirror and that path already exists in the youngest
+  revision of the repository."""
+  pass
 
 # This supersedes and will eventually replace RepositoryMirror.
 class SVNRepositoryMirror:
@@ -4349,6 +4368,10 @@ class SVNRepositoryMirror:
 
     self.symbolings_reader = SymbolingsReader(self._ctx)
 
+    # Note that we haven't started committing yet
+    self.active = 0
+
+
   def _youngest_key(self):
     "Returns the value of self.youngest as a string."
     return str(self.youngest)
@@ -4357,7 +4380,6 @@ class SVNRepositoryMirror:
     """Stabilize the current commit, then start the next one.
     (Effectively increments youngest by assigning the new revnum to
     youngest)"""
-
     self.stabilize_youngest()
     self.revs_db[str(revnum)] = self.revs_db[self._youngest_key()]
     self.youngest = revnum
@@ -4523,20 +4545,27 @@ class SVNRepositoryMirror:
 
     return retpath
 
+  def mkdir(self, path):
+    """Create PATH in the repository mirror at the youngest revision."""
+    # Since we make no distinction from a file and a directory in the
+    # mirror, we can merely leverage self._add_or_change_path here
+    self._add_or_change_path(path)
+    self.delegate.mkdir(path)
+
   def change_path(self, cvs_rev):
     """Register a change in self.youngest for the CVS_REV's svn_path
     in the repository mirror."""
-    self._add_or_change_path(cvs_rev)
+    self._add_or_change_path(cvs_rev.svn_path)
     self.delegate.change_path(cvs_rev)
 
   def add_path(self, cvs_rev):
     """Add the CVS_REV's svn_path to the repository mirror."""
-    self._add_or_change_path(cvs_rev)
+    self._add_or_change_path(cvs_rev.svn_path)
     self.delegate.add_path(cvs_rev)
 
-  def _add_or_change_path(self, cvs_rev):
+  def _add_or_change_path(self, svn_path):
     """From the youngest revision, bubble down a chain of mutable
-    nodes for CVS_REV.SVN_PATH.  Create new (mutable) nodes as
+    nodes for SVN_PATH.  Create new (mutable) nodes as
     necessary.
 
     This makes nodes mutable only as needed, otherwise, mutates any
@@ -4549,7 +4578,7 @@ class SVNRepositoryMirror:
 
     path_so_far = None
     # Walk up the path, one node at a time.
-    components = cvs_rev.svn_path.split('/')
+    components = svn_path.split('/')
     last_component = components[-1]
     for component in components:
       if path_so_far:
@@ -4601,13 +4630,17 @@ class SVNRepositoryMirror:
     immutable (i.e. our current operation is the first one on this
     commit), create and return the key to a new root node.  Always
     returns a key pointing to a mutable node."""
-    parent_key = self.revs_db[self._youngest_key()]
-    parent = self.nodes_db[parent_key]
+    parent_key, parent = self._get_root_node_for_revnum(self.youngest)
     if not parent.has_key(self.mutable_flag):
       parent_key, parent = self._new_mutable_node(parent)
       self.revs_db[self._youngest_key()] = parent_key
     return parent_key, parent
 
+  def _get_root_node_for_revnum(self, revnum):
+    """Gets the root node key for the revision REVNUM."""
+    parent_key = self.revs_db[str(revnum)]
+    parent = self.nodes_db[parent_key]
+    return parent_key, parent
 
   def fill_symbolic_name(self, symbolic_name):
     """Performs all copies necessary to create as much of the the tag
@@ -4616,7 +4649,6 @@ class SVNRepositoryMirror:
     symbol_fill = self.symbolings_reader.filling_guide_for_symbol(
       symbolic_name, self.youngest)
 
-    print "TON", "=" * 75
     self._fill(symbol_fill, symbol_fill.root_key, symbolic_name)
 
   def _dest_path_for_source_path(self, symbolic_name, path):
@@ -4629,19 +4661,13 @@ class SVNRepositoryMirror:
       base_dest_path = self._ctx.tags_base
 
     components = path.split('/')
-
-    # If our components list contains only one item, that means that
-    # the destination path will only be the base_dest_path
-    # (e.g. branches or tags).  We don't want to even attempt to copy
-    # directly to a top-level directory, so return None here.
-    if len(components) == 1:
-      return None
-    dest = base_dest_path + '/' + symbolic_name + '/' + '/'.join(components[1:])
+    dest = base_dest_path + '/' + symbolic_name 
+    if len(components) > 1:
+      dest = dest + '/' + '/'.join(components[1:])
     return dest
 
   def _fill(self, symbol_fill, node, name,
             path_so_far=None, preferred_revnum=None):
-
     """Descends through all nodes in SYMBOL_FILL.NODE_TREE that are
     rooted at NODE.  Generates copy (and delete) commands for all
     destination nodes that don't exist in NAME.  PATH_SO_FAR and
@@ -4655,23 +4681,93 @@ class SVNRepositoryMirror:
         src_path = path_so_far + '/' + node_key
       else:
         src_path = node_key
-      print "TON", "=" * 40
       dest_path = self._dest_path_for_source_path(name, src_path)
-      #      print "TON DES:", dest_path
 
+      src_revnum = None
+      # if our destination path doesn't already exist, then we may
+      # have to make a copy.
       if (dest_path is not None and not self.path_exists(dest_path)):
-        preferred_revnum = symbol_fill.get_best_revnum(node_contents,
-                                                       preferred_revnum)
+        src_revnum = symbol_fill.get_best_revnum(node_contents,
+                                                  preferred_revnum)
 
-        # TODO if old preferred_revnum == new preferred_revnum, we
-        # don't have to copy, do we?
+        # If the revnum of our parent's copy (src_revnum) is the same
+        # as our preferred_revnum, then we don't need to make a copy
+        # here--our parent's copy already has everything we need.
+        # Just continue bubbling down.
+        if src_revnum != preferred_revnum:
+          # Wrapping this call in a try block for the moment because
+          # until I finish the SVNRepositoryMirror, it's causing test
+          # failures (due to looking in the mirror for stuff I haven't
+          # put there). -Fitz
+          try:
+            self.copy_path(src_path, dest_path, src_revnum)
+          except KeyError:
+            print "Skipping KeyError for the time being."
 
-        # TODO call self.copy_path (which calls the delegate)
-        # TODO Then manage deletes (prunes) (which calls the delegate)
-        print "TON: COPYING ", src_path, preferred_revnum
-        print "TON:         to", dest_path
+        # TODO Manage deletes (prunes) (which calls the delegate)
+      self._fill(symbol_fill, node_contents, name, src_path, src_revnum)
 
-      self._fill(symbol_fill, node_contents, name, src_path, preferred_revnum)
+  def copy_path(self, src_path, dest_path, src_revnum):
+    """Copy SRC_PATH at subversion revision number SRC_REVNUM to
+    DEST_PATH.
+
+    In the youngets revision of the repository, DEST_PATH's parent
+    *must* exist, but DEST_PATH *cannot* exist"""
+
+    # get the contents of the node of our src_path
+    ign, src_node_contents = self._node_for_path(src_path, src_revnum,)
+    # get the dest node from self.youngest--it will always be mutable.
+    dest_node_key, dest_node_contents = \
+                   self._node_for_path(dest_path, self.youngest, 1)
+
+    last_path_element = dest_path.split('/')[-1]
+    
+    if dest_node_contents.has_key(last_path_element):
+      msg = "Attempt to add path '%s' to repository mirror " % dest_path
+      msg = msg + "when it already exists in the mirror."
+      raise SVNRepositoryMirrorPathExistsError, msg
+
+    # Generate new mutable node new_node from SRC_NODE_CONTENTS and
+    # update DEST_NODE_CONTENTS with
+    #
+    #    {COMPONENT_NAME : new_node}
+    #
+    #and save DEST_NODE_CONTENTS back to the nodes_db under
+    #DEST_NODE_KEY.
+    key, new_node = self._new_mutable_node(src_node_contents)
+    dest_node_contents[last_path_element] = key
+    self.nodes_db[dest_node_key] = dest_node_contents
+    self.delegate.copy_path(src_path, dest_path, src_revnum)
+
+  def _node_for_path(self, path, revnum, ignore_leaf=None):
+    """Locates the node key in the filesystem for the last element of
+    PATH under the subversion revision REVNUM.
+
+    If IGNORE_LEAF is true, then instead of returning the leaf node,
+    return its parent.
+
+    This method should never be called with a PATH that isn't in the
+    repository.
+
+    Returns a tuple consisting of the nodes_db key and its
+    contents."""
+    node_key, node_contents = self._get_root_node_for_revnum(revnum)
+
+    components = path.split('/')
+    last_component = components[-1]
+    ###TODO Do something more constructive than die if someone asks
+    ###for a node that doesn't exist
+    for component in components:
+      if component is last_component and ignore_leaf:
+        break
+      node_key = node_contents[component]
+      node_contents = self.nodes_db[node_key]
+
+    return node_key, node_contents
+
+
+
+
 
   ###TODO This *might* be a bit pricey to do.  Look here for perf
   ###problems.
@@ -4703,24 +4799,27 @@ class SVNRepositoryMirror:
 
     self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit)
+
+    # Create tags and branches in the first commit
+    ###TODO don't do this if we're trunk_only
+    if not self.active:
+      self.mkdir(self._ctx.branches_base)
+      self.mkdir(self._ctx.tags_base)
+      self.active = 1
+
     if svn_commit.symbolic_name:
-      print "COM: Filling name", svn_commit.symbolic_name, "in SVNCommit"
       self.fill_symbolic_name(svn_commit.symbolic_name)
-    elif svn_commit.symbolic_name:
+    elif svn_commit.default_branch:
       print "COM: INACTIVE Default branch copies for branch",
       svn_commit.default_branch, "in SVNCommit", svn_commit.revnum
       pass ###TODO: handle default_branch copies/deletes
     else: # This actually commits CVSRevisions
-      print "COM: Doing SVNCommit"
       for cvs_rev in svn_commit.cvs_revs:
         if cvs_rev.op == OP_ADD:
-          print "    COM: Doing add"
           self.add_path(cvs_rev)
         elif cvs_rev.op == OP_CHANGE:
-          print "    COM: Doing change"
           self.change_path(cvs_rev)
         else: # Must be a delete
-          print "    COM: Doing delete"
           ###TODO FIXME pass prune
           path = self.delete_path(cvs_rev)
           self.delegate.delete_path(cvs_rev)
