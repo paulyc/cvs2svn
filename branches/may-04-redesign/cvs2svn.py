@@ -2273,7 +2273,7 @@ class SVNCommit:
     return not (self.symbolic_name or self.motivating_revnum)
 
   def flush(self):
-    Log().write(LOG_VERBOSE, "Creating Subversion commit %d (%s)" 
+    Log().write(LOG_NORMAL, "Creating Subversion commit %d (%s)" 
                 % (self.revnum, self._description))
     PersistenceManager(self._ctx).set_cvs_revs(self.revnum, self.cvs_revs)
 
