@@ -4505,6 +4505,21 @@ class SVNRepositoryMirror:
     directory is encountered that has an entry which is not a member
     of the parent stack of the original target.
 
+    =======================================================================
+    TODO: WARNING.  There are two kinds of deletes that delete_path does:
+
+      1. A delete where a user actually deleted a path (i.e. the
+         delete corresponds to some CVSRevision in RCS state 'dead').
+
+      2. A delete generated purely by cvs2svn when filling a symbolic
+         name because a file not on that name was included in a copied
+         subtree in an earlier part of the fill.
+
+    We should *always* prune for the second kind, regardless of
+    self._ctx.prune--we currently use self._ctx.prune even for the
+    second kind of delete.
+    =======================================================================
+
     NOTE: This function does *not* allow you delete top-level entries
     (like /trunk, /branches, /tags), nor does it prune upwards beyond
     those entries.
