@@ -4093,43 +4093,23 @@ class CVSCommit:
   #in RCS state 'dead'
   def _post_commit(self):
     """Generates any SVNCommits that we can perform now that _commit
-    has happened.  That is,
+    has happened.  That is, handle non-trunk default branches.
+    Sometimes an RCS file has a non-trunk default branch, so a commit
+    on that default branch would be visible in a default CVS checkout
+    of HEAD.  If we don't copy that commit over to Subversion's trunk,
+    then there will be no Subversion tree which corresponds to that
+    CVS checkout.  Of course, in order to copy the path over, we may
+    first need to delete the existing trunk there.  """
 
-    1) Handle non-trunk default branches.  Sometimes an RCS file has a
-       non-trunk default branch, so a commit on that default branch
-       would be visible in a default CVS checkout of HEAD.  If we
-       don't copy that commit over to Subversion's trunk, then there
-       will be no Subversion tree which corresponds to that CVS
-       checkout.  Of course, in order to copy the path over, we may
-       first need to delete the existing trunk there.
-       """
-    # Generate one SVNCommit for each default branch we encounter.
-    # Add each c_rev on that branch to the commit, and flush all
-    # commits at the end.
-
-    ###TODO: There doesn't seem to be any real reason to generate an
-    # SVNCommit for each default branch that we encounter here--after
-    # all, we may have just committed changes to a whole bunch of
-    # default branches in _commit, so there's no real reason to divvy
-    # this out into separate commits.  This will also require that we
-    # change SVNCommit.default_branch to SVNCommit.is_default_branch
-    # which will indicate that c_rev.branch_name is the default branch
-    # name for that c_rev in the commit.  Once the redesign is
-    # complete, we should revisit this.
-    svn_commits = { }
-    for c_rev in self.default_branch_cvs_revisions:
-      if not svn_commits.has_key(c_rev.branch_name):
-        svn_commit = SVNCommit(self._ctx, "post-commit def_br_[copy|delete]")
-        svn_commit.set_motivating_revnum(self.motivating_commit.revnum)
+    # Only generate a commit if we have default branch revs
+    if len(self.default_branch_cvs_revisions):
+      # Generate an SVNCommit for all of our default branch c_revs.
+      svn_commit = SVNCommit(self._ctx, "post-commit default branch(es)")
+      svn_commit.set_motivating_revnum(self.motivating_commit.revnum)
+      for c_rev in self.default_branch_cvs_revisions:
         svn_commit.add_revision(c_rev)
-        svn_commits[c_rev.branch_name] = svn_commit
-      else:
-        svn_commit = svn_commits[c_rev.branch_name]
-        svn_commit.add_revision(c_rev)
-
-    for svn_commit in svn_commits.values():
       self.secondary_commits.append(svn_commit)
-
+    
   def process_revisions(self, ctx, done_symbols):
     """Process all the CVSRevisions that this instance has, creating
     one or more SVNCommits in the process.  Generate fill SVNCommits
@@ -4936,6 +4916,13 @@ class SVNRepositoryMirror:
       # Just continue bubbling down.
       path_exists = self.path_exists(dest_path)
       if src_revnum != preferred_revnum and prune_ok and path_exists:
+        components = dest_path.split('/')
+        # Take care to never delete and re-copy a directory in the top
+        # level of /tags or /branches--without this check, tags from
+        # multiple sources will not convert correctly.
+        if not ((len(components) == 2)
+                and ((components[0] == self._ctx.branches_base)
+                     or (components[0] == self._ctx.tags_base))):
           self.delete_path(dest_path)
           path_exists = 0
 
