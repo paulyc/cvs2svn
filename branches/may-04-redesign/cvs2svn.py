@@ -2237,16 +2237,8 @@ class CVSCommit:
       # we were really paranoid, we could make sure 1.1's log message
       # is the CVS-generated "Initial revision\n", but I think the
       # conditions below are strict enough.)
-
-      ###TODO We don't need to use RepositoryBranchesInHead here...
-      ###we can figure out the same thing by examining our previous
-      ###revision--if it's a trunk rev (2 components), then that means
-      ###that our svn_path doesn't exist in the repository.
-      ###TODO: After we make that change, then this bit of logic
-      ###should move to inside of CVSRevision.
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
-              and (c_rev.rev == "1.1.1.1")
-              and RepositoryBranchesInHead().has_path(c_rev.svn_path)):
+              and (c_rev.rev == "1.1.1.1")):
         if c_rev.is_default_branch_revision():
           self.default_branch_cvs_revisions.append(c_rev)
 
