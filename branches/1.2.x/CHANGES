@@ -1,0 +1,31 @@
+Version 1.2.0
+(xx January 2005, from /tags/1.2.0)
+
+ New features:
+ * --fs-type=TYPE: make it possible to specify the filesystem type.
+
+ Bugs fixed:
+ * Convert files with svn:eol-style to have LF end of lines only.
+ * Fix hang in pass 8 for files that ended with a CR.
+ * Import unexpanded keywords into the repository.
+ * Fix the handling of the $Revision$ keyword.
+ * Fix bug in branch/tag creation edge case.
+
+
+Version 1.1.0
+(15 September 2004, from /tags/1.1.0)
+
+ New features:
+ * --symbol-transform: change tag and branch names using regular expressions.
+ * Flush log after writing, for better feedback when using 'tee'.
+
+ Bugs fixed:
+ * Issue 74: No longer attempt to change non-existent files.
+ * Allow the Subversion repository created to have spaces in its name.
+ * Avoid erroring when using a svnadmin that uses FSFS by default.
+ 
+
+Version 1.0.0
+(25 August 2004, from /tags/1.0.0)
+
+ * The cvs2svn project comes of age.
