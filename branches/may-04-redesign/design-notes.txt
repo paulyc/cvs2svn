@@ -65,6 +65,7 @@ The fields are:
    1.  a fixed-width timestamp
    2.  a digest of the log message + author
    3.  the type of change ("C"hange, or "D"elete)
+   ###TODO This next def is WRONG
    4.  the previous ("next" in RCS jargon) revision number or "*" if
        there is no previous revision (That is, it's the first revision on a
        file).

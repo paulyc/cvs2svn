@@ -487,8 +487,21 @@ class CollectData(rcsparse.Sink):
 
     # revision -> [timestamp, author, operation, old-timestamp]
     self.rev_data = { }
+
+    # Maps revision number (key) to the revision number of the
+    # previous revision along this line of development (or None, if
+    # it's the first revision on this line of development).
+    #
+    # First, note that the 'next' revision can't be determined
+    # arithmetically (due to cvsadmin -o, which is why this is
+    # necessary).
+    self.prev_rev = { }
+
+    # The same as self.prev_rev except that for the first revision R
+    # on a branch, we consider the revision from which R sprouted to
+    # be the 'previous'.  Used for sanity checking in
+    # self.tree_completed.
     self.prev = { }
-    self.rcs_prev = { }
 
     # Hash mapping branch numbers, like '1.7.2', to branch names,
     # like 'Release_1_0_dev'.
@@ -672,16 +685,42 @@ class CollectData(rcsparse.Sink):
 
     # store the rev_data as a list in case we have to jigger the timestamp
     self.rev_data[revision] = [int(timestamp), author, op, None]
-    
-    # Store the previous revision number (which is 'next' in RCS
-    # speak) for later retrieval
-    self.rcs_prev[revision] = next
 
-    # record the previous revision for sanity checking later
+    # When on trunk, the RCS 'next' revision number points to what
+    # humans might consider to be the 'previous' revision number.  For
+    # example, 1.3's RCS 'next' is 1.2.
+    #
+    # However, on a branch, the RCS 'next' revision number really does
+    # point to what humans would consider to be the 'next' revision
+    # number.  For example, 1.1.2.1's RCS 'next' would be 1.1.2.2.
+    #
+    # In other words, in RCS, 'next' always means "where to find the next
+    # deltatext that you need this revision to retrieve.
+    #
+    # That said, we don't *want* RCS's behavior here, so we determine
+    # whether we're on trunk or a branch and set self.prev
+    # accordingly.
+
+    # One last thing.  Note that if REVISION is a branch revision,
+    # instead of mapping REVISION to NEXT, we instead map NEXT to
+    # REVISION.  Since we loop over all revisions in the file before
+    # doing anything with the data we gather here, this 'reverse
+    # assignment' effectively does the following:
+    #
+    # 1. Gives us no 'prev' or 'prev_rev' value for REVISION (in this
+    # iteration... it may have been set in a previous iteration)
+    #
+    # 2. Sets the 'prev' and 'prev_rev' value for the revision with
+    # number NEXT to REVISION.  So when we come around to the branch
+    # revision whose revision value is NEXT, its 'prev' and 'prev_rev'
+    # are already set.
     if trunk_rev.match(revision):
       self.prev[revision] = next
+      self.prev_rev[revision] = next
     elif next:
       self.prev[next] = revision
+      self.prev_rev[next] = revision
+
     for b in branches:
       self.prev[b] = revision
 
@@ -793,7 +832,7 @@ class CollectData(rcsparse.Sink):
       deltatext_code = DELTATEXT_EMPTY
 
     c_rev = CVSRevision(self._ctx, timestamp, digest, op,
-                        self.rcs_prev[revision], revision,
+                        self.prev_rev.get(revision, '*'), revision,
                         deltatext_code, self.fname,
                         self.mode, self.rev_to_branch_name(revision),
                         self.get_tags(revision),
@@ -2568,11 +2607,11 @@ class Commit:
     if c_rev.timestamp > self.t_max:
       self.t_max = c_rev.timestamp
 
-    if c_rev.op == OP_CHANGE:
-      self.changes.append(c_rev)
-    else:
-      # OP_DELETE
+    if c_rev.op == OP_DELETE:
       self.deletes.append(c_rev)
+    else:
+      # OP_CHANGE or OP_ADD
+      self.changes.append(c_rev)
     self.files[c_rev.fname] = 1
 
   def commit(self, dumper, ctx, sym_tracker):
@@ -3727,9 +3766,6 @@ class SVNRepositoryMirror:
     self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'n')
     Cleanup().register(SVN_MIRROR_NODES_DB, pass8)
 
-    # We need to retrieve CVSRevisions by their unique keys.
-    self.cvs_rev_db = CVSRevisionDatabase('r', ctx)
-
     # Init a root directory with no entries at revision 0.
     self.youngest = 0
     youngest_key = gen_key()
@@ -3747,6 +3783,7 @@ class SVNRepositoryMirror:
     # earlier copy ops.  So after a copy, the directory records
     # legitimate entries under this key, in a dictionary (the keys are
     # entry names, the values can be ignored).
+    ###TODO make this 2 characters long
     self.approved_entries = "/approved-entries"
 
     ###TODO Will we still need these?
@@ -3761,21 +3798,31 @@ class SVNRepositoryMirror:
     # being mutable, the node and all subnodes were created by a copy
     # operation in the current revision.  In this and only this
     # circumstance, it is valid for pruning to occur.
+    ###TODO make this 2 characters long
     self.mutable_flag = "/mutable"
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
-
-  def _affects_only_trunk(self, svn_commit):
-    """Return true if SVNCommit SVN_COMMIT affects only paths on trunk."""
-    ### kff todo
-    pass
 
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, changing the repository, and informing
     the delegate (if any)."""
-    ### kff todo
-    pass
+
+    if svn_commit.symbolic_name:
+      ## This will entail nothing more than copying and deleting.
+      pass # This is a branch/tag create/fill/finish
+      
+    else: # This will actually commit CVSRevisions
+      for cvs_rev in svn_commit.cvs_revs:
+        self.delegate.add_path(cvs_rev)
+        ### Possible actions:
+        # 1. Modify an existing path.
+#         if self.path_exists(cvs_rev.svn_path):
+#           if cvs_rev.op == OP_ADD:
+#             self.change_path(cvs_rev)
+
+        # 2. Add a new path.
+        # 3. Delete a path.
 
 
 class SVNRepositoryDelegate:
@@ -3884,8 +3931,9 @@ def pass8(ctx):
     if not svn_commit:
       break
     print "=" * 75
-    print svn_commit
-    
+    #print svn_commit
+
+    repos.commit(svn_commit)
     #sue-dough code
 
     # If our svn_commit has c_revs
