@@ -1371,6 +1371,7 @@ test_list = [ None,
               peer_path_pruning,
               empty_trunk,
               no_spurious_svn_commits,
+              XFail(invalid_closings_on_trunk),
              ]
 
 if __name__ == '__main__':
