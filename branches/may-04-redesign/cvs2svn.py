@@ -4196,7 +4196,7 @@ class SVNRepositoryMirror:
   file contents.  If you set the delegate, as soon as SVNRepository
   performs a repository action method ([add|change|delete|copy]path),
   it will call the delegate's corresponding repository action method.
-  See SVNRepositoryDelegate for more information.
+  See SVNRepositoryMirrorDelegate for more information.
 
   You must invoke start_commit between SVNCommits."""
   def __init__(self, ctx, delegate=None):
@@ -4640,10 +4640,10 @@ class SVNRepositoryMirror:
 
 
 
-class SVNRepositoryDelegate:
-  """Abstract superclass for any delegate to SVNRepository.  If you
-  subclass, you must implement all of the below methods.  You must
-  call set_mirror before calling any other method.
+class SVNRepositoryMirrorDelegate:
+  """Abstract superclass for any delegate to SVNRepositoryMirror.
+  Subclasses must implement all of the methods below, and callers
+  must call set_mirror before calling any other method.
 
   For each method, a subclass implements, in its own way, the
   Subversion operation implied by the method's name.  For example, for
@@ -4693,15 +4693,15 @@ class SVNRepositoryDelegate:
     committed."""
     raise NotImplementedError
 
-class RepositoryDelegate(SVNRepositoryDelegate):
+class RepositoryDelegate(SVNRepositoryMirrorDelegate):
   """Creates a new Subversion Repository."""
   pass
 
-class DumpfileDelegate(SVNRepositoryDelegate):
+class DumpfileDelegate(SVNRepositoryMirrorDelegate):
   """Creates a Subversion Dumpfile."""
   pass
 
-class StdoutDelegate(SVNRepositoryDelegate):
+class StdoutDelegate(SVNRepositoryMirrorDelegate):
   """Makes no changes to the disk, but writes out information to
   STDOUT about what the SVNRepositoryMirror is doing.  Of course, our
   print statements will state that we're doing something, when in
