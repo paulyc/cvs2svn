@@ -3242,11 +3242,10 @@ class SymbolingsReader:
       #print " ZOO:", key, offsets_db[key]
       self.offsets[key] = offsets_db[key]
 
-  def symboling_for_symbol(self, symbolic_name, svn_revnum, is_tag):
+  def symbol_fill_for_symbol(self, symbolic_name, svn_revnum):
     """Given SYMBOLIC_NAME and SVN_REVNUM, return all openings
     and closings for that symbolic_name that happened in the
-    repository up to and including SVN_REVNUM. IS_TAG is a
-    boolean that indicates if we're dealing with a tag.
+    repository up to and including SVN_REVNUM. 
 
     Note that if a CVSRevision has an opening rev that will be
     returned here, and the closing rev takes place later than
@@ -3323,7 +3322,7 @@ class SymbolicNameFill:
     # The key for the root node of the node tree
     self.root_key = '0'
     # The dictionary that holds our node tree, seeded with the root key.
-    self.tree = { self.root_key : { } }
+    self.node_tree = { self.root_key : { } }
 
 
   def add_path_and_revision(self, svn_path, svn_revnum):
@@ -3362,18 +3361,18 @@ class SymbolicNameFill:
         path_so_far = path_so_far + '/' + component
 
         child_key = None
-        if not self.tree[parent_key].has_key(component):
+        if not self.node_tree[parent_key].has_key(component):
           child_key = gen_key()
-          self.tree[child_key] = { }
-          self.tree[parent_key][component] = child_key
+          self.node_tree[child_key] = { }
+          self.node_tree[parent_key][component] = child_key
         else:
-          child_key = self.tree[parent_key][component]
+          child_key = self.node_tree[parent_key][component]
 
         # If this is the leaf, add the openings and closings.
         if component is last_path_component:
-          self.tree[child_key] = open_close
+          self.node_tree[child_key] = open_close
         parent_key = child_key
-    #print_node_tree(self.tree, self.root_key) 
+    #print_node_tree(self.node_tree, self.root_key) 
 
   def is_empty(self):
     """Returns true if we haven't accumulated any openings or
@@ -4033,6 +4032,7 @@ class SVNRepositoryMirror:
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
 
+    ###TODO IMPT: Suck this into memory.
     self.tags_db = TagsDatabase('r')
 
     self.symbolings_reader = SymbolingsReader(self._ctx)
@@ -4286,6 +4286,92 @@ class SVNRepositoryMirror:
       self.revs_db[self._youngest_key()] = parent_key
     return parent_key, parent
 
+
+  def fill_symbolic_name(self, symbolic_name):
+
+    """ Performs all copies necessary to create as much of the the tag
+    or branch SYMBOLIC_NAME as possible given the current revision of
+    the repository mirror."""
+    symbol_fill = self.symbolings_reader.symbol_fill_for_symbol(
+      symbolic_name, self.youngest)
+
+    base_path = None
+    if self.tags_db.has_key(symbolic_name):
+      base_dest_path = self._ctx.tags_base
+    else:
+      base_dest_path = self._ctx.branches_base
+
+    print "TON", "=" * 75
+    self._copy_paths_in_fill_tree(symbol_fill, symbol_fill.root_key,
+                               symbolic_name)
+
+  def _dest_path_for_source_path(self, symbolic_name, path):
+    """ Given source path PATH, returns the copy destination path
+    under NAME.  Note that this assumes that trunk/tags/branches are
+    only 1 path element long... For example, using --tags=foo/bar would
+    cause incorrect dest path generation."""
+    base_dest_path = self._ctx.branches_base
+    if self.tags_db.has_key(symbolic_name):
+      base_dest_path = self._ctx.tags_base
+
+    components = path.split('/')
+
+    # If our components list contains only one item, that means that
+    # the destination path will only be the base_dest_path
+    # (e.g. branches or tags).  We don't want to even attempt to copy
+    # directly to a top-level directory, so return None here.
+    if len(components) == 1:
+      return None
+    dest = base_dest_path + '/' + '/'.join(components[1:])
+    return dest
+
+  def _copy_paths_in_fill_tree(self, symbol_fill, root_node,
+                               name, path_so_far=None):
+    """Descends through all nodes in SYMBOL_FILL.NODE_TREE that are rooted at
+    ROOT_NODE.  Generates copy commands for all destination nodes that
+    don't exist in NAME.  PATH_SO_FAR should not be passed in as it is
+    created as the function recurses.  """
+    for key, value in symbol_fill.node_tree[root_node].items():
+      if key[0] == '/': #Skip flags
+        continue
+      if path_so_far is not None:
+        src_path = path_so_far + '/' + key
+      else:
+        src_path = key
+      print "TON", "=" * 40
+      dest_path = dest_path = self._dest_path_for_source_path(name, src_path)
+#      print "TON DES:", dest_path
+
+      if (dest_path is not None
+          and not self.path_exists(dest_path)):
+        pass
+        print "TON: COPYING ", src_path
+        print "TON:         to", dest_path
+
+      self._copy_paths_in_fill_tree(symbol_fill, value,
+                                    name, src_path)
+
+  def path_exists(self, path):
+    """If PATH exists in self.youngest of the svn repository mirror,
+    return true, else return None.
+    
+    PATH must not start with '/'."""
+    #print "     TON: PROBING path: '%s' in %d" % (path, self.youngest)
+    parent_node_key, parent_node_contents = self._get_youngest_root_node()
+    previous_component = "/"
+
+    components = string.split(path, '/')
+    for component in components:
+      if not parent_node_contents.has_key(component):
+        return None
+
+      this_entry_key = parent_node_contents[component]
+      this_entry_val = self.nodes_db[this_entry_key]
+      parent_node_key = this_entry_key
+      parent_node_contents = this_entry_val
+      previous_component = component
+    return 1
+
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, changing the repository, and informing
@@ -4294,14 +4380,7 @@ class SVNRepositoryMirror:
     self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit.revnum)
     if svn_commit.symbolic_name:
-      if self.tags_db.has_key(svn_commit.symbolic_name):
-        print "Filling tag:", svn_commit.symbolic_name
-        self.symbolings_reader.symboling_for_symbol(svn_commit.symbolic_name,
-                                                    svn_commit.revnum, 1)
-      else:
-        print "Filling branch:", svn_commit.symbolic_name
-        self.symbolings_reader.symboling_for_symbol(svn_commit.symbolic_name,
-                                                    svn_commit.revnum, 0)
+      self.fill_symbolic_name(svn_commit.symbolic_name)
         
     else: # This will actually commit CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
