@@ -266,8 +266,7 @@ class CVSRevision:
       return 1
     elif self.branch_name == name:
       return 1
-    else:
-      return 0
+    return 0
 
 
 class CollectData(rcsparse.Sink):
@@ -2211,11 +2210,11 @@ class SymbolicNameTracker:
   # self.db.
   def del_node(self, node):
     entries = self.db[node]
-    for key in entries.keys():
+    for key, value in entries.items():
       if key[0] == '/': # Skip flags
         continue
-      self.del_node(entries[key])
-      del self.db[entries[key]]
+      self.del_node(value)
+      del self.db[value]
 
   # Left in temporarily for debugging purposes
   #def __del__(self):
@@ -2556,6 +2555,12 @@ class SymbolicName:
     self.name = name
     self.isTag = isTag
 
+  def __hash__(self):
+    return hash(self.name)
+
+  def __cmp__(self, other):
+    return  cmp(self.name, other.name)
+
 
 def get_symbol_closing_revs(ctx):
   """Iterate through sorted revs, accumulating tags and branches as it
@@ -2568,28 +2573,22 @@ def get_symbol_closing_revs(ctx):
   # their corresponding values will be a key into the last CVS revision
   # that they were used in.
   symbols = {}
-  tags = {}
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
     for tag in c_rev.tags:
-      symbols[tag] = c_rev.unique_key()
-      tags[tag] = 1
+      symbols[SymbolicName(tag, 1)] = c_rev.unique_key()
     for branch in c_rev.branches:
-      symbols[branch] = c_rev.unique_key()
+      symbols[SymbolicName(branch)] = c_rev.unique_key()
     if c_rev.branch_name:
-      symbols[branch] = c_rev.unique_key()
+      symbols[SymbolicName(branch)] = c_rev.unique_key()
 
+  print "ZON:", len(symbols)
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that
   # rev.
   symbol_revs = {}
-  for symbol in symbols.keys():
-    value = symbols[symbol]
-    if tags.has_key(symbol):
-      sym = SymbolicName(symbol, 1)
-    else:
-      sym = SymbolicName(symbol)
+  for sym, value in symbols.items():
     if symbol_revs.has_key(value):
       symbol_revs[value].append(sym)
     else:
@@ -2694,7 +2693,7 @@ def pass4(ctx):
   # Start the dumpfile object.
   dumper = Dumper(ctx)
 
-  pending_symbols = []
+  pending_symbols = {}
   # process the logfiles, creating the target
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
@@ -2744,41 +2743,35 @@ def pass4(ctx):
 
     #####################################################################
     ###TODO rename symbol_pkeys
-    open_symbols = []
     if symbol_pkeys.has_key(c_rev.unique_key()):
       for key in symbol_pkeys[c_rev.unique_key()]:
-        if not key in pending_symbols:
-          pending_symbols.append(key)
+        if not pending_symbols.has_key(key):
+          pending_symbols[key] = 1
 
-    ### TODO need to sort these somehow
-    # Make a copy here because we're going to modify pending_symbols
-    # inside the for loop.
-    symbols = list(pending_symbols)
-    for sym in symbols:
+    ### TODO need to sort these
+    open_symbols = {}
+    for sym in pending_symbols.keys():
       for k, v in commits.items():
         if v.contains_symbolic_name(sym.name):
-          if not sym in open_symbols:
-            open_symbols.append(sym)
+          if not open_symbols.has_key(sym):
+            open_symbols[sym] = 1
             break
       else:
-        if not sym in pending_symbols:
-          pending_symbols.append(sym)
+        if not pending_symbols.has_key(sym):
+          pending_symbols[sym] = 1
 
-    # Make a copy here because we're going to modify pending_symbols
-    # inside the for loop.
-    symbols = list(pending_symbols)
-    for sym in symbols:
-      if sym in open_symbols: # sym is still open--don't close it now.
+    ### TODO need to sort these
+    for sym in pending_symbols.keys():
+      if open_symbols.has_key(sym): # sym is still open--don't close it now.
         continue
       if sym.isTag:
         sym_tracker.fill_tag(dumper, ctx, sym.name, [1])
       else:
         sym_tracker.fill_branch(dumper, ctx, sym.name, [1])
       sym_tracker.cleanup_symbol(sym.name)
-      pending_symbols.remove(sym)
-    for key in open_symbols:
-      if not key in pending_symbols:
-        pending_symbols.append(key)
+      del pending_symbols[sym]
+
+    pending_symbols.update(open_symbols)
     #####################################################################
 
   # End of the sorted revs file.  Flush any remaining commits:
