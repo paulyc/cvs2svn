@@ -209,15 +209,40 @@ class CVSRevision:
   def unique_key(self):
     return self.rev + "/" + self.fname
 
-  # Return the corresponding path (dropping the ,v from the file name)
-  # for this revision in the Subversion repository.
+  # Return the corresponding branch path (dropping the ,v from the
+  # file name) for this revision in the Subversion repository.  (Note
+  # that we could name this svn_branch_path, but it's really the
+  # common case, so I'm sticking with svn_path)
   def svn_path(self):
     return make_path(self.ctx, self.cvs_path(), self.branch_name)
+
+  # Return the corresponding trunk path (dropping the ,v from the
+  # file name) for this revision in the Subversion repository.
+  def svn_trunk_path(self):
+    return make_path(self.ctx, self.cvs_path())
 
   # Returns the path to self.fname minus the path to the CVS
   # repository itself.
   def cvs_path(self):
     return relative_name(self.ctx.cvsroot, self.fname[:-2])
+
+  def write_revs_line(self, output, timestamp=None):
+    if not timestamp:
+      timestamp = self.timestamp
+    output.write('%08lx %s %s %s %s ' % \
+                 (timestamp, self.digest, self.op,
+                  self.rev, self.deltatext_code))
+    if not self.branch_name:
+      self.branch_name = "*"
+    output.write('%s ' % self.branch_name)
+    output.write('%d ' % (len(self.tags)))
+    for tag in self.tags:
+      output.write('%s ' % (tag))
+    output.write('%d ' % (len(self.branches)))
+    for branch in self.branches:
+      output.write('%s ' % (branch))
+    output.write('%s\n' % self.fname)
+
 
 class CollectData(rcsparse.Sink):
   def __init__(self, cvsroot, log_fname_base, default_branches_db):
@@ -498,7 +523,7 @@ class CollectData(rcsparse.Sink):
                         self.rev_to_branch_name(revision),
                         self.get_tags(revision),
                         self.get_branches(revision))
-    write_revs_line(self.revs, timestamp, c_rev)
+    c_rev.write_revs_line(self.revs)
 
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
@@ -2218,7 +2243,6 @@ class Commit:
     # and a tuple is created for each default branch commit that will
     # need to be copied to trunk (or deleted from trunk) in the
     # generated revision following the "regular" revision.
-    ###TODO These both need to take c_revs
     default_branch_copies  = [ ]
     default_branch_deletes = [ ]
 
@@ -2309,8 +2333,7 @@ class Commit:
                                                ctx.cvs_revnums)
         if is_trunk_vendor_revision(ctx.default_branches_db,
                                     c_rev.cvs_path(), c_rev.rev):
-          default_branch_copies.append((c_rev.cvs_path(), c_rev.branch_name,
-                                        c_rev.tags, c_rev.branches))
+          default_branch_copies.append(c_rev)
         sym_tracker.close_tags(c_rev.svn_path(), svn_rev, closed_tags)
         sym_tracker.close_branches(c_rev.svn_path(), svn_rev,
                                    closed_branches)
@@ -2344,8 +2367,7 @@ class Commit:
                                        c_rev.branches, ctx.prune)
       if is_trunk_vendor_revision(ctx.default_branches_db,
                                   c_rev.cvs_path(), c_rev.rev):
-        default_branch_deletes.append((c_rev.cvs_path(), c_rev.branch_name,
-                                       c_rev.tags, c_rev.branches))
+        default_branch_deletes.append(c_rev)
       sym_tracker.close_tags(c_rev.svn_path(), svn_rev, closed_tags)
       sym_tracker.close_branches(c_rev.svn_path(), svn_rev, closed_branches)
 
@@ -2364,27 +2386,29 @@ class Commit:
                   'svn:date' : date }
         svn_rev = dumper.start_revision(props)
 
-        ###TODO Use CVS revisions
-        for cvs_path, br, tags, branches in default_branch_copies:
-          src_path = make_path(ctx, cvs_path, br)
-          dst_path = make_path(ctx, cvs_path)
-          if (dumper.probe_path(dst_path)):
+        for c_rev in default_branch_copies:
+          if (dumper.probe_path(c_rev.svn_trunk_path())):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(dst_path, tags, branches, ctx.prune)
-            sym_tracker.close_tags(dst_path, svn_rev, closed_tags)
-            sym_tracker.close_branches(dst_path, svn_rev, closed_branches)
-          dumper.copy_path(src_path, previous_rev, dst_path)
+                 dumper.delete_path(c_rev.svn_trunk_path(), c_rev.tags,
+                                    c_rev.branches, ctx.prune)
+            sym_tracker.close_tags(c_rev.svn_trunk_path(),
+                                   svn_rev, closed_tags)
+            sym_tracker.close_branches(c_rev.svn_trunk_path(),
+                                       svn_rev, closed_branches)
+          dumper.copy_path(c_rev.svn_path(), previous_rev,
+                           c_rev.svn_trunk_path())
 
-        ###TODO Use CVS revisions
-        for cvs_path, br, tags, branches in default_branch_deletes:
+        for c_rev in default_branch_deletes:
           # Ignore the branch -- we don't need to know the default
           # branch, we already know we're deleting this from trunk.
-          dst_path = make_path(ctx, cvs_path)
-          if (dumper.probe_path(dst_path)):
+          if (dumper.probe_path(c_rev.svn_trunk_path())):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(dst_path, tags, branches, ctx.prune)
-            sym_tracker.close_tags(dst_path, svn_rev, closed_tags)
-            sym_tracker.close_branches(dst_path, svn_rev, closed_branches)
+                 dumper.delete_path(c_rev.svn_trunk_path(), c_rev.tags,
+                                    c_rev.branches, ctx.prune)
+            sym_tracker.close_tags(c_rev.svn_trunk_path(), svn_rev,
+                                   closed_tags)
+            sym_tracker.close_branches(c_rev.svn_trunk_path(),
+                                       svn_rev, closed_branches)
 
 
 def read_resync(fname):
@@ -2427,7 +2451,6 @@ def read_resync(fname):
 
   return resync
 
-
 def parse_revs_line(ctx, line):
   data = line.split(' ', 7)
   timestamp = int(data[0], 16)
@@ -2448,22 +2471,6 @@ def parse_revs_line(ctx, line):
 
   return CVSRevision(ctx, timestamp, id, op, rev, deltatext_code, \
          fname, branch_name, tags, branches)
-
-### TODO Shouldn't this be in CVSRevision?
-def write_revs_line(output, timestamp, c_rev):
-  output.write('%08lx %s %s %s %s ' % \
-               (c_rev.timestamp, c_rev.digest, c_rev.op,
-                c_rev.rev, c_rev.deltatext_code))
-  if not c_rev.branch_name:
-    c_rev.branch_name = "*"
-  output.write('%s ' % c_rev.branch_name)
-  output.write('%d ' % (len(c_rev.tags)))
-  for tag in c_rev.tags:
-    output.write('%s ' % (tag))
-  output.write('%d ' % (len(c_rev.branches)))
-  for branch in c_rev.branches:
-    output.write('%s ' % (branch))
-  output.write('%s\n' % c_rev.fname)
 
 
 def pass1(ctx):
@@ -2503,7 +2510,7 @@ def pass2(ctx):
     for record in resync[c_rev.digest]:
       if record[0] <= c_rev.timestamp <= record[1]:
         # bingo! remap the time on this (record[2] is the new time).
-        write_revs_line(output, record[2], c_rev)
+        c_rev.write_revs_line(output, record[2])
 
         print "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
               % (relative_name(ctx.cvsroot, c_rev.fname),
