@@ -509,6 +509,8 @@ class CollectData(rcsparse.Sink):
     # it is forced to be treated as a tag by the user.
     self.forced_tag_branches = { }
 
+    self.cvs_rev_db = CVSRevisionDatabase('n')
+
     # See set_fname() for initializations of other variables.
 
   def set_fname(self, fname):
@@ -895,6 +897,7 @@ class CollectData(rcsparse.Sink):
                         self.get_tags(revision),
                         self.get_branches(revision))
     self.revs.write(str(c_rev) + "\n")
+    self.cvs_rev_db.log_revision(c_rev)
 
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
@@ -1228,9 +1231,8 @@ class LastSymbolicNameDatabase(Database):
 ### SymbolingsLogger, but we could map to an offset into s-revs,
 ### instead of dup'ing the s-revs data in this database.
 class CVSRevisionDatabase:
-  """ Passing every CVSRevision in s-revs to this class will result in
-  a Database mapping CVSRevision.unique_key() to the actual s-rev
-  string for the CVS Revision."""
+  """A Database to store CVSRevision objects and retrieve them by their
+  unique_key()."""
 
   def __init__(self, mode, ctx=None):
     """Initialize an instance, opening database in MODE (like the MODE
@@ -1241,16 +1243,12 @@ class CVSRevisionDatabase:
     Cleanup().register(CVS_REVS_DB, pass8)
 
   def log_revision(self, c_rev):
-    # Add c_rev to the cvs_rev index db
+    """Add C_REV, a CVSRevision, to the database."""
     self.cvs_revs_db[c_rev.unique_key()] = str(c_rev)
 
   def get_revision(self, unique_key):
-    """Return the CVSRevision stored under UNIQUE_KEY. Return None if
-    unique_key isn't in our datastore."""
-    val = self.cvs_revs_db[unique_key]
-    if val is None:
-      return None
-    return CVSRevision(self._ctx, val)
+    """Return the CVSRevision stored under UNIQUE_KEY."""
+    return CVSRevision(self._ctx, self.cvs_revs_db[unique_key])
 
 
 class TagsDatabase(Database):
@@ -1381,11 +1379,10 @@ def pass4(ctx):
   3. A Database that contains all symbolic names that are tags.
   """
 
-  ### TODO: Can't building the CVSRevisionDatabase be done in
-  ### CollectData?  If so, then we can skip this pass entirely when
+  ### TODO: Can't building the TagsDatabase be done in
+  ### CollectData?  Also, we can skip this pass entirely when
   ### doing --trunk-only
   Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
-  cvs_rev_db = CVSRevisionDatabase('n', ctx)
   if not ctx.trunk_only:
     tags_db = TagsDatabase('n')
     last_sym_name_db = LastSymbolicNameDatabase('n')
@@ -1396,7 +1393,6 @@ def pass4(ctx):
     if not ctx.trunk_only:
       last_sym_name_db.log_revision(c_rev)
       tags_db.log_revision(c_rev)
-    cvs_rev_db.log_revision(c_rev)
 
   if not ctx.trunk_only:
     last_sym_name_db.create_database()
