@@ -209,15 +209,13 @@ class CVSRevision:
   def unique_key(self):
     return self.rev + "/" + self.fname
 
-  # Return the corresponding branch path (dropping the ,v from the
-  # file name) for this revision in the Subversion repository.  (Note
-  # that we could name this svn_branch_path, but it's really the
-  # common case, so I'm sticking with svn_path)
+  # Return the subversion path of this revision, composed from the 
+  # branch this revision is on (perhaps trunk), and its cvs path.
   def svn_path(self):
     return make_path(self.ctx, self.cvs_path(), self.branch_name)
 
-  # Return the corresponding trunk path (dropping the ,v from the
-  # file name) for this revision in the Subversion repository.
+  # Return the subversion path of this revision, as if it was on the
+  # trunk. Used to know where to replicate default branch revisions to.
   def svn_trunk_path(self):
     return make_path(self.ctx, self.cvs_path())
 
@@ -2153,6 +2151,7 @@ class Commit:
     self.log = log
 
     self.files = { }
+    # Lists of CVSRevisions
     self.changes = [ ]
     self.deletes = [ ]
 
