@@ -387,6 +387,9 @@ class Database:
     if self.has_key(key):
       return self.__getitem__(key)
     return default
+
+  def len(self):
+    return len(self.db)
    
 
 class CVSRevision:
@@ -1743,6 +1746,9 @@ class PersistenceManager(Singleton):
     # This is used by CVSCommit._pre_commit, to prevent creating a fill
     # revision which would have nothing to do.
     self.last_filled = {}
+
+  def total_revs(self):
+    return self.svn2cvs_db.len()
 
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
@@ -3503,14 +3509,16 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
   print statements will state that we're doing something, when in
   reality, we aren't doing anything other than printing out that we're
   doing something.  Kind of zen, really."""
-  def __init__(self):
+  def __init__(self, total_revs):
     Log().write(LOG_QUIET, "Starting Subversion repository.")
+    self.total_revs = total_revs
 
   def start_commit(self, svn_commit):
     """Prints out the Subversion revision number of the commit that is
     being started."""
     Log().write(LOG_VERBOSE, "=" * 60)
-    Log().write(LOG_NORMAL, "Starting Subversion commit", svn_commit.revnum)
+    Log().write(LOG_NORMAL, "Starting Subversion commit %d / %d" %
+                (svn_commit.revnum, self.total_revs))
 
   def mkdir(self, path):
     """Print a line stating that we are creating directory PATH."""
@@ -3697,7 +3705,7 @@ def pass8(ctx):
   #repos = SVNRepositoryMirror(ctx, StdoutDelegate())
   repos = SVNRepositoryMirror(ctx)
   repos.add_delegate(DumpfileDelegate(ctx))
-  repos.add_delegate(StdoutDelegate())
+  repos.add_delegate(StdoutDelegate(PersistenceManager(ctx).total_revs()))
 
   while(1):
     svn_commit = PersistenceManager(ctx).get_svn_commit(svncounter)
