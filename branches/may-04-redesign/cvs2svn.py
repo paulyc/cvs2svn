@@ -3877,44 +3877,20 @@ class SVNRepositoryMirror:
     root_key = self.revs_db[self._youngest_key()]
     self._stabilize_directory(root_key)
 
-  ###TODO add_path and change_path share too much code. Share!
   def change_path(self, cvs_rev):
     """Register a change in self.youngest for the CVS_REV's svn_path
     in the repository mirror."""
-    parent_node_key, parent_node_contents = self._get_youngest_root_node()
-
-    path_so_far = ""
-    # Walk up the path, one node at a time.
-    components = cvs_rev.svn_path.split('/')
-    for component in components:
-      path_so_far = os.path.join(path_so_far, component)
-      print "ZOO:", path_so_far
-
-      this_entry_key = parent_node_contents[component]
-      this_entry_contents = self.nodes_db[this_entry_key]
-      mutable = this_entry_contents.get(self.mutable_flag)
-      if not mutable:
-        print "ZOO: NEW NODE IN rev", self.youngest
-        # Create a new, mutable node.
-        this_entry_key = self._make_node(this_entry_contents)
-        # Replace the old node key in the parent node
-        parent_node_contents[component] = this_entry_key
-        # Update the parent node in the db
-        self.nodes_db[parent_node_key] = parent_node_contents
-      else:
-        print "ZOO: OLD NODE IN rev", self.youngest
-
-      ###TODO Shouldn't something like this be in delete_path?
-      #elif mutable == 2:
-      #  in_pruneable_subtree = 1
-      parent_node_key = this_entry_key
-      parent_node_contents = this_entry_contents
-
-
-
+    self._add_or_change_path(cvs_rev)
+    self.delegate.change_path(cvs_rev)
 
   def add_path(self, cvs_rev):
     """Add the CVS_REV's svn_path to the repository mirror."""
+    self._add_or_change_path(cvs_rev)
+    self.delegate.add_path(cvs_rev)
+
+  def _add_or_change_path(self, cvs_rev):
+    """add_path and change_path are identical except for the fact that
+    add_path needs to create a new entry for at least the leaf node."""
     parent_node_key, parent_node_contents = self._get_youngest_root_node()
 
     path_so_far = ""
@@ -3922,6 +3898,7 @@ class SVNRepositoryMirror:
     components = cvs_rev.svn_path.split('/')
     for component in components:
       path_so_far = os.path.join(path_so_far, component)
+      #print "ZOO:", path_so_far
       # If the parent_node_contents doesn't have an entry for this
       # component, create a new node for the component and add it to
       # the parent_node_contents.
@@ -3941,12 +3918,15 @@ class SVNRepositoryMirror:
       this_entry_contents = self.nodes_db[this_entry_key]
       mutable = this_entry_contents.get(self.mutable_flag)
       if not mutable:
+        #print "ZOO: NEW NODE IN rev", self.youngest
         # Create a new, mutable node.
         this_entry_key = self._make_node(this_entry_contents)
         # Replace the old node key in the parent node
         parent_node_contents[component] = this_entry_key
         # Update the parent node in the db
         self.nodes_db[parent_node_key] = parent_node_contents
+      #else:
+        #print "ZOO: OLD NODE IN rev", self.youngest
 
       ###TODO Shouldn't something like this be in delete_path?
       #elif mutable == 2:
@@ -3996,10 +3976,8 @@ class SVNRepositoryMirror:
       for cvs_rev in svn_commit.cvs_revs:
         if cvs_rev.op == OP_ADD:
           self.add_path(cvs_rev)
-          self.delegate.add_path(cvs_rev)
         elif cvs_rev.op == OP_CHANGE:
           self.change_path(cvs_rev)
-          self.delegate.change_path(cvs_rev)
         else: # Must be a delete
           self.delegate.delete_path(cvs_rev)
 
