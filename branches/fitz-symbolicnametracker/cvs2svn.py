@@ -1635,16 +1635,15 @@ class SymbolicNameTracker:
     # The keys for the opening and closing revision lists attached to
     # each directory or file.  Includes "/" so as never to conflict
     # with any real entry.
-    self.tags_opening_revs_key = "/tag-openings"
-    self.tags_closing_revs_key = "/tag-closings"
-    self.br_opening_revs_key   = "/br-openings"
-    self.br_closing_revs_key   = "/br-closings"
+    self.opening_revs_key = "/openings"
+    self.closing_revs_key = "/closings"
 
     # When a node is copied into the repository, the revision copied
     # is stored under the appropriate key, and the corresponding
     # opening and closing rev lists are removed.
-    self.tags_copyfrom_rev_key = "/tags-copyfrom-rev"
-    self.br_copyfrom_rev_key = "/br-copyfrom-rev"
+    self.copyfrom_rev_key = "/copyfrom-rev"
+
+    self.tags = {}
 
   def probe_path(self, symbolic_name, path, debugging=None):
     """If 'SYMBOLIC_NAME/PATH' exists in the symbolic name tree,
@@ -1694,7 +1693,7 @@ class SymbolicNameTracker:
     and indicates which rev list to increment REV's count in.
 
     For example, if REV is 7, REVLIST_KEY is
-    self.tags_opening_revs_key, and the entry's tags opening revs list
+    self.opening_revs_key, and the entry's tags opening revs list
     looks like this
 
          [(2, 5), (7, 2), (10, 15)]
@@ -1739,12 +1738,10 @@ class SymbolicNameTracker:
   # The verb form of "root" is "root", but that would be misleading in
   # this case; and the opposite of "uproot" is presumably "downroot",
   # but that wouldn't exactly clarify either.  Hence, "enroot" :-).
-  def enroot_names(self, svn_path, svn_rev, names, opening_key):
+  def enroot_names(self, svn_path, svn_rev, names):
     """Record SVN_PATH at SVN_REV as the earliest point from which the
-    symbolic names in NAMES could be copied.  OPENING_KEY is
-    self.tags_opening_revs_key or self.br_opening_revs_key, to
-    indicate whether NAMES contains tag names or branch names.
-    SVN_PATH does not start with '/'."""
+    symbolic names in NAMES could be copied.  SVN_PATH does not start
+    with '/'."""
 
     # Guard against names == None
     if not names:
@@ -1754,7 +1751,7 @@ class SymbolicNameTracker:
       components = [name] + string.split(svn_path, '/')
       parent_key = self.root_key
       for component in components:
-        self.bump_rev_count(parent_key, svn_rev, opening_key)
+        self.bump_rev_count(parent_key, svn_rev, self.opening_revs_key)
         parent = self.db[parent_key]
         if not parent.has_key(component):
           new_child_key = gen_key()
@@ -1768,26 +1765,26 @@ class SymbolicNameTracker:
         parent_key = this_entry_key
         parent = this_entry_val
 
-      self.bump_rev_count(parent_key, svn_rev, opening_key)
+      self.bump_rev_count(parent_key, svn_rev, self.opening_revs_key)
 
   def enroot_tags(self, svn_path, svn_rev, tags):
     """Record SVN_PATH at SVN_REV as the earliest point from which the
     symbolic names in TAGS could be copied.  SVN_PATH does not start
     with '/'."""
-    self.enroot_names(svn_path, svn_rev, tags, self.tags_opening_revs_key)
+    for tag in tags:
+      self.tags[tag] = None
+    self.enroot_names(svn_path, svn_rev, tags)
 
   def enroot_branches(self, svn_path, svn_rev, branches):
     """Record SVN_PATH at SVN_REV as the earliest point from which the
     symbolic names in BRANCHES could be copied.  SVN_PATH does not
     start with '/'."""
-    self.enroot_names(svn_path, svn_rev, branches, self.br_opening_revs_key)
+    self.enroot_names(svn_path, svn_rev, branches)
 
-  def close_names(self, svn_path, svn_rev, names, closing_key):
+  def close_names(self, svn_path, svn_rev, names):
     """Record that as of SVN_REV, SVN_PATH could no longer be the
     source from which any of symbolic names in NAMES could be copied.
-    CLOSING_KEY is self.tags_closing_revs_key or
-    self.br_closing_revs_key, to indicate whether NAMES are tags or
-    branches.  SVN_PATH does not start with '/'."""
+    SVN_PATH does not start with '/'."""
 
     # Guard against names == None
     if not names:
@@ -1804,7 +1801,7 @@ class SymbolicNameTracker:
       if not parent.has_key(name):
         return
       for component in components:
-        self.bump_rev_count(parent_key, svn_rev, closing_key)
+        self.bump_rev_count(parent_key, svn_rev, self.closing_revs_key)
         # Check for a "can't happen".
         if not parent.has_key(component):
           sys.stderr.write("%s: in path '%s', value for parent key '%s' "
@@ -1817,19 +1814,19 @@ class SymbolicNameTracker:
         parent_key = this_entry_key
         parent = this_entry_val
 
-      self.bump_rev_count(parent_key, svn_rev, closing_key)
+      self.bump_rev_count(parent_key, svn_rev, self.closing_revs_key)
 
   def close_tags(self, svn_path, svn_rev, tags):
     """Record that as of SVN_REV, SVN_PATH could no longer be the
     source from which any of TAGS could be copied.  SVN_PATH does not
     start with '/'."""
-    self.close_names(svn_path, svn_rev, tags, self.tags_closing_revs_key)
+    self.close_names(svn_path, svn_rev, tags)
 
   def close_branches(self, svn_path, svn_rev, branches):
     """Record that as of SVN_REV, SVN_PATH could no longer be the
     source from which any of BRANCHES could be copied.  SVN_PATH does
     not start with '/'."""
-    self.close_names(svn_path, svn_rev, branches, self.br_closing_revs_key)
+    self.close_names(svn_path, svn_rev, branches)
 
   def score_revisions(self, openings, closings):
     """Return a list of revisions and scores based on OPENINGS and
@@ -1838,8 +1835,8 @@ class SymbolicNameTracker:
        [(REV1 SCORE1), (REV2 SCORE2), ...]
 
     where REV2 > REV1.  OPENINGS and CLOSINGS are the values of
-    self.tags_opening_revs_key and self.tags_closing_revs_key, or
-    self.br_opening_revs_key and self.br_closing_revs_key, from some file or
+    self.opening_revs_key and self.closing_revs_key, or
+    self.opening_revs_key and self.closing_revs_key, from some file or
     directory node, or else None.
 
     Each score indicates that copying the corresponding revision (or any
@@ -1918,12 +1915,6 @@ class SymbolicNameTracker:
     highest scoring revision doesn't match REV (and also, minus and
     special '/'-denoted flags).  IS_TAG is 1 or None, based on whether
     this work is being done for the sake of a tag or a branch."""
-    if is_tag:
-      opening_key = self.tags_opening_revs_key
-      closing_key = self.tags_closing_revs_key
-    else:
-      opening_key = self.br_opening_revs_key
-      closing_key = self.br_closing_revs_key
 
     new_entries = {}
     for key in entries.keys():
@@ -1931,7 +1922,7 @@ class SymbolicNameTracker:
         continue
       entry = entries.get(key)
       val = self.db[entry]
-      scores = self.score_revisions(val.get(opening_key), val.get(closing_key))
+      scores = self.score_revisions(val.get(self.opening_revs_key), val.get(self.closing_revs_key))
       if self.is_best_rev(scores, rev, limit_rev):
         new_entries[key] = entry
     return new_entries
@@ -1964,25 +1955,17 @@ class SymbolicNameTracker:
     key = parent[entry_name]
     val = self.db[key]
 
-    if is_tag:
-      opening_key = self.tags_opening_revs_key
-      closing_key = self.tags_closing_revs_key
-      copyfrom_rev_key = self.tags_copyfrom_rev_key
-    else:
-      opening_key = self.br_opening_revs_key
-      closing_key = self.br_closing_revs_key
-      copyfrom_rev_key = self.br_copyfrom_rev_key
-
     limit_rev = dumper.revision
     if jit_new_rev and jit_new_rev[0]:
       # Because in this case the current rev is complete,
       # so is a valid copyfrom source
       limit_rev = limit_rev + 1  
 
-    if not val.has_key(copyfrom_rev_key):
+    if not val.has_key(self.copyfrom_rev_key):
       # If not already copied this subdir, calculate its "best rev"
       # and see if it differs from parent's best rev.
-      scores = self.score_revisions(val.get(opening_key), val.get(closing_key))
+      scores = self.score_revisions(val.get(self.opening_revs_key),
+                                    val.get(self.closing_revs_key))
       rev = self.best_rev(scores, parent_rev, limit_rev)
 
       if rev == SVN_INVALID_REVNUM:
@@ -2016,11 +1999,11 @@ class SymbolicNameTracker:
           dumper.prune_entries(copy_dst, expected_entries)
 
         # Record that this copy is done:
-        val[copyfrom_rev_key] = parent_rev
-        if val.has_key(opening_key):
-          del val[opening_key]
-        if val.has_key(closing_key):
-          del val[closing_key]
+        val[self.copyfrom_rev_key] = parent_rev
+        if val.has_key(self.opening_revs_key):
+          del val[self.opening_revs_key]
+        if val.has_key(self.closing_revs_key):
+          del val[self.closing_revs_key]
         self.db[key] = val
 
     for ent in val.keys():
@@ -2080,10 +2063,9 @@ class SymbolicNameTracker:
     parent_key = parent[name]
     parent = self.db[parent_key]
 
-    really_is_tag = parent.has_key(self.tags_opening_revs_key)
-    if is_tag and really_is_tag:
+    if is_tag and self.tags.has_key(name):
       print "filling tag '%s'." % name
-    elif not is_tag and not really_is_tag:
+    elif not is_tag and not self.tags.has_key(name):
       print "filling branch '%s'." % name
     else:
       return
