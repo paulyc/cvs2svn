@@ -1991,8 +1991,6 @@ class SymbolicNameTracker:
         sys.stderr.write("%s: no origin records for tag '%s'.\n"
                          % (error_prefix, name))
       else:
-        import traceback
-        traceback.print_stack()
         sys.stderr.write("%s: no origin records for branch '%s'.\n"
                          % (error_prefix, name))
       sys.exit(1)
