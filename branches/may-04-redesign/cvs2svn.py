@@ -2122,16 +2122,19 @@ class SVNCommit:
   def get_date(self):
     """Returns this SVNCommit's date as an integer."""
     return self._max_date
-   
+
   def get_revprops(self):
     """Return the Subversion revprops for this SVNCommit."""
     date = format_date(self._max_date)
     try: 
       ### FIXME: The 'replace' behavior should be an option, like
       ### --encoding is.
-      unicode_author = unicode(self._author, self._ctx.encoding, 'replace')
+      unicode_author = None
+      if self._author is not None:
+        unicode_author = unicode(self._author, self._ctx.encoding, 'replace')
+        unicode_author.encode('utf8')
       unicode_log = unicode(self._log_msg, self._ctx.encoding, 'replace')
-      return { 'svn:author' : unicode_author.encode('utf8'),
+      return { 'svn:author' : unicode_author,
                'svn:log'    : unicode_log.encode('utf8'),
                'svn:date'   : date }
     except UnicodeError:
@@ -3198,6 +3201,8 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     props = svn_commit.get_revprops()
     total_len = 10  # len('PROPS-END\n')
     for propname in props.keys():
+      if props[propname] is None:
+        continue
       klen = len(propname)
       klen_len = len('K %d' % klen)
       vlen = len(props[propname])
@@ -3213,8 +3218,10 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
                         % (self.revision, total_len, total_len))
 
     for propname in props.keys():
+      if props[propname] is None:
+        continue
       self.dumpfile.write('K %d\n' 
-                          '%s\n' 
+                          '%s\n'
                           'V %d\n' 
                           '%s\n' % (len(propname),
                                     propname,
@@ -3742,8 +3749,6 @@ def usage(ctx):
   print '  --force-branch=NAME  Force NAME to be a branch.'
   print '  --force-tag=NAME     Force NAME to be a tag.'
   print '  --username=NAME      username for cvs2svn-synthesized commits'
-  print '                                                  (default: %s)' \
-        % ctx.username
   print '  --skip-cleanup       prevent the deletion of intermediate files'
   print '  --bdb-txn-nosync     pass --bdb-txn-nosync to "svnadmin create"'
   print '  --cvs-revnums        record CVS revision numbers as file properties'
@@ -3773,7 +3778,7 @@ def main():
   ctx.mime_mapper = None
   ctx.set_eol_style = 0
   ctx.svnadmin = "svnadmin"
-  ctx.username = "unknown"
+  ctx.username = None
   ctx.print_help = 0
   ctx.skip_cleanup = 0
   ctx.cvs_revnums = 0
