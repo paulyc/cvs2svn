@@ -657,8 +657,8 @@ class CollectData(rcsparse.Sink):
       self.file_in_attic = 1
 
     file_stat = os.stat(filename)
-    # The size of our file in kilobytes
-    self.file_size_kb = file_stat[stat.ST_SIZE] / 1024
+    # The size of our file in bytes
+    self.file_size_kb = file_stat[stat.ST_SIZE]
 
     # Whether or not the executable bit is set.
     self.file_executable = None
