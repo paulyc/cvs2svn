@@ -4325,6 +4325,11 @@ class SVNRepositoryMirrorPathExistsError(Exception):
   revision of the repository."""
   pass
 
+class SVNRepositoryMirrorUnexpectedOperationError(Exception):
+  """Exception raised if a CVSRevision is found to have an unexpected
+  operation (OP) value."""
+  pass
+
 # This supersedes and will eventually replace RepositoryMirror.
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
@@ -4687,6 +4692,33 @@ class SVNRepositoryMirror:
 
     self._fill(symbol_fill, symbol_fill.root_key, symbolic_name)
 
+  ###TODO We need a test here, to make sure that tag copies get the
+  ###correct version of a file when a file is tagged while the default
+  ###branch is non-trunk.
+  def synchronize_default_branch(self, svn_commit):
+    """Propagate any changes that happened on a non-trunk default
+    branch to the trunk of the repository.  See
+    CVSCommit._post_commit() for details on why this is necessary."""
+    for cvs_rev in svn_commit.cvs_revs:
+      if cvs_rev.op == OP_ADD or cvs_rev.op == OP_CHANGE:
+        if self.path_exists(cvs_rev.svn_trunk_path):
+          # Delete the path on trunk...
+          ###TODO delete_path should handle the delegate
+          self.delete_path(cvs_rev.svn_trunk_path)
+          self.delegate.delete_path(cvs_rev.svn_trunk_path)
+        # ...and copy over from branch
+        self.copy_path(cvs_rev.svn_path, cvs_rev.svn_trunk_path,
+                       svn_commit.revnum)
+      elif cvs_rev.op == OP_DELETE:
+        # delete trunk path
+        self.delete_path(cvs_rev.svn_trunk_path)
+        ###TODO delete_path should handle the delegate
+        self.delegate.delete_path(cvs_rev.svn_trunk_path)
+      else:
+        msg = ("Unknown CVSRevision operation '%s' in default branch sync."
+               % cvs_rev.op)
+        raise SVNRepositoryMirrorUnexpectedOperationError, msg
+
   def _dest_path_for_source_path(self, symbolic_name, path):
     """Given source path PATH, returns the copy destination path
     under NAME.  Note that this assumes that trunk/tags/branches are
@@ -4731,14 +4763,7 @@ class SVNRepositoryMirror:
         # here--our parent's copy already has everything we need.
         # Just continue bubbling down.
         if src_revnum != preferred_revnum:
-          # Wrapping this call in a try block for the moment because
-          # until I finish the SVNRepositoryMirror, it's causing test
-          # failures (due to looking in the mirror for stuff I haven't
-          # put there). -Fitz
-          try:
-            self.copy_path(src_path, dest_path, src_revnum)
-          except KeyError:
-            print "Skipping KeyError for the time being."
+          self.copy_path(src_path, dest_path, src_revnum)
 
         # TODO Manage deletes (prunes) (which calls the delegate)
       self._fill(symbol_fill, node_contents, name, src_path, src_revnum)
@@ -4887,7 +4912,7 @@ class SVNRepositoryMirror:
     elif svn_commit.primary_commit_revnum:
       print "COM: INACTIVE Default branch copies for primary commit"
       svn_commit.primary_commit_revnum, "in SVNCommit", svn_commit.revnum
-      pass ###TODO: handle default_branch copies/deletes
+      self.synchronize_default_branch(svn_commit)
     else: # This actually commits CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
         if cvs_rev.op == OP_ADD:
