@@ -2864,7 +2864,6 @@ class SVNRepositoryMirror:
       # (as opposed to a copy).
       dest_path = self._ctx.branches_base + '/' + symbol_fill.name
       if not self._path_exists(dest_path):
-        print "FITZ:", symbol_fill.name
         # If our symbol_fill was empty, that means that our first
         # commit on the branch was to a file added on the branch, and
         # that this is our first fill of that branch.
