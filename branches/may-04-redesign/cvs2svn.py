@@ -3816,12 +3816,11 @@ class CVSCommit:
     # revisions.  Therefore, we generate the above-described new
     # revision unconditionally.
     #
-    # Each of these is a list of c_revs, and a c_rev is appended for
-    # each default branch commit that will need to be copied to trunk
-    # (or deleted from trunk) in some generated revision following the
+    # This is a list of c_revs, and a c_rev is appended for each
+    # default branch commit that will need to be copied to trunk (or
+    # deleted from trunk) in some generated revision following the
     # "regular" revision.
-    self.default_branch_copies = [ ]
-    self.default_branch_deletes = [ ]
+    self.default_branch_cvs_revisions = [ ]
 
   def __cmp__(self, other):
     # Commits should be sorted by t_max.  If both self and other have
@@ -3979,14 +3978,14 @@ class CVSCommit:
               and (c_rev.rev == "1.1.1.1")
               and RepositoryHead().has_path(c_rev.svn_path)):
         if c_rev.is_default_branch_revision():
-          self.default_branch_copies.append(c_rev)
+          self.default_branch_cvs_revisions.append(c_rev)
 
     for c_rev in self.deletes:
       svn_commit.add_revision(c_rev)
       ###TODO QUX2 if RepositoryHead().has_path(c_rev.svn_path):
       ###TODO QUX2   RepositoryHead().remove_path(c_rev.svn_path)
       if c_rev.is_default_branch_revision():
-        self.default_branch_deletes.append(c_rev)
+        self.default_branch_cvs_revisions.append(c_rev)
 
     svn_commit.flush()
 
@@ -4022,7 +4021,7 @@ class CVSCommit:
     # name for that c_rev in the commit.  Once the redesign is
     # complete, we should revisit this.
     svn_commits = { }
-    for c_rev in self.default_branch_copies + self.default_branch_deletes:
+    for c_rev in self.default_branch_cvs_revisions:
       if not svn_commits.has_key(c_rev.branch_name):
         svn_commit = SVNCommit(self._ctx, "post-commit def_br_[copy|delete]")
         svn_commit.set_primary_commit_revnum(self.primary_commit_revnum)
