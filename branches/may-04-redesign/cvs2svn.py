@@ -3341,10 +3341,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     else:
       eol_style = 'native'
 
-    ### TODO: Deal with other expansion modes.  What do we do about
-    ### the various keyword expansion styles (name only, value only,
-    ### both name and value, old value, etc.)?  Beats me.
-    
     # If using the MIME mapper, possibly override the default MIME
     # type and EOL style.
     if self.mime_mapper:
@@ -3440,23 +3436,12 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
 
   def delete_path(self, path):
     """Emit the deletion of PATH."""
-    ###TODO kff: Who is responsible for pruning behavior?  The caller,
-    ### I think, but we should make sure that's what we want.
     self.dumpfile.write('Node-path: %s\n'
                         'Node-action: delete\n'
                         '\n' % self._utf8_path(path))
   
   def copy_path(self, src_path, dest_path, src_revnum):
     """Emit the copying of SRC_PATH at SRC_REV to DEST_PATH."""
-    ###TODO kff: We need to settle whether callers are responsible for
-    ### passing UTF8 paths, or we are responsible for converting.
-    ### Right now, we convert, see self._utf8_path().  That might be
-    ### fine, just investigate to make sure.
-    ###
-    ###TODO kff: Note how the original Dumper.copy_path() took an
-    ### 'entries' arg.  Have we completely avoided the need for that
-    ### now?  That would certainly be nice.
-
     # We don't need to include "Node-kind:" for copies; the loader
     # ignores it anyway and just uses the source kind instead.
     self.dumpfile.write('Node-path: %s\n'
