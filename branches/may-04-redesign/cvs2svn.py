@@ -4719,54 +4719,83 @@ class SVNRepositoryMirror:
                % cvs_rev.op)
         raise SVNRepositoryMirrorUnexpectedOperationError, msg
 
+  ###TODO We need to fix our code to allow trunk/branches/tags (wishlist)
   def _dest_path_for_source_path(self, symbolic_name, path):
-    """Given source path PATH, returns the copy destination path
-    under NAME.  Note that this assumes that trunk/tags/branches are
-    only 1 path element long... For example, using --tags=foo/bar would
-    cause incorrect dest path generation."""
+    """Given source path PATH, returns the copy destination path under
+    SYMBOLIC_NAME.
+
+    For example, if PATH is 'trunk', and SYMBOLIC_NAME 'mytag' is a
+    tag, then we will return 'tags/mytag'.
+
+    However, branches are treated slightly differently, for example,
+    if PATH is 'branches/mybranch', and SYMBOLIC_NAME 'mytag' is a
+    tag, then we will *still* return 'tags/mytag'.
+
+    This function's behavior is undefined if any of
+    self._ctx.[branches_base|trunk_base] is more than one
+    path element long."""
     base_dest_path = self._ctx.branches_base
     if self.tags_db.has_key(symbolic_name):
       base_dest_path = self._ctx.tags_base
 
     components = path.split('/')
+    if components[0] == self._ctx.branches_base:
+      components = components[1:]
     dest = base_dest_path + '/' + symbolic_name 
     if len(components) > 1:
       dest = dest + '/' + '/'.join(components[1:])
     return dest
 
-  def _fill(self, symbol_fill, node, name,
-            path_so_far=None, preferred_revnum=None):
-    """Descends through all nodes in SYMBOL_FILL.NODE_TREE that are
-    rooted at NODE.  Generates copy (and delete) commands for all
-    destination nodes that don't exist in NAME.  PATH_SO_FAR and
-    PREFERRED_REVNUM should not be passed in as it is created as the
-    function recurses."""
+  def _fill(self, symbol_fill, key, name,
+            parent_path_so_far=None, preferred_revnum=None):
+    """Descends through all nodes in SYMBOL_FILL.node_tree that are
+    rooted at KEY, which is a string key into SYMBOL_FILL.node_tree.
+    Generates copy (and delete) commands for all destination nodes
+    that don't exist in NAME.
 
-    for node_key, node_contents in symbol_fill.node_tree[node].items():
-      if node_key[0] == '/': #Skip flags
+    PARENT_PATH_SO_FAR is the parent directory of the path(s) that may
+    be copied in this invocation of the method.  If None, that means
+    that our source path starts from the root of the repository.
+
+    PREFERRED_REVNUM is an int which is the source revision number
+    that the caller (who may have copied KEY's parent) used to
+    perform its copy.  If PREFERRED_REVNUM is None, then no revision
+    is preferable to any other (which probably means that no copies
+    have happened yet).
+
+    PARENT_PATH_SO_FAR and PREFERRED_REVNUM should only be passed in
+    by recursive calls."""
+
+    parent_key = key
+    for entry, key in symbol_fill.node_tree[key].items():
+
+      if entry[0] == '/': #Skip flags
         continue
-      if path_so_far is not None:
-        src_path = path_so_far + '/' + node_key
+      if parent_path_so_far is not None: # Avoid a leading slash
+        src_path_so_far = parent_path_so_far + '/' + entry
       else:
-        src_path = node_key
-      dest_path = self._dest_path_for_source_path(name, src_path)
+        if entry == self._ctx.branches_base:
+          self._fill(symbol_fill, key, name, entry, preferred_revnum)
+          continue
+        else:
+          src_path_so_far = entry
 
+      dest_path = self._dest_path_for_source_path(name, src_path_so_far)
       src_revnum = None
       # if our destination path doesn't already exist, then we may
       # have to make a copy.
       if (dest_path is not None and not self.path_exists(dest_path)):
-        src_revnum = symbol_fill.get_best_revnum(node_contents,
-                                                  preferred_revnum)
+        src_revnum = symbol_fill.get_best_revnum(key, preferred_revnum)
 
         # If the revnum of our parent's copy (src_revnum) is the same
         # as our preferred_revnum, then we don't need to make a copy
         # here--our parent's copy already has everything we need.
         # Just continue bubbling down.
         if src_revnum != preferred_revnum:
-          self.copy_path(src_path, dest_path, src_revnum)
+          self.copy_path(src_path_so_far, dest_path, src_revnum)
 
         # TODO Manage deletes (prunes) (which calls the delegate)
-      self._fill(symbol_fill, node_contents, name, src_path, src_revnum)
+      self._fill(symbol_fill, key, name, src_path_so_far, src_revnum)
 
   def _open_path(self, path):
     """Open a chain of mutable nodes for PATH from the youngest
