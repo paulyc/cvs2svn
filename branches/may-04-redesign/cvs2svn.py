@@ -3844,11 +3844,114 @@ class SVNRepositoryMirror:
     # This could represent a new mutable directory or file.
     self.empty_mutable_thang = { self.mutable_flag : 1 }
 
+  def _youngest_key(self):
+    "Returns the value of self.youngest as a string."
+    return str(self.youngest)
+
+  def start_commit(self, revnum):
+    """Stabilize the current commit, then start the next one.
+    (Effectively increments youngest by assigning the new revnum to
+    youngest)"""
+
+    self.stabilize_youngest()
+    self.revs_db[str(revnum)] = self.revs_db[self._youngest_key()]
+    self.youngest = revnum
+
+  def _stabilize_directory(self, key):
+    """Remove the mutable flag and the approved_entries dict from the
+    directory whose node key is KEY, effectively marking the directory
+    as immutable."""
+
+    dir = self.nodes_db[key]
+    if dir.has_key(self.mutable_flag):
+      del dir[self.mutable_flag]
+      if dir.has_key(self.approved_entries):
+        del dir[self.approved_entries]
+      for entry_key in dir.keys():
+        if not entry_key[0] == '/':
+          self._stabilize_directory(dir[entry_key])
+      self.nodes_db[key] = dir
+
+  def stabilize_youngest(self):
+    """Stabilize the current revision by removing mutable flags."""
+    root_key = self.revs_db[self._youngest_key()]
+    self._stabilize_directory(root_key)
+
+
+  def add_path(self, cvs_rev):
+    """Add the CVS_REV's svn_path to the repository mirror."""
+    parent_node_key, parent_node_contents = self._get_youngest_root_node()
+
+    path_so_far = ""
+    # Walk up the path, one node at a time.
+    components = cvs_rev.svn_path.split('/')
+    for component in components:
+      path_so_far = os.path.join(path_so_far, component)
+      # If the parent_node_contents doesn't have an entry for this
+      # component, create a new node for the component and add it to
+      # the parent_node_contents.
+      if not parent_node_contents.has_key(component):
+        child_node_key = self._make_node()
+        parent_node_contents[component] = child_node_key
+        self.nodes_db[parent_node_key] = parent_node_contents
+
+      # One way or another, parent dir now has an entry for component,
+      # so grab it, see if it's mutable, and DTRT if it's not.  (Note
+      # it's important to reread the entry value from the db, even
+      # though we might have just written it -- if we tweak existing
+      # data structures, we could modify self.empty_mutable_thang,
+      # which must not happen.) ###TODO Is this true if we use
+      # dict.update?
+      this_entry_key = parent_node_contents[component]
+      this_entry_contents = self.nodes_db[this_entry_key]
+      mutable = this_entry_contents.get(self.mutable_flag)
+      if not mutable:
+        # Create a new, mutable node.
+        this_entry_key = self._make_node(this_entry_contents)
+        # Replace the old node key in the parent node
+        parent_node_contents[component] = this_entry_key
+        # Update the parent node in the db
+        self.nodes_db[parent_node_key] = parent_node_contents
+
+      ###TODO Shouldn't something like this be in delete_path?
+      #elif mutable == 2:
+      #  in_pruneable_subtree = 1
+      parent_node_key = this_entry_key
+      parent_node_contents = this_entry_contents
+
+
+  def _make_node(self, node_contents=None):
+    """Creates a new (mutable) node in the nodes_db and returns the
+    node's key."""
+    if node_contents is None:
+      node_contents = { }
+    key = gen_key()
+    node_contents.update(self.empty_mutable_thang)
+    self.nodes_db[key] = node_contents
+    return key
+
+  def _get_youngest_root_node(self):
+    """Gets the root node key for the youngest revision.  If it's
+    immutable (i.e. our current operation is the first one on this
+    commit), create and return the key to a new root node.  Always
+    returns a key pointing to a mutable node."""
+    parent_key = self.revs_db[self._youngest_key()]
+    parent = self.nodes_db[parent_key]
+    if not parent.has_key(self.mutable_flag):
+      parent_key = self._make_node(parent)
+      self.revs_db[self._youngest_key()] = parent_key
+    return parent_key, parent
+
+
+
+
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, changing the repository, and informing
     the delegate (if any)."""
 
+    ###TODO Move delegate action methods to the end of our action methods.
+    self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit.revnum)
     if svn_commit.symbolic_name:
       ## This will entail nothing more than copying and deleting.
@@ -3857,20 +3960,13 @@ class SVNRepositoryMirror:
     else: # This will actually commit CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
         if cvs_rev.op == OP_ADD:
+          self.add_path(cvs_rev)
           self.delegate.add_path(cvs_rev)
         elif cvs_rev.op == OP_CHANGE:
           self.delegate.change_path(cvs_rev)
         else: # Must be a delete
           self.delegate.delete_path(cvs_rev)
 
-        ### Possible actions:
-        # 1. Modify an existing path.
-#         if self.path_exists(cvs_rev.svn_path):
-#           if cvs_rev.op == OP_ADD:
-#             self.change_path(cvs_rev)
-
-        # 2. Add a new path.
-        # 3. Delete a path.
 
   def close(self):
     self.delegate.finish()
