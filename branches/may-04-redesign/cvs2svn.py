@@ -4003,6 +4003,28 @@ class SVNCommit:
     invoking add_revision()."""
     self._ctx = ctx
     self._description = description
+
+    # Dictionary mapping Subversion revprop names to values.  It
+    # contains at least these three mappings:
+    #
+    #   "svn:author"  ==>  authorname   (string in local encoding)
+    #   "svn:date"    ==>  datestamp    (e.g., "2004-05-25T20:00:00.000000Z")
+    #   "svn:author"  ==>  log message  (string in local encoding)
+    #
+    # The dictionary is updated, if and as appropriate, every time a
+    # CVSRevision is added to this SVNCommit.
+    #
+    # The initial values are placeholders.  At least the log and the
+    # date should be different by the time these props are used.
+    self.props = {
+      'svn:author' : 'cvs2svn',
+      'svn:log'    : "This log message means an SVNCommit was used too soon.",
+      'svn:date'   : "0000-00-00T00:00:00.000000Z"
+      }
+
+    # The latest date seen so far in a CVSRevision.
+    self._max_date = 0
+
     self.cvs_revs = cvs_revs
     if cvs_revs is not None:
       self.cvs_revs = cvs_revs
@@ -4029,8 +4051,39 @@ class SVNCommit:
     self.default_branch = name
     CommitMapper(self._ctx).set_default_branch(self.revnum, name)
 
+  def _update_props(self, cvs_rev):
+    """Update the revprops for this commit according to CVS_REV."""
+
+    if cvs_rev.timestamp > self._max_date:
+      self._max_date = cvs_rev.timestamp
+
+    ###TODO We need to get a real author and log somehow.
+    date = format_date(self._max_date)
+    author = "cvs2svn"
+    log = "This is a fake log message for a real CVSRevision."
+
+    try: 
+      ### FIXME: The 'replace' behavior should be an option, like
+      ### --encoding is.
+      unicode_author = unicode(author, self._ctx.encoding, 'replace')
+      unicode_log = unicode(log, self._ctx.encoding, 'replace')
+      self.props['svn:author'] = unicode_author.encode('utf8')
+      self.props['svn:log'] = unicode_log.encode('utf8')
+      self.props['svn:date'] = date
+    except UnicodeError:
+      print '%s: problem encoding author or log message:' % warning_prefix
+      print "  author: '%s'" % author
+      print "  log:    '%s'" % log
+      print "  date:   '%s'" % date
+      print "(for rev %s of '%s')" % (cvs_rev.rev, cvs_rev.fname)
+      print "Consider rerunning with (for example) '--encoding=latin1'."
+      self.props['svn:author'] = author
+      self.props['svn:log'] = log
+      self.props['svn:date'] = date
+
   def add_revision(self, cvs_rev):
     self.cvs_revs.append(cvs_rev)
+    self._update_props(cvs_rev)
 
   def flush(self):
     print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self._description)
@@ -4790,20 +4843,12 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     # dumpfile.  But since revisions only have props, the two lengths
     # are always the same for revisions.
     
-    ###TODO Of course, these props should come from the caller.  But
-    ### we first need to make sure that SVNCommit has all this
-    ### information.  For now, just fake it.
-    props = { 'svn:author' : 'cvs2svn',
-              'svn:log'    : "This is a fake log message.\n",
-              'svn:date'   : "2004-05-25T20:00:00.000000Z",
-              'tomato'     : 'mauve' }
-
     # Calculate the total length of the props section.
     total_len = 10  # len('PROPS-END\n')
-    for propname in props.keys():
+    for propname in svn_commit.props.keys():
       klen = len(propname)
       klen_len = len('K %d' % klen)
-      vlen = len(props[propname])
+      vlen = len(svn_commit.props[propname])
       vlen_len = len('V %d' % vlen)
       # + 4 for the four newlines within a given property's section
       total_len = total_len + klen + klen_len + vlen + vlen_len + 4
@@ -4815,14 +4860,14 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
                         '\n'
                         % (self.revision, total_len, total_len))
 
-    for propname in props.keys():
+    for propname in svn_commit.props.keys():
       self.dumpfile.write('K %d\n' 
                           '%s\n' 
                           'V %d\n' 
                           '%s\n' % (len(propname),
                                     propname,
-                                    len(props[propname]),
-                                    props[propname]))
+                                    len(svn_commit.props[propname]),
+                                    svn_commit.props[propname]))
 
     self.dumpfile.write('PROPS-END\n')
     self.dumpfile.write('\n')
