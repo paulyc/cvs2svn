@@ -191,6 +191,9 @@ class Database:
 
 class CVSRevision:
   def __init__(self, ctx, *args):
+    self._svn_path = None
+    self._svn_trunk_path = None
+    self._cvs_path = None
     self._ctx = ctx
     if len(args) == 9:
       self.timestamp, self.digest, self.op, self.rev, self.deltatext_code, \
@@ -225,17 +228,23 @@ class CVSRevision:
   # Return the subversion path of this revision, composed from the 
   # branch this revision is on (perhaps trunk), and its cvs path.
   def svn_path(self):
-    return make_path(self._ctx, self.cvs_path(), self.branch_name)
+    if not self._svn_path:
+      self._svn_path = make_path(self._ctx, self.cvs_path(), self.branch_name)
+    return self._svn_path
 
   # Return the subversion path of this revision, as if it was on the
   # trunk. Used to know where to replicate default branch revisions to.
   def svn_trunk_path(self):
-    return make_path(self._ctx, self.cvs_path())
+    if not self._svn_trunk_path:
+      self._svn_trunk_path = make_path(self._ctx, self.cvs_path())
+    return self._svn_trunk_path
 
   # Returns the path to self.fname minus the path to the CVS
   # repository itself.
   def cvs_path(self):
-    return relative_name(self._ctx.cvsroot, self.fname[:-2])
+    if not self._cvs_path:
+      self._cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
+    return self._cvs_path
 
   def write_revs_line(self, output):
     output.write('%08lx %s %s %s %s ' % \
