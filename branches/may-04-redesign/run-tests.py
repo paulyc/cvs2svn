@@ -1328,7 +1328,7 @@ def invalid_closings_on_trunk():
   "verify correct revs are copied to default branches"
   # The conversion will fail if the bug is present, and
   # ensure_conversion would raise svntest.Failure.
-  repos, wc, logs = ensure_conversion('empty-trunk')
+  repos, wc, logs = ensure_conversion('invalid-closings-on-trunk')
   
 #----------------------------------------------------------------------
 

@@ -2060,7 +2060,7 @@ class CVSCommit:
                              % (c_rev.filename(),
                                 c_rev.branches[0]))
         author, log_msg = \
-                PersistenceManager().svn_commit_metadata[c_rev.digest]
+                PersistenceManager(self._ctx).svn_commit_metadata[c_rev.digest]
         if not log_msg == cvs_generated_msg:
           add_revision(c_rev)
       else:
