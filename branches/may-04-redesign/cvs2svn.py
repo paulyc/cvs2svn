@@ -280,7 +280,8 @@ class Singleton(object):
     singleton.init(*args, **kwds)
     return singleton
 
-# These constants represent the three log levels that this script supports
+# These constants represent the log levels that this script supports
+LOG_WARN = -1
 LOG_QUIET = 0
 LOG_NORMAL = 1
 LOG_VERBOSE = 2
@@ -2067,7 +2068,7 @@ class CVSCommit:
                   % (time.ctime(self.t_max), seconds))
 
     if seconds > COMMIT_THRESHOLD + 1:
-      Log().write(LOG_QUIET, '%s: grouping spans more than %d seconds'
+      Log().write(LOG_WARN, '%s: grouping spans more than %d seconds'
                   % (warning_prefix, COMMIT_THRESHOLD))
 
     if ctx.trunk_only: # Only do the primary commit if we're trunk-only
@@ -2184,12 +2185,17 @@ class SVNCommit:
                'svn:log'    : unicode_log.encode('utf8'),
                'svn:date'   : date }
     except UnicodeError:
-      print '%s: problem encoding author or log message:' % warning_prefix
-      print "  author: '%s'" % self._author
-      print "  log:    '%s'" % self._log_msg
-      print "  date:   '%s'" % date
-      print "(for rev %s of '%s')" % (cvs_rev.rev, cvs_rev.fname)
-      print "Consider rerunning with (for example) '--encoding=latin1'."
+      Log().write(LOG_WARN, '%s: problem encoding author or log message:'
+                  % warning_prefix)
+      Log().write(LOG_WARN, "  author: '%s'" % self._author)
+      Log().write(LOG_WARN, "  log:    '%s'" % self._log_msg.rstrip())
+      Log().write(LOG_WARN, "  date:   '%s'" % date)
+      Log().write(LOG_WARN, "(subversion rev %s)  Related files:" % self.revnum)
+      for c_rev in self.cvs_revs:
+        Log().write(LOG_WARN, " ", c_rev.fname)
+        
+      Log().write(LOG_WARN, "Consider rerunning with (for example)",
+                  "'--encoding=latin1'.\n")
       # It's better to fall back to the original (unknown encoding) data
       # than to either 1) quit or 2) record nothing at all.
       return { 'svn:author' : self._author,
@@ -3528,11 +3534,10 @@ def pass1(ctx):
         sys.stderr.write(err + '\n')
         cd.fatal_errors.append(err)
       except:
-        print "Exception occurred while parsing %s" % pathname
+        Log().write(LOG_WARN, "Exception occurred while parsing %s" % pathname)
         raise
   os.path.walk(ctx.cvsroot, visit_file, cd)
-  if ctx.verbose:
-    print 'processed', cd.num_files, 'files'
+  Log().write(LOG_VERBOSE, 'Processed', cd.num_files, 'files')
   if len(cd.fatal_errors) > 0:
     sys.exit("Pass 1 complete.\n" + "=" * 75 + "\n"
              + "Error summary:\n"
@@ -3859,8 +3864,6 @@ def main():
     elif (opt == '--help') or (opt == '-h'):
       ctx.print_help = 1
     elif opt == '-v':
-      ###TODO hunt down all uses of ctx.verbose in the code
-      # and see if we need to turn print statements to Log() statements.
       Log().log_level = LOG_VERBOSE
       ctx.verbose = 1
     elif opt == '-q':
