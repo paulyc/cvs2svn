@@ -3075,7 +3075,7 @@ class SVNRepositoryMirror:
           self.delete_path(dest_path)
           path_exists = 0
 
-      if not self.path_exists(dest_path):
+      if not path_exists:
         # Do the copy
         new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
         copied_paths.append(dest_path)
