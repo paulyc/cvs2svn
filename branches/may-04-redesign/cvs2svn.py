@@ -4802,15 +4802,16 @@ class SVNRepositoryMirror:
     return dest
 
   def _fill(self, symbol_fill, key, name,
-            parent_path_so_far=None, preferred_revnum=None):
+            parent_path_so_far=None, preferred_revnum=None, prune_ok=None):
     """Descends through all nodes in SYMBOL_FILL.node_tree that are
     rooted at KEY, which is a string key into SYMBOL_FILL.node_tree.
     Generates copy (and delete) commands for all destination nodes
     that don't exist in NAME.
 
-    PARENT_PATH_SO_FAR is the parent directory of the path(s) that may
-    be copied in this invocation of the method.  If None, that means
-    that our source path starts from the root of the repository.
+    PARENT_PATH_SO_FAR is the parent directory of the source path(s)
+    that may be copied in this invocation of the method.  If None,
+    that means that our source path starts from the root of the
+    repository.
 
     PREFERRED_REVNUM is an int which is the source revision number
     that the caller (who may have copied KEY's parent) used to
@@ -4818,9 +4819,15 @@ class SVNRepositoryMirror:
     is preferable to any other (which probably means that no copies
     have happened yet).
 
-    PARENT_PATH_SO_FAR and PREFERRED_REVNUM should only be passed in
-    by recursive calls."""
+    PRUNE_OK means that a copy has been made in this recursion, and
+    it's safe to prune directories that are not in SYMBOL_FILL.node_tree.
 
+    PARENT_PATH_SO_FAR, PREFERRED_REVNUM and PRUNE_OK should only be
+    passed in by recursive calls."""
+
+    # If we set prune_ok, we need to set this as well to avoid
+    # Spurious peer-level prunes.
+    peer_path_unsafe_for_pruning = 0
     parent_key = key
     for entry, key in symbol_fill.node_tree[parent_key].items():
 
@@ -4830,7 +4837,7 @@ class SVNRepositoryMirror:
         src_path_so_far = parent_path_so_far + '/' + entry
       else:
         if entry == self._ctx.branches_base:
-          self._fill(symbol_fill, key, name, entry, preferred_revnum)
+          self._fill(symbol_fill, key, name, entry, preferred_revnum, prune_ok)
           continue
         else:
           src_path_so_far = entry
@@ -4839,7 +4846,7 @@ class SVNRepositoryMirror:
       src_revnum = None
       # if our destination path doesn't already exist, then we may
       # have to make a copy.
-      if (dest_path is not None and not self.path_exists(dest_path)):
+      if not self.path_exists(dest_path):
         src_revnum = symbol_fill.get_best_revnum(key, preferred_revnum)
 
         # If the revnum of our parent's copy (src_revnum) is the same
@@ -4849,6 +4856,7 @@ class SVNRepositoryMirror:
         if src_revnum != preferred_revnum:
           # Do the copy
           new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
+          prune_ok = peer_path_unsafe_for_pruning = 1
           # Delete invalid entries that got swept in by the copy.
           valid_entries = symbol_fill.node_tree[key]
           bad_entries = self._get_invalid_entries(valid_entries, new_entries)
@@ -4857,8 +4865,25 @@ class SVNRepositoryMirror:
             del_path = dest_path + '/' + entry
             self.delete_path(del_path)
 
-      self._fill(symbol_fill, key, name, src_path_so_far, src_revnum)
+      self._fill(symbol_fill, key, name, src_path_so_far, src_revnum, prune_ok)
 
+    if peer_path_unsafe_for_pruning:
+      return
+    # Any entries still present in the dest directory that we've just
+    # created by copying, but not in
+    # symbol_fill.node_tree[parent_key], don't belong and should be
+    # deleted as well.  If we haven't actually made a copy, do
+    # nothing.
+    if parent_path_so_far and prune_ok:
+      this_path = self._dest_path_for_source_path(name, parent_path_so_far)
+      ign, this_contents = self._node_for_path(this_path, self.youngest)
+      expected_contents = symbol_fill.node_tree[parent_key]
+      bad_entries = self._get_invalid_entries(expected_contents, this_contents)
+      for entry in bad_entries:
+        del_path = this_path + '/' + entry
+
+        print "FITZ: deleting path", del_path
+        self.delete_path(del_path)
   def _get_invalid_entries(self, valid_entries, all_entries):
     """Return a list of keys in ALL_ENTRIES that do not occur in
     VALID_ENTRIES.  Ignore any key that begins with '/'."""
