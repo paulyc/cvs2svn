@@ -101,10 +101,38 @@ SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
 NODES_DB = 'cvs2svn-nodes.db'
 
+# Maps CVSRevision.unique_key()s to lists of symbolic names, where
+# the CVSRevision is the last such that is a source for those symbolic
+# names.  For example, if branch B's number is 1.3.0.2 in this CVS
+# file, and this file's 1.3 is the latest (by date) revision among
+# *all* CVS files that is a source for branch B, then the
+# CVSRevision.unique_key() corresponding to this file at 1.3 would
+# list at least B in its list. ###TODO rewrite example to use s-revs?
 SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
+
+# Maps CVSRevision.unique_key() to corresponding line in s-revs.
+###TODO Or, we could map to an offset into s-revs, instead of dup'ing
+### the s-revs data in this database.
 CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
+
+# Lists all symbolic names that are tags.  Keys are strings (symbolic
+# names), values are ignorable.
 TAGS_DB = 'cvs2svn-tags.db'
+
+# A path-based representation of the current head of the Subversion
+# repository.  Keys are Subversion paths, values are ignorable.
+# Intermediate directories are not stored, only leaf paths.
 SVN_REPOSITORY_HEAD_DB = 'cvs2svn-repository-head.db'
+
+# These two databases provide a bidirectional mapping between
+# CVSRevision.unique_key()s and Subversion revision numbers.
+#
+# The first maps CVSRevision.unique_key() to a number; the values are
+# not unique.
+#
+# The second maps a number to a list of CVSRevision.unique_key()s.
+CVS_REVS_TO_SVN_REVNUMS = 'cvs2svn-cvs-revs-to-svn-revnums.db'
+SVN_REVNUMS_TO_CVS_REVS = 'cvs2svn-svn-revnums-to-cvs-revs.db'
 
 # os.popen() on Windows seems to require an access-mode string of 'rb'
 # in cases where the process will output binary information to stdout.
@@ -2947,23 +2975,32 @@ class RepositoryHead(Singleton):
     del self.db[path]
 
 
-class RevisionMappingDatabase(Database):
-  """Handles mapping CVS Revisions to Subversion revision numbers and
-  vice-versa."""
-  def __init__(self, mode):
-    self.svn2cvs_db = Database(SVN_TO_CVS_DB, 'n')
-    Cleanup().register(SVN_TO_CVS_DB, pass8)
-    self.cvs2svn_db = Database(CVS_TO_SVN_DB, 'n')
-    Cleanup().register(CVS_TO_SVN_DB, pass8)
+class CommitMapper(Singleton):
+  """Provide bidirectional mapping between CVSRevisions and SVNCommits."""
+  def init(self):
+    self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, 'c')
+    Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8)
+    self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, 'c')
+    Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
 
-  def svn_revision_number(self, c_rev):
-    pass
+  def get_svn_revnum(self, cvs_rev_unique_key):
+    """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
+    was committed."""
+    return int(self.cvs2svn_db[cvs_rev_unique_key])
 
-  def cvs_revision(self, svn_rev):
-    pass
+  def get_cvs_revisions(self, svn_revnum):
+    """Return the list of CVSRevision.unique_key()s committed in SVN_REVNUM."""
+    return self.svn2cvs_db[str(svn_revnum)]
 
-  def map_revision(self, svn_rev):
-    pass
+  def map(self, svn_revnum, cvs_rev_unique_keys):
+    """Record the bidirectional mapping between SVN_REVNUM and
+    CVS_REV_UNIQUE_KEYS.""" 
+    for key in cvs_rev_unique_keys:
+      print "    KFF:", key
+    print "                                                  KFF"
+    self.svn2cvs_db[str(svn_revnum)] = cvs_rev_unique_keys
+    for cvs_rev_unique_key in cvs_rev_unique_keys:
+      self.cvs2svn_db[cvs_rev_unique_key] = svn_revnum
 
 
 # Based on Commit
@@ -3158,9 +3195,9 @@ class CVSCommit:
     svn_commit = SVNCommit("commit")
 
     for c_rev in self.changes:
-      svn_commit.add_revision(c_rev)
-      print ("    adding or changing %s : '%s'"
-             % (c_rev.rev, c_rev.svn_path))
+      svn_commit.add_revision_key(c_rev.unique_key())
+      # print ("    KFF adding or changing %s : '%s'"
+      #        % (c_rev.rev, c_rev.svn_path))
 
       # Only make a change if we need to.  When 1.1.1.1 has an empty
       # deltatext, the explanation is almost always that we're looking
@@ -3180,9 +3217,9 @@ class CVSCommit:
 
 
     for c_rev in self.deletes:
-      svn_commit.add_revision(c_rev)
+      svn_commit.add_revision_key(c_rev.unique_key())
       # compute a repository path, dropping the ,v from the file name
-      print "    deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path)
+      # print "    KFF deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path)
 
       if c_rev.is_trunk_vendor_revision():
         self.default_branch_deletes.append(c_rev)
@@ -3208,24 +3245,6 @@ class CVSCommit:
       svn_commit.flush()
       print '    new revision:', svn_commit.revnum
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   def process_revisions(self, ctx):
     seconds = self.t_max - self.t_min
     print ('CVS Revision grouping: %s, over %d seconds'
@@ -3241,16 +3260,16 @@ class CVSCommit:
 
 class SVNCommit:
   def __init__(self, description=""):
-    self.c_revs = []
+    self.cvs_rev_unique_keys = []
     self.revnum = SVNRevNum().get_next_revnum()
     self.description = description
 
-  def add_revision(self, c_rev):
-    self.c_revs.append(c_rev)
+  def add_revision_key(self, cvs_rev_unique_key):
+    self.cvs_rev_unique_keys.append(cvs_rev_unique_key)
 
   def flush(self):
-    ###TODO Write out svncommit -> cvsrevision mapping
-    ###TODO Write out cvsrevision -> svncommit mapping
+    print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self.description)
+    CommitMapper().map(self.revnum, self.cvs_rev_unique_keys)
     print "SVNREV:", self.revnum, self.description
 
 
