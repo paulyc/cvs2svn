@@ -192,7 +192,7 @@ class Database:
 class CVSRevision:
   def __init__(self, ctx, timestamp, digest, op, rev, deltatext_code,
                fname, branch_name, tags, branches):
-    self.ctx = ctx
+    self._ctx = ctx
     self.timestamp = timestamp
     self.digest = digest
     self.op = op
@@ -212,17 +212,17 @@ class CVSRevision:
   # Return the subversion path of this revision, composed from the 
   # branch this revision is on (perhaps trunk), and its cvs path.
   def svn_path(self):
-    return make_path(self.ctx, self.cvs_path(), self.branch_name)
+    return make_path(self._ctx, self.cvs_path(), self.branch_name)
 
   # Return the subversion path of this revision, as if it was on the
   # trunk. Used to know where to replicate default branch revisions to.
   def svn_trunk_path(self):
-    return make_path(self.ctx, self.cvs_path())
+    return make_path(self._ctx, self.cvs_path())
 
   # Returns the path to self.fname minus the path to the CVS
   # repository itself.
   def cvs_path(self):
-    return relative_name(self.ctx.cvsroot, self.fname[:-2])
+    return relative_name(self._ctx.cvsroot, self.fname[:-2])
 
   def write_revs_line(self, output):
     output.write('%08lx %s %s %s %s ' % \
@@ -1338,7 +1338,7 @@ class Dumper:
                           'Node-action: delete\n'
                           '\n' % (self.utf8_path(path + '/' + ent)))
 
-  def add_or_change_path(self, c_rev):
+  def add_or_change_path(self, ctx, c_rev):
     # figure out the real file path for "co"
     try:
       rcs_file = c_rev.fname
@@ -1349,7 +1349,7 @@ class Dumper:
       f_st = os.stat(rcs_file)
 
     # We begin with only a "CVS revision" property.
-    if c_rev.ctx.cvs_revnums:
+    if ctx.cvs_revnums:
       prop_contents = 'K 15\ncvs2svn:cvs-rev\nV %d\n%s\n' \
                       % (len(c_rev.rev), c_rev.rev)
     else:
@@ -1435,7 +1435,7 @@ class Dumper:
     self.dumpfile.write('\n\n')
     return change.closed_tags, change.closed_branches
 
-  def delete_path(self, c_rev, svn_path):
+  def delete_path(self, ctx, c_rev, svn_path):
     """If SVN_PATH exists in the head mirror, output the deletion to
     the dumpfile, else output nothing to the dumpfile.
 
@@ -1453,7 +1453,7 @@ class Dumper:
                   = self.repos_mirror.delete_path(svn_path,
                                                   c_rev.tags,
                                                   c_rev.branches,
-                                                  c_rev.ctx.prune)
+                                                  ctx.prune)
     if deleted_path:
       print "    (deleted '%s')" % deleted_path
       self.dumpfile.write('Node-path: %s\n'
@@ -2323,7 +2323,7 @@ class Commit:
               and (c_rev.rev == "1.1.1.1")
               and dumper.probe_path(c_rev.svn_path())):
         closed_tags, closed_branches = \
-                     dumper.add_or_change_path(c_rev)
+                     dumper.add_or_change_path(ctx, c_rev)
         if is_trunk_vendor_revision(ctx.default_branches_db,
                                     c_rev.cvs_path(), c_rev.rev):
           default_branch_copies.append(c_rev)
@@ -2353,7 +2353,7 @@ class Commit:
       ### Right now what happens is we get an empty revision
       ### (assuming nothing else happened in this revision).
       path_deleted, closed_tags, closed_branches = \
-                    dumper.delete_path(c_rev, c_rev.svn_path())
+                    dumper.delete_path(ctx, c_rev, c_rev.svn_path())
       if is_trunk_vendor_revision(ctx.default_branches_db,
                                   c_rev.cvs_path(), c_rev.rev):
         default_branch_deletes.append(c_rev)
@@ -2378,7 +2378,7 @@ class Commit:
         for c_rev in default_branch_copies:
           if (dumper.probe_path(c_rev.svn_trunk_path())):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(c_rev, c_rev.svn_trunk_path())
+                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path())
             sym_tracker.close_tags(c_rev.svn_trunk_path(),
                                    svn_rev, closed_tags)
             sym_tracker.close_branches(c_rev.svn_trunk_path(),
@@ -2391,7 +2391,7 @@ class Commit:
           # branch, we already know we're deleting this from trunk.
           if (dumper.probe_path(c_rev.svn_trunk_path())):
             ign, closed_tags, closed_branches = \
-                 dumper.delete_path(c_rev, c_rev.svn_trunk_path())
+                 dumper.delete_path(ctx, c_rev, c_rev.svn_trunk_path())
             sym_tracker.close_tags(c_rev.svn_trunk_path(), svn_rev,
                                    closed_tags)
             sym_tracker.close_branches(c_rev.svn_trunk_path(),
