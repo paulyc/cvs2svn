@@ -3205,14 +3205,14 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     self.revision = 0
     
     self.dumpfile = open(self.dumpfile_path, 'wb')
-    self.write_dumpfile_header()
+    self._write_dumpfile_header()
 
     ###TODO Remove this once we're dumping straight to the repos for real
     self.target = None
     if not ctx.dump_only:
       self.target = ctx.target
 
-  def write_dumpfile_header(self):
+  def _write_dumpfile_header(self):
     # Initialize the dumpfile with the standard headers.
     #
     # Since the CVS repository doesn't have a UUID, and the Subversion
