@@ -1851,7 +1851,6 @@ class PersistenceManager(Singleton):
       self.motivating_revnums = None
       
 
-### TODO add digest to constructor, then use it in __cmp__
 class CVSCommit:
   """Each instance of this class contains a number of CVS Revisions
   that correspond to one or more Subversion Commits.  After all CVS
@@ -1862,7 +1861,7 @@ class CVSCommit:
   def __init__(self, ctx, digest, author, log):
     self._ctx = ctx
 
-    self.digest = author ### TODO Who! FIXME! This *can't* be correct.
+    self.digest = digest
     self.author = author
     self.log = log
     
