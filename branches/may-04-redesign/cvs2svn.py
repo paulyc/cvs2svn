@@ -3403,19 +3403,15 @@ class SymbolicNameFillingGuide:
     PREFERRED_REV is one of the possibilities, in which case, it is
     selected."""
     max_score = 0
-    max_rev = 1
     preferred_rev_score = -1
     rev = SVN_INVALID_REVNUM
     for revnum, count in scores:
-      if revnum > max_rev:
-        max_rev = revnum
       if count > max_score:
         max_score = count
         rev = revnum
       if revnum <= preferred_rev:
         preferred_rev_score = count
-    if (preferred_rev_score == max_score
-        and preferred_rev <= max_rev):
+    if preferred_rev_score == max_score:
       rev = preferred_rev
     return rev
 
@@ -4843,27 +4839,34 @@ class SVNRepositoryMirror:
           src_path_so_far = entry
 
       dest_path = self._dest_path_for_source_path(name, src_path_so_far)
-      src_revnum = None
-      # if our destination path doesn't already exist, then we may
-      # have to make a copy.
-      if not self.path_exists(dest_path):
-        src_revnum = symbol_fill.get_best_revnum(key, preferred_revnum)
+      src_revnum = symbol_fill.get_best_revnum(key, preferred_revnum)
+      # If the revnum of our parent's copy (src_revnum) is the same
+      # as our preferred_revnum, then we don't need to make a copy
+      # here--our parent's copy already has everything we need.
+      # Just continue bubbling down.
+      path_exists = self.path_exists(dest_path)
+      if src_revnum != preferred_revnum and prune_ok and path_exists:
+          self.delete_path(dest_path)
+          path_exists = 0
 
-        # If the revnum of our parent's copy (src_revnum) is the same
-        # as our preferred_revnum, then we don't need to make a copy
-        # here--our parent's copy already has everything we need.
-        # Just continue bubbling down.
-        if src_revnum != preferred_revnum:
-          # Do the copy
-          new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
-          prune_ok = peer_path_unsafe_for_pruning = 1
-          # Delete invalid entries that got swept in by the copy.
-          valid_entries = symbol_fill.node_tree[key]
-          bad_entries = self._get_invalid_entries(valid_entries, new_entries)
-          
-          for entry in bad_entries:
-            del_path = dest_path + '/' + entry
-            self.delete_path(del_path)
+      if not self.path_exists(dest_path):
+        # Do the copy
+        new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
+        prune_ok = peer_path_unsafe_for_pruning = 1
+        # Delete invalid entries that got swept in by the copy.
+        valid_entries = symbol_fill.node_tree[key]
+        bad_entries = self._get_invalid_entries(valid_entries, new_entries)
+        ###TODO OPTIMIZE: If we keep a list COPIED_PATHS of
+        ###DEST_PATHs that we've copied to, we can avoid the node
+        ###lookups below by uncommenting this for loop, doing
+        ###deletes here, and skip all the lookups and the deletes
+        ###below where THIS_PATH is in COPIED_PATHS.  As it stands
+        ###(with this commented out), the conditional below will
+        ###still do the deletes that would have been done
+        ###here. -Fitz
+        # for entry in bad_entries:
+        #   del_path = dest_path + '/' + entry
+        #   self.delete_path(del_path)
 
       self._fill(symbol_fill, key, name, src_path_so_far, src_revnum, prune_ok)
 
@@ -4881,9 +4884,8 @@ class SVNRepositoryMirror:
       bad_entries = self._get_invalid_entries(expected_contents, this_contents)
       for entry in bad_entries:
         del_path = this_path + '/' + entry
-
-        print "FITZ: deleting path", del_path
         self.delete_path(del_path)
+
   def _get_invalid_entries(self, valid_entries, all_entries):
     """Return a list of keys in ALL_ENTRIES that do not occur in
     VALID_ENTRIES.  Ignore any key that begins with '/'."""
