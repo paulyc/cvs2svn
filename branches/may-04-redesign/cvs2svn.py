@@ -3365,28 +3365,51 @@ class CVSRevisionAggregator:
     # be part of any of them.  Sort them into time-order, then process
     # 'em.
     ready_queue.sort()
-    for cvs_commit in ready_queue:
+
+    # Make sure we commit_done_symbols for this c_rev, even if no
+    # commits are ready.
+    if len(ready_queue) == 0:
+      self.commit_done_symbols(ready_queue, c_rev, ) 
+
+    for cvs_commit in ready_queue[:]:
       cvs_commit.process_revisions(self._ctx, self.done_symbols)
+      ready_queue.remove(cvs_commit)
+      self.commit_done_symbols(ready_queue, c_rev, ) 
 
-    ################################################################
-    # Iterating through self.changes and deletes, we check to see if
-    # the c_rev is in LastSymbolicNameDatabase.  If it is, then we
-    # create 1 SVNCommit (which creates the tag if it's a tag, and
-    # fills the remaining portion of the branch if it's a branch).
-    ################################################################
+  def flush(self):
+    """Commit anything left in self.cvs_commits."""
 
-    ### TODO MARK  decompose to END MARK
+    ready_queue = [ ]
+    for k, v in self.cvs_commits.items():
+      ready_queue.append((v, k))
+
+    ready_queue.sort()
+    for cvs_commit_tuple in ready_queue[:]:
+      cvs_commit_tuple[0].process_revisions(self._ctx, self.done_symbols)
+      ready_queue.remove(cvs_commit_tuple)
+      del self.cvs_commits[cvs_commit_tuple[1]]
+      self.attempt_to_commit_symbols([]) 
+    
+  def attempt_to_commit_symbols(self, queued_commits, c_rev=None):
+    """Iterating through self.changes and deletes, we check to see if
+    c_rev is in LastSymbolicNameDatabase.  If it is, then we add any
+    symbols found there to self.pending_symbols and generate 1
+    SVNCommit (which creates the tag if it's a tag, and fills the
+    remaining portion of the branch if it's a branch) for any symbols
+    left.  Note that we skip any symbols that still have source
+    CVSRevisions in self.cvs_commits."""
     # Get the symbolic names that this c_rev is the last *source*
     # CVSRevision for and add them to those left over from previous
     # passes through the aggregator.
-    for sym in self.last_revs_db.get(c_rev.unique_key(), []):
-      self.pending_symbols[sym] = None
+    if c_rev:
+      for sym in self.last_revs_db.get(c_rev.unique_key(), []):
+        self.pending_symbols[sym] = None
 
     # Make a list of all symbols that still have *source* CVSRevisions
     # in the pending commit queue (self.cvs_commits).
     open_symbols = {}
     for sym in self.pending_symbols.keys():
-      for cvs_commit in self.cvs_commits.values():
+      for cvs_commit in self.cvs_commits.values() + queued_commits:
         if cvs_commit.opens_symbolic_name(sym):
           open_symbols[sym] = None
           break
@@ -3399,12 +3422,12 @@ class CVSRevisionAggregator:
     sorted_pending_symbols_keys.sort()
     for sym in sorted_pending_symbols_keys:
       if open_symbols.has_key(sym): # sym is still open--don't close it.
-    ### TODO END MARK  decompose
         continue
       SVNCommit("closing tag/branch '%s'" % sym).flush()
       self.done_symbols.append(sym)
       del self.pending_symbols[sym]
-    #####################################################################
+
+
 
 def pass8(ctx):
   aggregator = CVSRevisionAggregator(ctx)
@@ -3510,6 +3533,7 @@ def pass8(ctx):
       sym_tracker.cleanup_symbol(sym)
       del pending_symbols[sym]
     #####################################################################
+  aggregator.flush()
 
   # End of the sorted revs file.  Flush any remaining commits:
   if commits:
