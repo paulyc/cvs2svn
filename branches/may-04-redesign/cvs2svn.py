@@ -3152,8 +3152,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     If CTX.set_eol_style is true, then set 'svn:eol-style' to 'native'
     for files not marked with the CVS 'kb' flag.  (But see issue #39
     for how this might change.)""" 
-    ###TODO kff: Remove this debugging "kff" shim.
-    self.dumpfile_path = "kff-" + ctx.dumpfile
+    self.dumpfile_path = ctx.dumpfile
     self.set_cvs_revnum_properties = ctx.cvs_revnums
     self.set_eol_style = ctx.set_eol_style
     self.mime_mapper = ctx.mime_mapper
@@ -3431,7 +3430,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     ###TODO Remove this once we've written a real delegate to import.
     if self.target:
       os.system('svnadmin create %s' % self.target)
-      os.system('svnadmin load %s -q < kff-cvs2svn-dump' % self.target)
+      os.system('svnadmin load %s -q < cvs2svn-dump' % self.target)
 
 
 class StdoutDelegate(SVNRepositoryMirrorDelegate):
@@ -3572,8 +3571,7 @@ def pass3(ctx):
   Log().write(LOG_QUIET, "Sorting CVS revisions...")
   sort_file(DATAFILE + CLEAN_REVS_SUFFIX,
             DATAFILE + SORTED_REVS_SUFFIX)
-  ### TODO pass8 is too late for this, but we may need it again after pass5
-  Cleanup().register(DATAFILE + SORTED_REVS_SUFFIX, pass8)
+  Cleanup().register(DATAFILE + SORTED_REVS_SUFFIX, pass5)
   Log().write(LOG_QUIET, "Done")
 
 def pass4(ctx):
