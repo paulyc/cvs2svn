@@ -190,18 +190,31 @@ class Database:
 
 
 class CVSRevision:
-  def __init__(self, ctx, timestamp, digest, op, rev, deltatext_code,
-               fname, branch_name, tags, branches):
+  def __init__(self, ctx, *args):
     self._ctx = ctx
-    self.timestamp = timestamp
-    self.digest = digest
-    self.op = op
-    self.rev = rev
-    self.deltatext_code = deltatext_code
-    self.fname = fname
-    self.branch_name = branch_name
-    self.tags = tags
-    self.branches = branches
+    if len(args) == 9:
+      self.timestamp, self.digest, self.op, self.rev, self.deltatext_code, \
+          self.fname, self.branch_name, self.tags, self.branches = args
+    elif len(args) == 1:
+      data = args[0].split(' ', 7)
+      self.timestamp = int(data[0], 16)
+      self.digest = data[1]
+      self.op = data[2]
+      self.rev = data[3]
+      self.deltatext_code = data[4]
+      self.branch_name = data[5]
+      if self.branch_name == "*":
+        self.branch_name = None
+      ntags = int(data[6])
+      tags = data[7].split(' ', ntags + 1)
+      nbranches = int(tags[ntags])
+      branches = tags[ntags + 1].split(' ', nbranches)
+      self.fname = branches[nbranches][:-1]  # strip \n
+      self.tags = tags[:ntags]
+      self.branches = branches[:nbranches]
+    else:
+      raise TypeError, 'CVSRevision() takes 2 or 10 arguments (%d given)' % \
+          (len(args) + 1)
 
   # The 'primary key' of a CVS Revision is the revision number + the
   # filename.  To provide a unique key (say, for a dict), we just glom
@@ -2439,28 +2452,6 @@ def read_resync(fname):
   return resync
 
 
-def parse_revs_line(ctx, line):
-  data = line.split(' ', 7)
-  timestamp = int(data[0], 16)
-  id = data[1]
-  op = data[2]
-  rev = data[3]
-  deltatext_code = data[4]
-  branch_name = data[5]
-  if branch_name == "*":
-    branch_name = None
-  ntags = int(data[6])
-  tags = data[7].split(' ', ntags + 1)
-  nbranches = int(tags[ntags])
-  branches = tags[ntags + 1].split(' ', nbranches)
-  fname = branches[nbranches][:-1]  # strip \n
-  tags = tags[:ntags]
-  branches = branches[:nbranches]
-
-  return CVSRevision(ctx, timestamp, id, op, rev, deltatext_code, \
-         fname, branch_name, tags, branches)
-
-
 def pass1(ctx):
   cd = CollectData(ctx.cvsroot, DATAFILE, ctx.default_branches_db)
   p = rcsparse.Parser()
@@ -2488,7 +2479,7 @@ def pass2(ctx):
 
   # process the revisions file, looking for items to clean up
   for line in fileinput.FileInput(ctx.log_fname_base + REVS_SUFFIX):
-    c_rev = parse_revs_line(ctx, line)
+    c_rev = CVSRevision(ctx, line)
     if not resync.has_key(c_rev.digest):
       output.write(line)
       continue
@@ -2557,7 +2548,7 @@ def pass4(ctx):
 
   # process the logfiles, creating the target
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
-    c_rev = parse_revs_line(ctx, line)
+    c_rev = CVSRevision(ctx, line)
     if ctx.trunk_only and not trunk_rev.match(c_rev.rev):
       ### note this could/should have caused a flush, but the next item
       ### will take care of that for us
