@@ -454,10 +454,10 @@ class CVSRevision:
         self.next_rev = None
       self.file_in_attic = data[6]
       if self.file_in_attic == "*":
-        self.file_in_attic == None
+        self.file_in_attic = None
       self.file_executable = data[7]
       if self.file_executable == "*":
-        self.file_executable == None
+        self.file_executable = None
       self.file_size = int(data[8])
       self.deltatext_code = data[9]
       self.mode = data[10]
@@ -579,22 +579,14 @@ class CVSRevision:
     else:
       return self._ctx.trunk_base + '/' + path
 
-  def _get_cvs_file_path(self):
-    """Return the path and executable status of the rcs file for C_REV.
-    Use like this:     path, exec_status = c_rev._get_cvs_file_path()
-    If the rcs file is executable, the exec_status is 1, else it is None."""
-    try:
-      rcs_path = self.fname
-      f_st = os.stat(rcs_path)
-    except os.error:
-      dirname, fname = os.path.split(rcs_path)
-      rcs_path = os.path.join(dirname, 'Attic', fname)
-      f_st = os.stat(rcs_path)
-    # One of the above should have worked.  Now see about exec status.
-    if f_st[0] & stat.S_IXUSR:
-      return rcs_path, 1
+  def rcs_path(self):
+    """Returns the actual filesystem path to the RCS file of this
+    CVSRevision."""
+    if self.file_in_attic is None:
+      return self.fname
     else:
-      return rcs_path, None
+      basepath, filename = os.path.split(self.fname)
+      return os.path.join(basepath, 'Attic', filename)
 
   def filename(self):
     "Return the last path component of self.fname, minus the ',v'"
@@ -3391,8 +3383,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     """Emit the addition or change corresponding to C_REV.
     OP is either the constant OP_ADD or OP_CHANGE."""
 
-    rcs_path, exec_status = c_rev._get_cvs_file_path()
-
     # We begin with only a "CVS revision" property.
     if self.set_cvs_revnum_properties:
       prop_contents = 'K 15\ncvs2svn:cvs-rev\nV %d\n%s\n' \
@@ -3401,7 +3391,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
       prop_contents = ''
     
     # Tack on the executableness, if any.
-    if exec_status:
+    if c_rev.file_executable:
       prop_contents = prop_contents + 'K 14\nsvn:executable\nV 1\n*\n'
 
     # If the file is marked as binary, it gets a default MIME type of
@@ -3435,9 +3425,8 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     
     ### FIXME: We ought to notice the -kb flag set on the RCS file and
     ### use it to set svn:mime-type.  See issue #39.
-
-    basename = os.path.basename(rcs_path[:-2])
-    pipe_cmd = 'co -q -x,v -p%s %s' % (c_rev.rev, escape_shell_arg(rcs_path))
+    pipe_cmd = 'co -q -x,v -p%s %s' \
+               % (c_rev.rev, escape_shell_arg(c_rev.rcs_path()))
     pipe = os.popen(pipe_cmd, PIPE_READ_MODE)
 
     if op == OP_ADD:
