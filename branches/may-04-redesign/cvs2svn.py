@@ -2050,9 +2050,20 @@ class CVSCommit:
     seconds = self.t_max - self.t_min
 
     Log().write(LOG_VERBOSE, '-' * 60)
-    Log().write(LOG_VERBOSE, 'CVS Revision grouping: %s, over %d seconds'
-                % (time.ctime(self.t_min), seconds))
-    if seconds > COMMIT_THRESHOLD:
+
+    seconds = seconds + 1
+    Log().write(LOG_VERBOSE, 'CVS Revision grouping:')
+    if seconds == 1:
+      Log().write(LOG_VERBOSE, '  Start time: %s (duration: 1 second)'
+                  % time.ctime(self.t_max))
+    else:
+      if seconds == 1: duration_str = 'second'
+      Log().write(LOG_VERBOSE, 'CVS Revision grouping:')
+      Log().write(LOG_VERBOSE, '  Start time: %s' % time.ctime(self.t_min))
+      Log().write(LOG_VERBOSE, '  End time:   %s (duration: %d seconds)'
+                  % (time.ctime(self.t_max), seconds))
+
+    if seconds > COMMIT_THRESHOLD + 1:
       Log().write(LOG_QUIET, '%s: grouping spans more than %d seconds'
                   % (warning_prefix, COMMIT_THRESHOLD))
 
