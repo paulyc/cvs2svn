@@ -98,6 +98,7 @@ DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 # See class RepositoryMirror for how these work.
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
 NODES_DB = 'cvs2svn-nodes.db'
+TAGS_DB = 'tags.db'
 
 # os.popen() on Windows seems to require an access-mode string of 'rb'
 # in cases where the process will output binary information to stdout.
@@ -2629,18 +2630,6 @@ def read_resync(fname):
 
   return resync
 
-class SymbolicName:
-  def __init__(self, name, isTag=None):
-    self.name = name
-    self.isTag = isTag
-
-  def __hash__(self):
-    return hash(self.name)
-
-  def __cmp__(self, other):
-    return  cmp(self.name, other.name)
-
-
 ###TODO break this out into a separate pass
 def get_symbol_closing_revs(ctx):
   """Iterate through sorted revs, accumulating tags and branches as it
@@ -2652,16 +2641,18 @@ def get_symbol_closing_revs(ctx):
   # symbols.keys() will be a list of all tags and branches, and
   # their corresponding values will be a key into the last CVS revision
   # that they were used in.
+  tags_db = Database(TAGS_DB, 'n')
   symbols = {}
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
     for tag in c_rev.tags:
-      symbols[SymbolicName(tag, 1)] = c_rev.unique_key()
+      symbols[tag] = c_rev.unique_key()
+      tags_db[tag] = None
     for branch in c_rev.branches:
-      symbols[SymbolicName(branch)] = c_rev.unique_key()
+      symbols[branch] = c_rev.unique_key()
     if c_rev.branch_name:
-      symbols[SymbolicName(c_rev.branch_name)] = c_rev.unique_key()
+      symbols[c_rev.branch_name] = c_rev.unique_key()
 
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that
@@ -2767,6 +2758,7 @@ def pass8(ctx):
   else:
     sym_tracker = SymbolicNameTracker()
     symbols_closed_by_revkey = get_symbol_closing_revs(ctx)
+    tags_db = Database(TAGS_DB, 'r')
   metadata_db = Database(METADATA_DB, 'r')
 
   # A dictionary of Commit objects, keyed by digest.  Each object
@@ -2844,7 +2836,7 @@ def pass8(ctx):
     open_symbols = {}
     for sym in pending_symbols.keys():
       for k, v in commits.items():
-        if v.contains_symbolic_name(sym.name):
+        if v.contains_symbolic_name(sym):
           open_symbols[sym] = None
           break
 
@@ -2853,11 +2845,11 @@ def pass8(ctx):
     for sym in sorted_pending_symbols_keys:
       if open_symbols.has_key(sym): # sym is still open--don't close it now.
         continue
-      if sym.isTag:
-        sym_tracker.fill_tag(dumper, ctx, sym.name, [1])
+      if tags_db.has_key(sym):
+        sym_tracker.fill_tag(dumper, ctx, sym, [1])
       else:
-        sym_tracker.fill_branch(dumper, ctx, sym.name, [1])
-      sym_tracker.cleanup_symbol(sym.name)
+        sym_tracker.fill_branch(dumper, ctx, sym, [1])
+      sym_tracker.cleanup_symbol(sym)
       del pending_symbols[sym]
     #####################################################################
 
