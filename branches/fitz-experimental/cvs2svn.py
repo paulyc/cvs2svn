@@ -2443,6 +2443,7 @@ def read_resync(fname):
 
   return resync
 
+
 def parse_revs_line(ctx, line):
   data = line.split(' ', 7)
   timestamp = int(data[0], 16)
