@@ -2794,11 +2794,16 @@ class SVNRepositoryMirror:
         # This case is covered by test 16.
         #
         # ...we create the branch.
-        self.copy_path(symbol_fill.branch_source, branch_dest,
-                       symbol_fill.dead_opening_rev) 
-        ###TODO IMPT Don't we have to prune all the child directories now?
-        # Discuss with kfogel
-
+        entries = self.copy_path(symbol_fill.branch_source, branch_dest,
+                                 symbol_fill.dead_opening_rev) 
+        # Now since we've just copied trunk to a branch that's
+        # *supposed* to be empty, we delete any entries in the
+        # copied directory.
+        for entry in entries:
+          if entry[0] == '/':
+            continue
+          del_path = branch_dest + '/' + entry
+          self.delete_path(del_path) # Delete but don't prune.
 
   ###TODO IMPT We need a test here, to make sure that tag copies get the
   ###correct version of a file when a file is tagged while the default

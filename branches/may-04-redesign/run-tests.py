@@ -808,10 +808,11 @@ def overlapping_branch():
 def phoenix_branch():
   "convert a branch file rooted in a 'dead' revision"
   repos, wc, logs = ensure_conversion('phoenix')
-  check_rev(logs, 6, sym_log_msg('volsung_20010721'), {
-    '/branches/volsung_20010721 (from /trunk:5)': 'A'
+  check_rev(logs, 7, sym_log_msg('volsung_20010721'), {
+    '/branches/volsung_20010721 (from /trunk:6)': 'A',
+    '/branches/volsung_20010721/file.txt' : 'D'
     })
-  check_rev(logs, 7, 'This file was supplied by Jack Moffitt', {
+  check_rev(logs, 8, 'This file was supplied by Jack Moffitt', {
     '/branches/volsung_20010721/phoenix': 'A' })
 
 
