@@ -332,6 +332,14 @@ class Cleanup(Singleton):
 # strings.
 class Database:
   def __init__(self, filename, mode):
+    ### pybsddb3 has a bug which prevents it from working with
+    ### Berkeley DB 4.2 (it passes the DB_TRUNCATE flag, which is
+    ### disallowed for databases protected by lock and transaction
+    ### support).  So let's fake it.
+    if mode == 'n':
+      if os.path.exists(filename):
+        os.remove(filename)
+      mode = 'c'
     self.db = anydbm.open(filename, mode)
 
   def has_key(self, key):
@@ -3679,11 +3687,11 @@ class MimeMapper:
 
 
   def print_missing_mappings(self):
-    for ext in self.missing_mappings:
+    for ext in self.missing_mappings.keys():
       sys.stderr.write("%s: no MIME mapping for *.%s\n" % (warning_prefix, ext))
 
 
-def convert(ctx, start_pass=1):
+def convert(ctx, start_pass, end_pass):
   "Convert a CVS repository to an SVN repository."
 
   if not os.path.exists(ctx.cvsroot):
@@ -3691,8 +3699,8 @@ def convert(ctx, start_pass=1):
     sys.exit(1)
 
   cleanup = Cleanup()
-  times = [ None ] * len(_passes)
-  for i in range(start_pass - 1, len(_passes)):
+  times = [ None ] * (end_pass)
+  for i in range(start_pass - 1, end_pass):
     times[i] = time.time()
     Log().write(LOG_QUIET, '----- pass %d -----' % (i + 1))
     _passes[i](ctx)
@@ -3701,11 +3709,11 @@ def convert(ctx, start_pass=1):
   times.append(time.time())
   Log().write(LOG_QUIET, '------------------')
 
-  for i in range(start_pass, len(_passes)+1):
+  for i in range(start_pass, end_pass + 1):
     Log().write(LOG_QUIET, 'pass %d: %d seconds'
                 % (i, int(times[i] - times[i-1])))
   Log().write(LOG_QUIET, ' total:',
-              int(times[len(_passes)] - times[start_pass-1]), 'seconds')
+              int(times[-1] - times[start_pass-1]), 'seconds')
 
 
 def usage(ctx):
@@ -3715,7 +3723,8 @@ def usage(ctx):
   print '  -q                   quiet'
   print '  -v                   verbose'
   print '  -s PATH              path for SVN repos'
-  print '  -p NUM               start at pass NUM of %d' % len(_passes)
+  print '  -p START[:END]       start at pass START, end at pass END of %d' % len(_passes)
+  print '                       If only START is given, run only pass START'
   print '  --existing-svnrepos  load into existing SVN repository'
   print '  --dumpfile=PATH      name of intermediate svn dumpfile'
   print '  --svnadmin=PATH      path to the svnadmin program'
@@ -3773,6 +3782,7 @@ def main():
   ctx.forced_tags = []
 
   start_pass = 1
+  end_pass = len(_passes)
 
   try:
     opts, args = getopt.getopt(sys.argv[1:], 'p:s:qvh',
@@ -3792,11 +3802,19 @@ def main():
 
   for opt, value in opts:
     if opt == '-p':
-      start_pass = int(value)
-      if start_pass < 1 or start_pass > len(_passes):
-        print '%s: illegal value (%d) for starting pass. ' \
-              'must be 1 through %d.' % (error_prefix, start_pass,
+      if value.find(':') > 0:
+        start_pass, end_pass = map(int, value.split(':'))
+      else:
+        end_pass = start_pass = int(value)
+      if start_pass > len(_passes) or start_pass < 1:
+        print '%s: illegal value (%d) for starting pass. '\
+              'must be 1 through %d.' % (error_prefix, int(start_pass),
                                          len(_passes))
+        sys.exit(1)
+      if end_pass < start_pass or end_pass > len(_passes):
+        print '%s: illegal value (%d) for ending pass. ' \
+              'must be %d through %d.' % (error_prefix, int(end_pass),
+                                          int(start_pass), len(_passes))
         sys.exit(1)
     elif (opt == '--help') or (opt == '-h'):
       ctx.print_help = 1
@@ -3940,7 +3958,7 @@ def main():
   try:
     ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, 'c')
     Cleanup().register(DEFAULT_BRANCHES_DB, pass8, clear_default_branches_db)
-    convert(ctx, start_pass=start_pass)
+    convert(ctx, start_pass, end_pass)
     ctx.default_branches_db = None
   finally:
     try: os.rmdir('cvs2svn.lock')
