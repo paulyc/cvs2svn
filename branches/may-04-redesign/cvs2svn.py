@@ -2351,7 +2351,9 @@ class SVNCommit:
 
 class SVNRevNum(Singleton):
   def init(self):
-    self.revnum = 0
+    # We start at 1 because SVNRepositoryMirror uses the first commit
+    # to create trunk, tags, and branches.
+    self.revnum = 1
     
   def get_next_revnum(self):
     self.revnum = self.revnum + 1
@@ -2555,16 +2557,30 @@ class SVNRepositoryMirror:
       self.tags_db = TagsDatabase(DB_OPEN_READ)
       self.symbolings_reader = SymbolingsReader(self._ctx)
 
-    # Note that we haven't started committing yet
-    self.active = 0
+  def _initialize_repository(self, date):
+    """Initialize the repository by creating the directories for
+    trunk, tags, and branches.  This method should only be called
+    after all delegates are added to the repository mirror."""
+    # Make a 'fake' SVNCommit so we can take advantage of the revprops
+    # magic therein
+    svn_commit = SVNCommit(self._ctx,"Initialization", 1)
+    svn_commit.set_date(date)
+    svn_commit.set_log_msg("New Repository initialized by cvs2svn.")
 
-  def start_commit(self, revnum):
+    self.start_commit(svn_commit)
+    self.mkdir(self._ctx.trunk_base)
+    if not self._ctx.trunk_only:
+      self.mkdir(self._ctx.branches_base)
+      self.mkdir(self._ctx.tags_base)
+
+  def start_commit(self, svn_commit):
     """Stabilize the current commit, then start the next one.
     (Effectively increments youngest by assigning the new revnum to
     youngest)"""
     self.stabilize_youngest()
-    self.revs_db[str(revnum)] = self.revs_db[str(self.youngest)]
-    self.youngest = revnum
+    self.revs_db[str(svn_commit.revnum)] = self.revs_db[str(self.youngest)]
+    self.youngest = svn_commit.revnum
+    self.invoke_delegates('start_commit', svn_commit)
 
   def _stabilize_directory(self, key):
     """Remove the mutable flag from the directory whose node key is
@@ -3143,20 +3159,14 @@ class SVNRepositoryMirror:
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, and changing the repository.  Invoke
     the delegates' start_commit() method."""
+    
+    if svn_commit.revnum == 2:
+      self._initialize_repository(svn_commit.get_date())
 
     ###TODO Make a decision about whether or not the self.methods
     ###called here are going to be public or not.  If they're going to
     ###remain private, then prefix them with an underscore.
-    self.start_commit(svn_commit.revnum)
-    self.invoke_delegates('start_commit', svn_commit)
-
-    # Create tags and branches in the first commit
-    ###TODO IMPT: We MUST do this in a separate commit, so it's
-    ### not mixed in with a user change.
-    if not self.active and not self._ctx.trunk_only:
-      self.mkdir(self._ctx.branches_base)
-      self.mkdir(self._ctx.tags_base)
-      self.active = 1
+    self.start_commit(svn_commit)
 
     if svn_commit.symbolic_name:
       Log().write(LOG_VERBOSE, "Filling symbolic name:",
@@ -3754,7 +3764,7 @@ def pass7(ctx):
 def pass8(ctx):
   ### TODO: This should say repository/dumpfile, depending on
   ### our action.
-  svncounter = 1
+  svncounter = 2 # Repository initialization is 1.
 
   # kff: toggle between these two lines to test the DumpfileDelegate or not
   #repos = SVNRepositoryMirror(ctx, StdoutDelegate())
