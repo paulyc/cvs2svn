@@ -245,8 +245,13 @@ CLOSING = 'C'
 # Since the unofficial set also includes [/\] we need to translate those
 # into ones that don't conflict with Subversion limitations.
 symbolic_name_re = re.compile('^[a-zA-Z].*$')
-symbolic_name_transtbl = string.maketrans('/\\',',;')
 
+def _clean_symbolic_name(name):
+  """Return symbolic name NAME, translating characters that Subversion
+  does not allow in a pathname."""
+  name = name.replace('/',',')
+  name = name.replace('\\',';')
+  return name
 
 class Singleton(object):
   """If you wish to have a class that you can only instantiate once,
@@ -900,12 +905,6 @@ class CollectData(rcsparse.Sink):
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
 
-###TODO consider calling this in CollectData.
-def _clean_symbolic_name(name):
-  ###TODO use a regex or 2 replaces statements... translate has UTF8 probs
-  name = name.translate(symbolic_name_transtbl)
-  return name
-
 def run_command(command):
   if os.system(command):
     sys.exit('Command failed: "%s"' % command)
@@ -961,13 +960,13 @@ def make_path(ctx, path, branch_name = None, tag_name = None):
     sys.exit(1)
 
   if branch_name:
-    branch_name = branch_name.translate(symbolic_name_transtbl)
+    branch_name = _clean_symbolic_name(branch_name)
     if path:
       return ctx.branches_base + '/' + branch_name + '/' + path
     else:
       return ctx.branches_base + '/' + branch_name
   elif tag_name:
-    tag_name = tag_name.translate(symbolic_name_transtbl)
+    tag_name = _clean_symbolic_name(tag_name)
     if path:
       return ctx.tags_base + '/' + tag_name + '/' + path
     else:
