@@ -606,6 +606,9 @@ class CollectData(rcsparse.Sink):
     self.fatal_errors = []
     self.next_faked_branch_num = 999999
     self.num_files = 0
+
+    # 1 if we've collected data for at least one file, None otherwise.
+    self.found_valid_file = None
     
     # Branch and tag label types.
     self.BRANCH_LABEL = 0
@@ -3619,6 +3622,7 @@ def pass1(ctx):
     for fname in files:
       if fname[-2:] != ',v':
         continue
+      cd.found_valid_file = 1
       pathname = os.path.join(dirname, fname)
       if dirname[-6:] == ATTIC:
         # drop the 'Attic' portion from the pathname for the canonical name.
@@ -3643,6 +3647,13 @@ def pass1(ctx):
              + "Error summary:\n"
              + "\n".join(cd.fatal_errors)
              + "\nExited due to fatal error(s).")
+
+  if cd.found_valid_file is None:
+    sys.exit("\nNo RCS files found in your CVS Repository!\n"
+             + "Are you absolutely certain you are pointing cvs2svn\n"
+             + "at a CVS repository?\n"
+             + "\nExited due to fatal error(s).")
+
   Log().write(LOG_QUIET, "Done")
  
 def pass2(ctx):
