@@ -476,6 +476,7 @@ class CollectData(rcsparse.Sink):
     Cleanup().register(METADATA_DB, pass8)
     self.fatal_errors = []
     self.next_faked_branch_num = 999999
+    self.num_files = 0
     
     # Branch and tag label types.
     self.BRANCH_LABEL = 0
@@ -880,6 +881,9 @@ class CollectData(rcsparse.Sink):
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
 
+  def parse_completed(self):
+    self.num_files = self.num_files + 1
+
 def run_command(command):
   if os.system(command):
     sys.exit('Command failed: "%s"' % command)
@@ -965,7 +969,7 @@ def relative_name(cvsroot, fname):
   sys.exit(1)
 
 def visit_file(arg, dirname, files):
-  cd, p, stats = arg
+  cd, p = arg
   for fname in files:
     if fname[-2:] != ',v':
       continue
@@ -979,7 +983,6 @@ def visit_file(arg, dirname, files):
     Log().write(LOG_NORMAL, pathname)
     try:
       p.parse(open(pathname, 'rb'), cd)
-      stats[0] = stats[0] + 1
     except (rcsparse.common.RCSParseError, ValueError, RuntimeError):
       err = "%s: '%s' is not a valid ,v file" \
             % (error_prefix, pathname)
@@ -1267,16 +1270,12 @@ def print_node_tree(tree, root_node, indent_depth=0):
     print_node_tree(tree, value, (indent_depth + 1))
 
 def pass1(ctx):
-  ###TODO create the CollectData object in visit_file and pass a
-  ###different variable along via os.path.walk for accumulating
-  ###errors.
   Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
   cd = CollectData(DATAFILE, ctx)
   p = rcsparse.Parser()
-  stats = [ 0 ]
-  os.path.walk(ctx.cvsroot, visit_file, (cd, p, stats))
+  os.path.walk(ctx.cvsroot, visit_file, (cd, p))
   if ctx.verbose:
-    print 'processed', stats[0], 'files'
+    print 'processed', cd.num_files, 'files'
   if len(cd.fatal_errors) > 0:
     sys.exit("Pass 1 complete.\n" + "=" * 75 + "\n"
              + "Error summary:\n"
