@@ -714,38 +714,23 @@ def mixed_time_branch_with_added_file():
 
   # Empty revision, purely to store the log message of the dead 1.1 revision
   # required by the RCS file format
-  rev = 26
-  if not logs[rev].changed_paths == { }:
-    raise svntest.Failure
-
-  if logs[rev].msg.find('file branch_B_MIXED_only was initially added on '
-      'branch B_MIXED.') != 0:
-    raise svntest.Failure
+  check_rev(logs, 32, 'file branch_B_MIXED_only was initially added on '
+      'branch B_MIXED.', {})
 
   # A branch from the same place as T_MIXED in the previous test,
   # plus a file added directly to the branch
-  rev = 27
-  if not logs[rev].changed_paths == {
-    '/branches/B_MIXED (from /trunk:26)': 'A',
+  check_rev(logs, 33, sym_log_msg('B_MIXED'), {
+    '/branches/B_MIXED (from /trunk:32)': 'A',
     '/branches/B_MIXED/partial-prune': 'D',
     '/branches/B_MIXED/single-files': 'D',
-    '/branches/B_MIXED/proj/sub2/subsubA (from /trunk/proj/sub2/subsubA:21)':
+    '/branches/B_MIXED/proj/sub2/subsubA (from /trunk/proj/sub2/subsubA:22)':
       'R',
-    '/branches/B_MIXED/proj/sub3 (from /trunk/proj/sub3:24)': 'R',
-    }:
-    raise svntest.Failure
+    '/branches/B_MIXED/proj/sub3 (from /trunk/proj/sub3:29)': 'R',
+    })
 
-  if logs[rev].msg.find(sym_log_msg('B_MIXED')) != 0:
-    raise svntest.Failure
-
-  rev = 28
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 34, 'Add a file on branch B_MIXED.', {
     '/branches/B_MIXED/proj/sub2/branch_B_MIXED_only': 'A',
-    }:
-    raise svntest.Failure
-
-  if logs[rev].msg.find('Add a file on branch B_MIXED.') != 0:
-    raise svntest.Failure
+    })
 
 
 def mixed_commit():
@@ -753,16 +738,11 @@ def mixed_commit():
   # See test-data/main-cvsrepos/proj/README.
   repos, wc, logs = ensure_conversion('main')
 
-  rev = 30
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 36, 'A single commit affecting one file on branch B_MIXED '
+      'and one on trunk.', {
     '/trunk/proj/sub2/default': 'M',
     '/branches/B_MIXED/proj/sub2/branch_B_MIXED_only': 'M',
-    }:
-    raise svntest.Failure
-
-  if logs[rev].msg.find('A single commit affecting one file on branch B_MIXED '
-                       'and one on trunk.') != 0:
-    raise svntest.Failure
+    })
 
 
 def split_time_branch():
@@ -771,63 +751,37 @@ def split_time_branch():
   repos, wc, logs = ensure_conversion('main')
 
   # First change on the branch, creating it
-  rev = 36
-  if not logs[rev].changed_paths == {
-    '/branches/B_SPLIT (from /trunk:30)': 'A',
+  check_rev(logs, 42, sym_log_msg('B_SPLIT'), {
+    '/branches/B_SPLIT (from /trunk:36)': 'A',
     '/branches/B_SPLIT/partial-prune': 'D',
     '/branches/B_SPLIT/single-files': 'D',
     '/branches/B_SPLIT/proj/sub1/subsubB': 'D',
-    }:
-    raise svntest.Failure
+    })
 
-  if logs[rev].msg.find(sym_log_msg('B_SPLIT')) != 0:
-    raise svntest.Failure
-
-  rev = 37
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 43, 'First change on branch B_SPLIT.', {
     '/branches/B_SPLIT/proj/default': 'M',
     '/branches/B_SPLIT/proj/sub1/default': 'M',
     '/branches/B_SPLIT/proj/sub1/subsubA/default': 'M',
     '/branches/B_SPLIT/proj/sub2/default': 'M',
     '/branches/B_SPLIT/proj/sub2/subsubA/default': 'M',
-    }:
-    raise svntest.Failure
-
-  if logs[rev].msg.find('First change on branch B_SPLIT.') != 0:
-    raise svntest.Failure
+    })
 
   # A trunk commit for the file which was not branched
-  rev = 38
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 44, 'A trunk change to sub1/subsubB/default.  '
+      'This was committed about an', {
     '/trunk/proj/sub1/subsubB/default': 'M',
-    }:
-    raise svntest.Failure
-
-  if logs[rev].msg.find('A trunk change to sub1/subsubB/default.  '
-      'This was committed about an') != 0:
-    raise svntest.Failure
+    })
 
   # Add the file not already branched to the branch, with modification:w
-  rev = 39
-  if not logs[rev].changed_paths == {
-    '/branches/B_SPLIT/proj/sub1/subsubB (from /trunk/proj/sub1/subsubB:38)':
-      'A',
-    }:
-    raise svntest.Failure
+  check_rev(logs, 45, sym_log_msg('B_SPLIT'), {
+    '/branches/B_SPLIT/proj/sub1/subsubB (from /trunk/proj/sub1/subsubB:44)': 'A',
+    })
 
-  if logs[rev].msg.find(sym_log_msg('B_SPLIT')) != 0:
-    raise svntest.Failure
-
-  rev = 40
-  if not logs[rev].changed_paths == {
+  check_rev(logs, 46, 'This change affects sub3/default and '
+      'sub1/subsubB/default, on branch', {
     '/branches/B_SPLIT/proj/sub1/subsubB/default': 'M',
     '/branches/B_SPLIT/proj/sub3/default': 'M',
-    }:
-    raise svntest.Failure
-
-  if logs[rev].msg.find('This change affects sub3/default and '
-      'sub1/subsubB/default, on branch') != 0:
-    raise svntest.Failure
+    })
 
 
 def bogus_tag():
@@ -862,12 +816,11 @@ def overlapping_branch():
 def phoenix_branch():
   "convert a branch file rooted in a 'dead' revision"
   repos, wc, logs = ensure_conversion('phoenix')
-  if not logs[5].changed_paths == {
-    '/branches/volsung_20010721 (from /trunk:4)': 'A' }:
-    raise svntest.Failure
-  if not logs[6].changed_paths == {
-    '/branches/volsung_20010721/phoenix': 'A' }:
-    raise svntest.Failure
+  check_rev(logs, 6, sym_log_msg('volsung_20010721'), {
+    '/branches/volsung_20010721 (from /trunk:5)': 'A'
+    })
+  check_rev(logs, 7, 'This file was supplied by Jack Moffitt', {
+    '/branches/volsung_20010721/phoenix': 'A' })
 
 
 def ctrl_char_in_log():
