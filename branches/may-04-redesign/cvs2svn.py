@@ -2906,7 +2906,7 @@ class SVNRepositoryMirror:
     one of the COPIED_PATHS.
 
     COPIED_PATHS is a list of paths that have already been copied in
-    this fill.  These paths are safe to prune.
+    this fill.  Paths underneath these paths are safe to prune.
 
     PARENT_PATH_SO_FAR, PREFERRED_REVNUM, PRUNE_OK, and COPIED_PATHS
     should only be passed in by recursive calls."""
