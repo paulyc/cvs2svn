@@ -31,10 +31,11 @@ The Details:
 
 We'll create several new passes and intermediate files as well as
 completely eliminate the cvs2svn-sym-names.db file as it now stands.
+Pass4 will become pass8, and pass5 will become pass9... our new passes
+will go after pass3, but before 8 and 9.
 
-First, we create a new pass, let's call it 3.1 for the moment.  This
-pass will iterate through the s-revs file, doing several unrelated
-things:
+First, we create a new pass, called pass4.  This pass will iterate
+through the s-revs file, doing several unrelated things:
 
   1. Determine the closing Subversion revisions for each tag and
      branch.  Yes, this is basically get_symbol_closing_revs().  We
@@ -58,12 +59,12 @@ things:
      for more details on what the unique key is.
 
 
-Next, we create a new pass, let's call it 3.3.  This pass will iterate
+Next, we create a new pass, let's call it pass5.  This pass will iterate
 through the s-revs file, doing several other unrelated things:
 
   1. Begin creating the RepositoryMirror here--but only the trunk of
      the repository.  We will fill branches and tags into the
-     RepositoryMirror in pass 3.7 (described below).  Also, we will no
+     RepositoryMirror in pass7 (described below).  Also, we will no
      longer record information about which leaf nodes in the
      RepositoryMirror are on which branch or tag (currently, we store
      the name of the tag/branch in a dictionary in the leaf node, and
@@ -85,7 +86,7 @@ through the s-revs file, doing several other unrelated things:
 
      This gives us a bi-directional mapping between Subversion and CVS
      Revision numbers.  We'll use the same algorithms that we
-     currently use in pass4 to determine which Subversion revisions
+     currently use in pass8 to determine which Subversion revisions
      will accommodate branch and tag creation and any other "special"
      revisions.  One implementation detail is that we'll use the
      CVSRevision unique_key() to reference CVS Revisions instead of
@@ -166,9 +167,9 @@ through the s-revs file, doing several other unrelated things:
          symbolic-names.txt as the closing revision.
          
 
-Now for another pass that we will perform before pass 4.  I'll call
-this one 3.5.  Here we sort the symbolic-names.txt file into
-symbolic-names-s.txt using GNU sort. :-)
+Now for another pass that we will perform before pass 9 called pass6.
+Here we sort the symbolic-names.txt file into symbolic-names-s.txt
+using GNU sort. :-)
 
    .-----------------------------------------------------------------------.
    | Side discussion: Dealing With Large Files:                            |
@@ -230,18 +231,18 @@ symbolic-names-s.txt using GNU sort. :-)
         (for a given path and symbolic name), closing revs always come
         after opening revs.
 
-And now for Yet Another Pass that we will perform before pass 4.  I'll
-call this one 3.7.  Because symbolic-names-s.txt groups each symbolic
-name together, we can read all the paths for one symbolic name into
-memory easily.  So, we read through symbolic-names-s.txt and
-accumulate *all* the paths for a given symbolic name into an in-memory
-data structure, replacing the opening and closing CVS revs with
-Subversion revs as per the lookup in cvs-revs-to-svn-nums.db.  The
-in-memory data structure is basically the same as the tree currently
-stored in cvs2svn-sym-names.db under that symbolic name -- only now it
-won't be in a database anymore.  We can do this, because any single
-tree fits into memory, we just need to avoid having them *all* in
-memory at once.
+And now for Yet Another Pass that we will perform before pass8 called
+pass7.  Because symbolic-names-s.txt groups each symbolic name
+together, we can read all the paths for one symbolic name into memory
+easily.  So, we read through symbolic-names-s.txt and accumulate *all*
+the paths for a given symbolic name into an in-memory data structure,
+replacing the opening and closing CVS revs with Subversion revs as per
+the lookup in cvs-revs-to-svn-nums.db.  The in-memory data structure
+is basically the same as the tree currently stored in
+cvs2svn-sym-names.db under that symbolic name -- only now it won't be
+in a database anymore.  We can do this, because any single tree fits
+into memory, we just need to avoid having them *all* in memory at
+once.
 
 We now score this entire in-memory tree, using the same algorithm as
 we currently use for the on-disk database.  This will go much faster,
@@ -270,12 +271,12 @@ tag or branch, we just invoke the copy editor on the appropriate file:
 'copy_editor.run(cmdfile, dumper)' or something like that.
 
 
-Changes to pass4
+Changes to pass8
 
-The 4th pass will now have very little "thinking" to do--it's
+The 8th pass will now have very little "thinking" to do--it's
 basically going to open the svn-nums-to-cvs-revs.db and, starting with
 Subversion revision 1, and sequentially play out all the commits to
 either the Subversion repository or to a dumpfile.  After each commit,
 the "copy editor" will be passed the current Subversion revision
 number, and it will perform any copy commands that need to be done (as
-described in pass 3.7).
+described in pass7).

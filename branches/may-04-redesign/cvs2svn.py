@@ -2749,8 +2749,19 @@ def pass3(ctx):
   else:
     os.environ['LC_ALL'] = lc_all_tmp
 
-
 def pass4(ctx):
+  pass
+
+def pass5(ctx):
+  pass
+
+def pass6(ctx):
+  pass
+
+def pass7(ctx):
+  pass
+
+def pass8(ctx):
   if ctx.trunk_only:
     sym_tracker = DummySymbolicNameTracker()
   else:
@@ -2867,7 +2878,7 @@ def pass4(ctx):
     print count, 'commits processed.'
 
 
-def pass5(ctx):
+def pass9(ctx):
   if ctx.skip_cleanup:
     return
 
@@ -2896,6 +2907,10 @@ _passes = [
   pass3,
   pass4,
   pass5,
+  pass6,
+  pass7,
+  pass8,
+  pass9,
   ]
 
 
