@@ -1260,8 +1260,9 @@ class LastSymbolicNameDatabase(Database):
     # Gather last CVS Revision for symbolic name info and tag info
     for tag in c_rev.tags:
       self.symbols[tag] = c_rev.unique_key()
-    for branch in c_rev.branches:
-      self.symbols[branch] = c_rev.unique_key()
+    if c_rev.op is not OP_DELETE:
+      for branch in c_rev.branches:
+        self.symbols[branch] = c_rev.unique_key()
 
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that

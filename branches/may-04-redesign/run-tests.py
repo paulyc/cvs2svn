@@ -1313,6 +1313,15 @@ def no_spurious_svn_commits():
   check_rev(logs, 18, 'file added-on-branch2.txt was initially added on '
             + 'branch xiphophorus,\nand this log message was tweaked', {})
 
+  # Check spurious commit that could be created in
+  # CVSRevisionAggregator.attempt_to_commit_symbols
+  #   (We shouldn't consider a CVSRevision whose op is OP_DEAD as a
+  #   candidate for the LastSymbolicNameDatabase.
+  check_rev(logs, 19, 'This file was also added on branch xiphophorus,', {
+    '/branches/xiphophorus/added-on-branch2.txt' : 'A',
+    })
+
+
 def peer_path_pruning():
   "make sure that filling prunes paths correctly"
   repos, wc, logs = ensure_conversion('peer-path-pruning')
