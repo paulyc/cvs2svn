@@ -4698,8 +4698,327 @@ class RepositoryDelegate(SVNRepositoryMirrorDelegate):
   pass
 
 class DumpfileDelegate(SVNRepositoryMirrorDelegate):
-  """Creates a Subversion Dumpfile."""
-  pass
+  """Create a Subversion dumpfile."""
+
+  def __init__(self, ctx):
+    """Return a new DumpfileDelegate instance, attached to a dumpfile
+    named according to CTX.dumpfile, using CTX.encoding.
+
+    If CTX.cvs_revnums is true, then set the 'cvs2svn:cvs-revnum'
+    property on files, when they are changed due to a corresponding
+    CVS revision.
+
+    If CTX.mime_mapper is true, then it is a MimeMapper instance, used
+    to determine whether or not to set the 'svn:mime-type' property on
+    files.
+
+    If CTX.set_eol_style is true, then set 'svn:eol-style' to 'native'
+    for files not marked with the CVS 'kb' flag.  (But see issue #39
+    for how this might change.)""" 
+    ###TODO Remove this debugging "kff" shim.
+    self.dumpfile_path = "kff-" + ctx.dumpfile
+    self.set_cvs_revnum_properties = ctx.cvs_revnums
+    self.set_eol_style = ctx.set_eol_style
+    self.mime_mapper = ctx.mime_mapper
+    self.path_encoding = ctx.encoding
+    self.mirror = None  # Use self.set_mirror() to initialize this.
+    self.revision = 0
+    
+    self.dumpfile = open(self.dumpfile_path, 'wb')
+    self.write_dumpfile_header()
+
+  def set_mirror(self, mirror):
+    """Set the SVNRepositoryMirror for this instance."""
+    ###TODO We don't actually use this yet.  Will we ever?
+    self.mirror = mirror
+
+  def write_dumpfile_header(self):
+    # Initialize the dumpfile with the standard headers.
+    #
+    # Since the CVS repository doesn't have a UUID, and the Subversion
+    # repository will be created with one anyway, we don't specify a
+    # UUID in the dumpflie
+    self.dumpfile.write('SVN-fs-dump-format-version: 2\n\n')
+
+  def _utf8_path(self, path):
+    """Return a copy of PATH encoded in UTF-8.  PATH is assumed to be
+    encoded in self.path_encoding."""
+    try:
+      # Log messages can be converted with the 'replace' strategy,
+      # but we can't afford any lossiness here.
+      unicode_path = unicode(path, self.path_encoding, 'strict')
+      return unicode_path.encode('utf-8')
+    except UnicodeError:
+      print "Unable to convert a path '%s' to internal encoding." % path
+      print "Consider rerunning with (for example) '--encoding=latin1'"
+      sys.exit(1)
+
+  def start_commit(self, svn_revnum):
+    """Emit the start of the next commit, return the new revision number."""
+
+    print "XKFF: revision going from %d to %d" % (self.revision, svn_revnum)
+    self.revision = svn_revnum
+
+    # The start of a new commit typically looks like this:
+    # 
+    #   Revision-number: 1
+    #   Prop-content-length: 129
+    #   Content-length: 129
+    #   
+    #   K 7
+    #   svn:log
+    #   V 27
+    #   Log message for revision 1.
+    #   K 10
+    #   svn:author
+    #   V 7
+    #   jrandom
+    #   K 8
+    #   svn:date
+    #   V 27
+    #   2003-04-22T22:57:58.132837Z
+    #   PROPS-END
+    #
+    # Notice that the length headers count everything -- not just the
+    # length of the data but also the lengths of the lengths, including
+    # the 'K ' or 'V ' prefixes.
+    #
+    # The reason there are both Prop-content-length and Content-length
+    # is that the former includes just props, while the latter includes
+    # everything.  That's the generic header form for any entity in a
+    # dumpfile.  But since revisions only have props, the two lengths
+    # are always the same for revisions.
+    
+    ###TODO Of course, these props should come from the caller.  But
+    ### first we need to change this method to take an SVNCommit
+    ### object, which means we first need to make sure that SVNCommit
+    ### objects have all this information in them.  That change is
+    ### coming RSN.  For now, just fake it.
+    props = { 'svn:author' : 'cvs2svn',
+              'svn:log'    : "This is a fake log message.\n",
+              'svn:date'   : "2004-05-25T20:00:00.000000Z",
+              'tomato'     : 'mauve' }
+
+    # Calculate the total length of the props section.
+    total_len = 10  # len('PROPS-END\n')
+    for propname in props.keys():
+      klen = len(propname)
+      klen_len = len('K %d' % klen)
+      vlen = len(props[propname])
+      vlen_len = len('V %d' % vlen)
+      # + 4 for the four newlines within a given property's section
+      total_len = total_len + klen + klen_len + vlen + vlen_len + 4
+        
+    # Print the revision header and props
+    self.dumpfile.write('Revision-number: %d\n'
+                        'Prop-content-length: %d\n'
+                        'Content-length: %d\n'
+                        '\n'
+                        % (self.revision, total_len, total_len))
+
+    for propname in props.keys():
+      self.dumpfile.write('K %d\n' 
+                          '%s\n' 
+                          'V %d\n' 
+                          '%s\n' % (len(propname),
+                                    propname,
+                                    len(props[propname]),
+                                    props[propname]))
+
+    self.dumpfile.write('PROPS-END\n')
+    self.dumpfile.write('\n')
+    return self.revision
+
+  def mkdir(self, path):
+    """Emit the creation of directory PATH."""
+    self.dumpfile.write("Node-path: %s\n" 
+                        "Node-kind: dir\n"
+                        "Node-action: add\n"
+                        "Prop-content-length: 10\n"
+                        "Content-length: 10\n"
+                        "\n"
+                        "PROPS-END\n"
+                        "\n"
+                        "\n" % self._utf8_path(path))
+
+  def _get_cvs_path(self, c_rev):
+    """Return the path and executable status of the rcs file for C_REV.
+    Use like this:     path, exec_status = self._get_cvs_path(C_REV)
+    If the rcs file is executable, the exec_status is 1, else it is None."""
+    try:
+      rcs_path = c_rev.fname
+      f_st = os.stat(rcs_path)
+    except os.error:
+      dirname, fname = os.path.split(rcs_path)
+      rcs_path = os.path.join(dirname, 'Attic', fname)
+      f_st = os.stat(rcs_path)
+    # One of the above should have worked.  Now see about exec status.
+    if f_st[0] & stat.S_IXUSR:
+      return rcs_path, 1
+    else:
+      return rcs_path, None
+
+  def _add_or_change_path(self, c_rev, op):
+    """Emit the addition or change corresponding to C_REV.
+    OP is either the constant OP_ADD or OP_CHANGE."""
+
+    rcs_path, exec_status = self._get_cvs_path(c_rev)
+
+    # We begin with only a "CVS revision" property.
+    if self.set_cvs_revnum_properties:
+      prop_contents = 'K 15\ncvs2svn:cvs-rev\nV %d\n%s\n' \
+                      % (len(c_rev.rev), c_rev.rev)
+    else:
+      prop_contents = ''
+    
+    # Tack on the executableness, if any.
+    if exec_status:
+      prop_contents = prop_contents + 'K 14\nsvn:executable\nV 1\n*\n'
+
+    # If the file is marked as binary, it gets a default MIME type of
+    # "application/octet-stream".  Otherwise, it gets a default EOL
+    # style of "native".
+    mime_type = None
+    eol_style = None
+    if c_rev.mode == 'b':
+      mime_type = 'application/octet-stream'
+    else:
+      eol_style = 'native'
+
+    ### TODO: Deal with other expansion modes.  What do we do about
+    ### the various keyword expansion styles (name only, value only,
+    ### both name and value, old value, etc.)?  Beats me.
+    
+    # If using the MIME mapper, possibly override the default MIME
+    # type and EOL style.
+    if self.mime_mapper:
+      mtype = self.mime_mapper.get_type_from_filename(c_rev.cvs_path)
+      if mtype:
+        mime_type = mtype
+        if not mime_type.startswith("text/"):
+          eol_style = None
+
+    # Possibly set the svn:mime-type and svn:eol-style properties.
+    if mime_type:
+      prop_contents = prop_contents + ('K 13\nsvn:mime-type\nV %d\n%s\n' % \
+                                       (len(mime_type), mime_type))
+    if self.set_eol_style and eol_style:
+      prop_contents = prop_contents + 'K 13\nsvn:eol-style\nV 6\nnative\n'
+                                         
+    # Calculate the property length (+10 for "PROPS-END\n")
+    props_len = len(prop_contents) + 10
+    
+    ### FIXME: We ought to notice the -kb flag set on the RCS file and
+    ### use it to set svn:mime-type.  See issue #39.
+
+    basename = os.path.basename(rcs_path[:-2])
+    pipe_cmd = 'co -q -x,v -p%s %s' % (c_rev.rev, escape_shell_arg(rcs_path))
+    pipe = os.popen(pipe_cmd, PIPE_READ_MODE)
+
+    if op == OP_ADD:
+      action = 'add'
+    elif op == OP_CHANGE:
+      action = 'change'
+    else:
+      sys.stderr.write("%s: _add_or_change_path() called with bad op ('%s')"
+                       % (error_prefix, op))
+      sys.exit(1)
+
+    self.dumpfile.write('Node-path: %s\n'
+                        'Node-kind: file\n'
+                        'Node-action: %s\n'
+                        'Prop-content-length: %d\n'
+                        'Text-content-length: '
+                        % (self._utf8_path(c_rev.svn_path),
+                           action, props_len))
+
+    pos = self.dumpfile.tell()
+
+    self.dumpfile.write('0000000000000000\n'
+                        'Text-content-md5: 00000000000000000000000000000000\n'
+                        'Content-length: 0000000000000000\n'
+                        '\n')
+
+    self.dumpfile.write(prop_contents + 'PROPS-END\n')
+
+    # Insert the rev contents, calculating length and checksum as we go.
+    checksum = md5.new()
+    length = 0
+    buf = pipe.read()
+    while buf:
+      checksum.update(buf)
+      length = length + len(buf)
+      self.dumpfile.write(buf)
+      buf = pipe.read()
+    if pipe.close() is not None:
+      sys.exit('%s: Command failed: "%s"' % (error_prefix, pipe_cmd))
+
+    # Go back to patch up the length and checksum headers:
+    self.dumpfile.seek(pos, 0)
+    # We left 16 zeros for the text length; replace them with the real
+    # length, padded on the left with spaces:
+    self.dumpfile.write('%16d' % length)
+    # 16... + 1 newline + len('Text-content-md5: ') == 35
+    self.dumpfile.seek(pos + 35, 0)
+    self.dumpfile.write(checksum.hexdigest())
+    # 35... + 32 bytes of checksum + 1 newline + len('Content-length: ') == 84
+    self.dumpfile.seek(pos + 84, 0)
+    # The content length is the length of property data, text data,
+    # and any metadata around/inside around them.
+    self.dumpfile.write('%16d' % (length + props_len))
+    # Jump back to the end of the stream
+    self.dumpfile.seek(0, 2)
+
+    # This record is done (write two newlines -- one to terminate
+    # contents that weren't themselves newline-termination, one to
+    # provide a blank line for readability.
+    self.dumpfile.write('\n\n')
+
+  def add_path(self, c_rev):
+    """Emit the addition corresponding to C_REV, a CVSRevision."""
+    self._add_or_change_path(c_rev, OP_ADD)
+
+  def change_path(self, c_rev):
+    """Emit the change corresponding to C_REV, a CVSRevision."""
+    self._add_or_change_path(c_rev, OP_CHANGE)
+
+  def delete_path(self, c_rev):
+    """Emit the deletion of C_REV.svn_path."""
+    ###TODO This just needs to take SVN_PATH, really.
+    ###
+    ###TODO Who is responsible for pruning behavior?  The caller, I
+    ### think, but we should make sure that's what we want.
+    self.dumpfile.write('Node-path: %s\n'
+                        'Node-action: delete\n'
+                        '\n' % self._utf8_path(c_rev.svn_path))
+  
+  def copy_path(self, src_path, dest_path, src_revnum):
+    """Emit the copying of SRC_PATH at SRC_REV to DEST_PATH."""
+    ###TODO We need to settle whether callers are responsible for
+    ### passing UTF8 paths, or we are responsible for converting.
+    ### Right now, we convert, see self._utf8_path().  That might be
+    ### fine, just investigate to make sure.
+    ###
+    ###TODO Note how the original Dumper.copy_path() took an 'entries'
+    ### arg.  Have we completely avoided the need for that now?  That
+    ### would certainly be nice.
+
+    # We don't need to include "Node-kind:" for copies; the loader
+    # ignores it anyway and just uses the source kind instead.
+    self.dumpfile.write('Node-path: %s\n'
+                        'Node-action: add\n'
+                        'Node-copyfrom-rev: %d\n'
+                        'Node-copyfrom-path: /%s\n'
+                        '\n'
+                        % (self._utf8_path(dst_path),
+                           src_revnum,
+                           self._utf8_path(src_path)))
+  
+  def finish(self):
+    """Perform any cleanup necessary after all revisions have been
+    committed."""
+    self.dumpfile.close()
+
 
 class StdoutDelegate(SVNRepositoryMirrorDelegate):
   """Makes no changes to the disk, but writes out information to
@@ -4749,6 +5068,8 @@ def pass8(ctx):
 
   svncounter = 1
   repos = SVNRepositoryMirror(ctx, StdoutDelegate())
+  # kff: using this for testing, as you might guess
+  # repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
