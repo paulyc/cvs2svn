@@ -62,17 +62,20 @@ cvs2svn-data.revs, like this:
 
 The fields are:
 
-   1. a fixed-width timestamp
-   2. a digest of the log message + author
-   3. the type of change ("C"hange, or "D"elete)
-   4. the revision number
-   5. "N" if this revision has non-empty deltatext, else "E" for empty
-   6. the branch on which this commit happened, or "*" if not on a branch
-   7. the number of tags rooted at this revision (followed by their
-        names, space-delimited)  
-   8. the number of branches rooted at this revision (followed by
-        their names, space-delimited) 
-   9. the path of the RCS file in the repository
+   1.  a fixed-width timestamp
+   2.  a digest of the log message + author
+   3.  the type of change ("C"hange, or "D"elete)
+   4.  the previous ("next" in RCS jargon) revision number or "*" if
+       there is no previous revision (That is, it's the first revision on a
+       file).
+   5.  the revision number
+   6.  "N" if this revision has non-empty deltatext, else "E" for empty
+   7.  the branch on which this commit happened, or "*" if not on a branch
+   8.  the number of tags rooted at this revision (followed by their
+       names, space-delimited)  
+   9.  the number of branches rooted at this revision (followed by
+       their names, space-delimited) 
+   10. the path of the RCS file in the repository
 
 (Of course, in the above example, fields 6 and 7 are "0", so they have
 no additional data.)

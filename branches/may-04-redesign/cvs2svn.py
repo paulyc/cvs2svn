@@ -229,21 +229,25 @@ class CVSRevision:
     self._svn_trunk_path = None
     self._cvs_path = None
     self._ctx = ctx
-    if len(args) == 9:
-      self.timestamp, self.digest, self.op, self.rev, self.deltatext_code, \
-          self.fname, self.branch_name, self.tags, self.branches = args
+    if len(args) == 10:
+      self.timestamp, self.digest, self.op, self.prev_rev, self.rev, \
+                      self.deltatext_code, self.fname, self.branch_name, \
+                      self.tags, self.branches = args
     elif len(args) == 1:
-      data = args[0].split(' ', 7)
+      data = args[0].split(' ', 8)
       self.timestamp = int(data[0], 16)
       self.digest = data[1]
       self.op = data[2]
-      self.rev = data[3]
-      self.deltatext_code = data[4]
-      self.branch_name = data[5]
+      self.prev_rev = data[3]
+      if self.prev_rev == "*":
+        self.prev_rev = None
+      self.rev = data[4]
+      self.deltatext_code = data[5]
+      self.branch_name = data[6]
       if self.branch_name == "*":
         self.branch_name = None
-      ntags = int(data[6])
-      tags = data[7].split(' ', ntags + 1)
+      ntags = int(data[7])
+      tags = data[8].split(' ', ntags + 1)
       nbranches = int(tags[ntags])
       branches = tags[ntags + 1].split(' ', nbranches)
       self.fname = branches[nbranches][:-1]  # strip \n
@@ -281,9 +285,11 @@ class CVSRevision:
     return self._cvs_path
 
   def write_revs_line(self, output):
-    output.write('%08lx %s %s %s %s ' % \
+    if not self.prev_rev:
+      self.prev_rev = '*'
+    output.write('%08lx %s %s %s %s %s ' % \
                  (self.timestamp, self.digest, self.op,
-                  self.rev, self.deltatext_code))
+                  self.prev_rev, self.rev, self.deltatext_code))
     output.write('%s ' % (self.branch_name or "*"))
     output.write('%d ' % (len(self.tags)))
     for tag in self.tags:
@@ -342,6 +348,7 @@ class CollectData(rcsparse.Sink):
     # revision -> [timestamp, author, operation, old-timestamp]
     self.rev_data = { }
     self.prev = { }
+    self.rcs_prev = { }
 
     # Hash mapping branch numbers, like '1.7.2', to branch names,
     # like 'Release_1_0_dev'.
@@ -519,6 +526,10 @@ class CollectData(rcsparse.Sink):
 
     # store the rev_data as a list in case we have to jigger the timestamp
     self.rev_data[revision] = [int(timestamp), author, op, None]
+    
+    # Store the previous revision number (which is 'next' in RCS
+    # speak) for later retrieval
+    self.rcs_prev[revision] = next
 
     # record the previous revision for sanity checking later
     if trunk_rev.match(revision):
@@ -635,7 +646,8 @@ class CollectData(rcsparse.Sink):
     else:
       deltatext_code = DELTATEXT_EMPTY
 
-    c_rev = CVSRevision(None, timestamp, digest, op, revision,
+    c_rev = CVSRevision(None, timestamp, digest, op,
+                        self.rcs_prev[revision], revision,
                         deltatext_code, self.fname,
                         self.rev_to_branch_name(revision),
                         self.get_tags(revision),
@@ -2653,6 +2665,9 @@ def read_resync(fname):
 
 
 def pass1(ctx):
+  ###TODO create the CollectData object in visit_file and pass a
+  ###different variable along via os.path.walk for accumulating
+  ###errors.
   cd = CollectData(ctx.cvsroot, DATAFILE, ctx.default_branches_db,
                    ctx.forced_branches, ctx.forced_tags)
   p = rcsparse.Parser()
