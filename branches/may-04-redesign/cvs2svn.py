@@ -5595,7 +5595,7 @@ def pass8(ctx):
 
     svncounter += 1
   repos.finish()
-#  sys.exit(239)
+  return
 
 
 
