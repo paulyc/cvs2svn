@@ -1179,7 +1179,7 @@ class SymbolingsLogger(Singleton):
     self.closings.close()
     for line in fileinput.FileInput(SYMBOL_CLOSINGS_TMP):
       (name, rev_key) = line.rstrip().split(" ", 1)
-      svn_revnum = CommitMapper().get_svn_revnum(rev_key)
+      svn_revnum = PersistenceManager().get_svn_revnum(rev_key)
 
       c_rev = cvs_revs_db.get_revision(rev_key)
       self._log(name, svn_revnum, c_rev.svn_path, CLOSING)
@@ -1425,8 +1425,8 @@ class SymbolicNameFillingGuide:
     closings = self._list_revnums_for_key(node, self.closing_key)
 
     # Score the lists
-    scores = self._score_revisions(self._condense_scores(openings),
-                                  self._condense_scores(closings))
+    scores = self._score_revisions(self._sum_revnum_counts(openings),
+                                  self._sum_revnum_counts(closings))
 
     revnum = self._best_rev(scores, preferred_revnum)
   
@@ -1514,8 +1514,7 @@ class SymbolicNameFillingGuide:
         scores.insert(insert_index, (closing_rev, insert_score))
     return scores
 
-  ###TODO find a better name for this method.
-  def _condense_scores(self, rev_list):
+  def _sum_revnum_counts(self, rev_list):
     """Takes an array of revisions (REV_LIST), for example:
 
       [21, 18, 6, 49, 39, 24, 24, 24, 24, 24, 24, 24]
@@ -1663,9 +1662,15 @@ class SVNCommitInternalInconsistencyError(Exception):
   SVNCommit Databases."""
   pass
 
-class CommitMapper(Singleton):
-  ###TODO Find a better docstring and/or name for this class.
-  """Provide bidirectional mapping between CVSRevisions and SVNCommits.
+class PersistenceManager(Singleton):
+  """The PersistenceManager allows us to effectively store SVNCommits
+  to disk and retrieve them later using only their subversion revision
+  number as the key.  It also returns the subversion revision number
+  for a given CVSRevision's unique key.
+
+  All information pertinent to each SVNCommit is stored in a series of
+  on-disk databases so that SVNCommits can be retrieved on-demand.
+
   CTX is the usual annoying semi-global ctx object, which may become a
   singleton very soon, grrr."""
   def init(self, ctx):
@@ -1939,9 +1944,9 @@ class CVSCommit:
       (meaning that some other file's first commit on the branch has
       already done the fill for us)."""
       if c_rev.rev.count('.') != c_rev.prev_rev.count('.'):
-        cm = CommitMapper()
-        svn_revnum = cm.get_svn_revnum(c_rev.unique_key(c_rev.prev_rev))
-        if svn_revnum > cm.last_filled.get(c_rev.branch_name, 0):
+        pm = PersistenceManager()
+        svn_revnum = pm.get_svn_revnum(c_rev.unique_key(c_rev.prev_rev))
+        if svn_revnum > pm.last_filled.get(c_rev.branch_name, 0):
           return 1
       return 0
 
@@ -2126,7 +2131,7 @@ class SVNCommit:
   def set_motivating_revnum(self, revnum):
     "Set self.motivating_revnum to REVNUM."
     self.motivating_revnum = revnum
-    CommitMapper(self._ctx).set_motivating_revnum(self.revnum, revnum)
+    PersistenceManager(self._ctx).set_motivating_revnum(self.revnum, revnum)
 
   def set_author(self, author):
     """Set this SVNCommit's author to AUTHOR (a locally-encoded string).
@@ -2189,12 +2194,12 @@ class SVNCommit:
   def flush(self):
     Log().write(LOG_VERBOSE, "Creating Subversion commit %d (%s)" 
                 % (self.revnum, self._description))
-    CommitMapper(self._ctx).set_cvs_revs(self.revnum, self.cvs_revs)
+    PersistenceManager(self._ctx).set_cvs_revs(self.revnum, self.cvs_revs)
 
     # If we're not a primary commit, then store our date and/or our
     # symbolic_name
     if not self._is_primary_commit():
-      CommitMapper(self._ctx).set_name_and_date(self.revnum,
+      PersistenceManager(self._ctx).set_name_and_date(self.revnum,
                                                 self.symbolic_name,
                                                 self._max_date)
 
@@ -3638,7 +3643,7 @@ def pass8(ctx):
   repos.add_delegate(StdoutDelegate())
 
   while(1):
-    svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
+    svn_commit = PersistenceManager(ctx).get_svn_commit(svncounter)
     if not svn_commit:
       break
     repos.commit(svn_commit)
@@ -3988,7 +3993,7 @@ def main():
     try: os.rmdir('cvs2svn.lock')
     except: pass
 
-    CommitMapper(ctx).cleanup()
+    PersistenceManager(ctx).cleanup()
 
   if ctx.mime_types_file:
     ctx.mime_mapper.print_missing_mappings()
