@@ -519,24 +519,19 @@ class CollectData(rcsparse.Sink):
     self.rev_data = { }
 
     # Maps revision number (key) to the revision number of the
-    # previous revision along this line of development (or None, if
-    # it's the first revision on this line of development).
+    # previous revision along this line of development.
     #
-    # First, note that the 'next' revision can't be determined
-    # arithmetically (due to cvsadmin -o, which is why this is
-    # necessary).
+    # For the first revision R on a branch, we consider the revision
+    # from which R sprouted to be the 'previous'.
+    #
+    # Note that this revision can't be determined arithmetically (due
+    # to cvsadmin -o, which is why this is necessary).
     self.prev_rev = { }
 
     # This dict is essentially self.prev_rev with the values mapped in
-    # the other diretion, so following key -> value will yield you the
-    # next revision number
+    # the other direction, so following key -> value will yield you
+    # the next revision number
     self.next_rev = { }
-
-    # The same as self.prev_rev except that for the first revision R
-    # on a branch, we consider the revision from which R sprouted to
-    # be the 'previous'.  Used for sanity checking in
-    # self.tree_completed.
-    self.prev = { }
 
     # Track the state of each revision so that in set_revision_info,
     # we can determine if our op is an add/change/delete.  We can do
@@ -740,36 +735,31 @@ class CollectData(rcsparse.Sink):
     # deltatext that you need this revision to retrieve.
     #
     # That said, we don't *want* RCS's behavior here, so we determine
-    # whether we're on trunk or a branch and set self.prev
+    # whether we're on trunk or a branch and set self.prev_rev
     # accordingly.
-
+    #
     # One last thing.  Note that if REVISION is a branch revision,
     # instead of mapping REVISION to NEXT, we instead map NEXT to
     # REVISION.  Since we loop over all revisions in the file before
     # doing anything with the data we gather here, this 'reverse
     # assignment' effectively does the following:
     #
-    # 1. Gives us no 'prev' or 'prev_rev' value for REVISION (in this
+    # 1. Gives us no 'prev' value for REVISION (in this
     # iteration... it may have been set in a previous iteration)
     #
-    # 2. Sets the 'prev' and 'prev_rev' value for the revision with
-    # number NEXT to REVISION.  So when we come around to the branch
-    # revision whose revision value is NEXT, its 'prev' and 'prev_rev'
-    # are already set.
+    # 2. Sets the 'prev' value for the revision with number NEXT to
+    # REVISION.  So when we come around to the branch revision whose
+    # revision value is NEXT, its 'prev' and 'prev_rev' are already
+    # set.
     if trunk_rev.match(revision):
-      self.prev[revision] = next
       self.prev_rev[revision] = next
       self.next_rev[next] = revision
     elif next:
-      self.prev[next] = revision
       self.prev_rev[next] = revision
       self.next_rev[revision] = next
 
-    ###TODO hurm... now prev_rev seems to be doing exactly what prev
-    ###is doing...can't we get rid of one of them?
     for b in branches:
       self.prev_rev[b] = revision
-      self.prev[b] = revision
 
     # Ratchet up the highest vendor head revision, if necessary.
     if self.default_branch:
@@ -820,7 +810,7 @@ class CollectData(rcsparse.Sink):
     # if we have to resync some nodes, then we restart the scan. just keep
     # looping as long as we need to restart.
     while 1:
-      for current, prev in self.prev.items():
+      for current, prev in self.prev_rev.items():
         if not prev:
           # no previous revision exists (i.e. the initial revision)
           continue
@@ -839,7 +829,7 @@ class CollectData(rcsparse.Sink):
             #         prev, time.ctime(t_p), time.ctime(t_c - 1))
 
             current = prev
-            prev = self.prev[current]
+            prev = self.prev_rev[current]
             if not prev:
               break
             t_c = t_c - 1		# self.rev_data[current][0]
@@ -5395,8 +5385,8 @@ def pass8(ctx):
   svncounter = 1
 
   # kff: toggle between these two lines to test the DumpfileDelegate or not
-  repos = SVNRepositoryMirror(ctx, StdoutDelegate())
-  # repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
+  #repos = SVNRepositoryMirror(ctx, StdoutDelegate())
+  repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
 
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
