@@ -2235,16 +2235,9 @@ class SVNCommit:
     self._log_msg = "This log message means an SVNCommit was used too soon."
     self._max_date = 0  # Latest date seen so far.
 
-    self.cvs_revs = cvs_revs
-    if cvs_revs is not None:
-      self.cvs_revs = cvs_revs
-    else:
-      self.cvs_revs = []
+    self.cvs_revs = cvs_revs or []
+    self.revnum = revnum or SVNRevNum().get_next_revnum()
 
-    if not revnum:
-      self.revnum = SVNRevNum().get_next_revnum()
-    else:
-      self.revnum = revnum
     # The symbolic name that is filled in this SVNCommit, if any
     self.symbolic_name = None
 
