@@ -2079,42 +2079,30 @@ class CVSCommit:
           return 1
       return 0
 
-    for c_rev in self.changes:
+    for c_rev in self.changes + self.deletes:
       # If a commit is on a branch, we must ensure that the branch
       # path being committed exists (in HEAD of the Subversion
       # repository).  If it doesn't exist, we will need to fill the
       # branch.  After the fill, the path on which we're committing
       # will exist.
-      if c_rev.branch_name: ###TODO collapse if clauses
-        ###TODO Check c_rev.op to see if we're an add!
-        if fill_needed(c_rev):
-          ### TODO: Possible correctness issue here.  If we have a
-          # branch with a single file on it, and that file was deleted
-          # in the previous CVS revision, and resurrected in this
-          # revision, we may not have anything to fill here, and thus,
-          # given the current state of the code, we're generating an
-          # empty SVN commit.  This is likely a rare edge case, and
-          # generating the empty commit isn't the end of the world,
-          # but hey, we're all idealists here, aren't we?
-          if ((not c_rev.branch_name in accounted_for_sym_names)
-              and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
-                                   % c_rev.branch_name)
-            svn_commit.set_symbolic_name(c_rev.branch_name)
-            self.secondary_commits.append(svn_commit)
-
-            accounted_for_sym_names.append(c_rev.branch_name)
-
-    for c_rev in self.deletes:
-      if c_rev.branch_name:
-        if fill_needed(c_rev):
-          if ((not c_rev.branch_name in accounted_for_sym_names)
-              and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
-                                   % c_rev.branch_name)
-            svn_commit.set_symbolic_name(c_rev.branch_name)
-            self.secondary_commits.append(svn_commit)
-            accounted_for_sym_names.append(c_rev.branch_name)
+      if c_rev.branch_name \
+          and c_rev.branch_name not in accounted_for_sym_names \
+          and c_rev.branch_name not in self.done_symbols \
+          and fill_needed(c_rev):
+        ###TODO Is this TODO valid? Check c_rev.op to see if we're an add!
+        ### TODO: Possible correctness issue here.  If we have a
+        # branch with a single file on it, and that file was deleted
+        # in the previous CVS revision, and resurrected in this
+        # revision, we may not have anything to fill here, and thus,
+        # given the current state of the code, we're generating an
+        # empty SVN commit.  This is likely a rare edge case, and
+        # generating the empty commit isn't the end of the world,
+        # but hey, we're all idealists here, aren't we?
+        svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
+                               % c_rev.branch_name)
+        svn_commit.set_symbolic_name(c_rev.branch_name)
+        self.secondary_commits.append(svn_commit)
+        accounted_for_sym_names.append(c_rev.branch_name)
 
   def _commit(self):
     """Generates the primary SVNCommit that corresponds the this
