@@ -30,7 +30,7 @@ import getopt
 import stat
 import string
 import md5
-import anydbm
+import bsddb
 import marshal
 
 # Warnings and errors start with these strings.  They are typically
@@ -42,15 +42,6 @@ error_prefix = "Error"
 if sys.hexversion < 0x2000000:
   sys.stderr.write("'%s: Python 2.0 or higher required, "
                    "see www.python.org.\n" % error_prefix)
-  sys.exit(1)
-
-# Don't settle for less.
-if (anydbm._defaultmod.__name__ == 'dumbdbm'
-    or anydbm._defaultmod.__name__ == 'dbm'):
-  print 'ERROR: your installation of Python does not contain a proper'
-  print '  DBM module. This script cannot continue.'
-  print '  to solve: see http://python.org/doc/current/lib/module-anydbm.html'
-  print '  for details.'
   sys.exit(1)
 
 trunk_rev = re.compile('^[0-9]+\\.[0-9]+$')
@@ -155,11 +146,12 @@ DIGEST_END_IDX = 9 + (sha.digestsize * 2)
 symbolic_name_re = re.compile('^[a-zA-Z].*$')
 symbolic_name_transtbl = string.maketrans('/\\',',;')
 
-# A wrapper for anydbm that uses the marshal module to store items as
+# A wrapper for bsddb that uses the marshal module to store items as
 # strings.
 class Database:
+  cache_size = 1024 * 1024 * 100 # 100MB cache
   def __init__(self, filename, mode):
-    self.db = anydbm.open(filename, mode)
+    self.db = bsddb.btopen(filename, mode, 0666, 0, self.cache_size)
 
   def has_key(self, key):
     return self.db.has_key(key)
