@@ -41,7 +41,7 @@ question is where the branch is rooted for each file.
               sub1/sub2/nine.txt and sub1/sub2/ten.txt, where it
               sprouts from BRANCH_1.  This is an even division in
               sub1/sub2/, since it sprouts from trunk on two files
-              ('seven.txt' and 'eight.txt') and from BRANCH one on the
+              ('seven.txt' and 'eight.txt') and from BRANCH_1 on the
               other two ('nine.txt' and 'ten.txt').
 
     BRANCH_6: Sprouts from trunk everywhere except for
