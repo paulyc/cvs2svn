@@ -152,12 +152,23 @@ SVN_REPOSITORY_HEAD_DB = 'cvs2svn-repository-head.db'
 CVS_REVS_TO_SVN_REVNUMS = 'cvs2svn-cvs-revs-to-svn-revnums.db'
 SVN_REVNUMS_TO_CVS_REVS = 'cvs2svn-svn-revnums-to-cvs-revs.db'
 
-# This database maps svn_revnums to the corresponding symbolic name
-# that is filled in the SVNCommit that corresponds to that svn_revnum.
-SVN_COMMIT_NAMES = 'cvs2svn-svn-commit-names.db'
+# This database maps svn_revnums to tuples of (symbolic_name, date).
+#
+# The svn_revnums are the revision numbers of all non-primary
+# SVNCommits.  No primary SVNCommit has a key in this database.
+#
+# The date is stored for all commits in this database.
+#
+# For commits that fill symbolic names, the symbolic_name is stored.
+# For commits that default branch syncs, the symbolic_name is None.
+SVN_COMMIT_NAMES_DATES = 'cvs2svn-svn-commit-names-and-dates.db'
 
 # This database maps svn_revnums of a default branch synchronization
 # commit to the svn_revnum of the primary SVNCommit that motivated it.
+#
+# (NOTE: Secondary commits that fill branches and tags also have a
+# motivating commit, but we do not record it because it is (currently)
+# not needed for anything.)
 #
 # This mapping is used when generating the log message for the commit
 # that synchronizes the default branch with trunk.
@@ -3653,8 +3664,8 @@ class CommitMapper(Singleton):
     Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8)
     self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, 'c')
     Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
-    self.svn_commit_names = Database(SVN_COMMIT_NAMES, 'c')
-    Cleanup().register(SVN_COMMIT_NAMES, pass8)
+    self.svn_commit_names_dates = Database(SVN_COMMIT_NAMES_DATES, 'c')
+    Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8)
     self.motivating_revnums = Database(MOTIVATING_REVNUMS, 'c')
     Cleanup().register(MOTIVATING_REVNUMS, pass8)
     self.svn_commit_metadata = Database(METADATA_DB, 'r')
@@ -3711,7 +3722,7 @@ class CommitMapper(Singleton):
         svn_commit.set_author(author)
         svn_commit.set_log_msg(log_msg)
 
-    name = self.svn_commit_names.get(str(svn_revnum), None)
+    name, date = self._get_name_and_date(svn_revnum)
     if name:
       svn_commit.set_symbolic_name(name)
       svn_commit.set_author(self._ctx.username)
@@ -3720,8 +3731,7 @@ class CommitMapper(Singleton):
       else:
         msg = self._manufacture_log_msg(name)
       svn_commit.set_log_msg(msg)
-      ###TODO kff: need a real date here, of course.
-      svn_commit.set_date(0)
+      svn_commit.set_date(date)
 
     motivating_revnum = self.motivating_revnums.get(str(svn_revnum), None)
     if motivating_revnum:
@@ -3735,8 +3745,7 @@ class CommitMapper(Singleton):
             'branches.\n' % motivating_revnum
       svn_commit.set_author(self._ctx.username)
       svn_commit.set_log_msg(msg)
-      ###TODO kff: need a real date here, of course.
-      svn_commit.set_date(0)
+      svn_commit.set_date(date)
 
     if len(svn_commit.cvs_revs) and name:
       msg = """An SVNCommit cannot have cvs_revisions *and* a
@@ -3755,9 +3764,15 @@ class CommitMapper(Singleton):
     for c_rev in cvs_revs:
       self.cvs2svn_db[c_rev.unique_key()] = svn_revnum
 
-  def set_name(self, svn_revnum, name):
-    """Store NAME as the value of SVN_REVNUM"""
-    self.svn_commit_names[str(svn_revnum)] = name
+  def set_name_and_date(self, svn_revnum, name, date):
+    """Associate symbolic name NAME and DATE with SVN_REVNUM."""
+    self.svn_commit_names_dates[str(svn_revnum)] = (name, date)
+
+  def _get_name_and_date(self, svn_revnum):
+    """Return a tuple containing the symbolic name and date associated
+    with SVN_REVNUM, or (None, None) if SVN_REVNUM has no such data
+    associated with it."""
+    return self.svn_commit_names_dates.get(str(svn_revnum), (None, None))
 
   def set_motivating_revnum(self, svn_revnum, motivating_revnum):
     """Store MOTIVATING_REVNUM as the value of SVN_REVNUM"""
@@ -3954,7 +3969,7 @@ class CVSCommit:
             svn_commit = SVNCommit(self._ctx, "pre-commit branch DELETE '%s'"
                                    % c_rev.branch_name)
             svn_commit.set_symbolic_name(c_rev.branch_name)
-            svn_commit.flush()
+            self.secondary_commits.append(svn_commit)
             accounted_for_sym_names.append(c_rev.branch_name)
         else:
           RepositoryBranchesInHead().remove_path(c_rev.svn_path)
@@ -4049,6 +4064,14 @@ class CVSCommit:
       self.secondary_commits.append(svn_commit)
 
   def process_revisions(self, ctx, done_symbols):
+    """Process all the CVSRevisions that this instance has, creating
+    one or more SVNCommits in the process.  Generate fill SVNCommits
+    only for symbols not in DONE_SYMBOLS (avoids unnecessary
+    fills).
+
+    Return the primary SVNCommit that corresponds to this CVSCommit.
+    The returned SVNCommit is the commit that motivated any other
+    SVNCommits generated in this CVSCommit."""
     self.done_symbols = done_symbols
     seconds = self.t_max - self.t_min
     print ('CVS Revision grouping: %s, over %d seconds'
@@ -4064,6 +4087,8 @@ class CVSCommit:
     for svn_commit in self.secondary_commits:
       svn_commit.set_date(self.motivating_commit.get_date())
       svn_commit.flush()
+
+    return self.motivating_commit
 
 
 class SVNCommit:
@@ -4129,7 +4154,6 @@ class SVNCommit:
     "Set self.symbolic_name to NAME."
     name = _clean_symbolic_name(name)
     self.symbolic_name = name
-    CommitMapper(self._ctx).set_name(self.revnum, name)
 
   def set_motivating_revnum(self, revnum):
     "Set self.motivating_revnum to REVNUM."
@@ -4185,9 +4209,20 @@ class SVNCommit:
     if cvs_rev.timestamp > self._max_date:
       self._max_date = cvs_rev.timestamp
 
+  def _is_primary_commit(self):
+    """Return true if this is a primary SVNCommit, false otherwise."""
+    return not (self.symbolic_name or self.motivating_revnum)
+
   def flush(self):
     print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self._description)
     CommitMapper(self._ctx).set_cvs_revs(self.revnum, self.cvs_revs)
+
+    # If we're not a primary commit, then store our date and/or our
+    # symbolic_name
+    if not self._is_primary_commit():
+      CommitMapper(self._ctx).set_name_and_date(self.revnum,
+                                                self.symbolic_name,
+                                                self._max_date)
 
   def __str__(self):
     """ Print a human-readable description of this SVNCommit.  This
@@ -4216,7 +4251,7 @@ class SVNRevNum(Singleton):
 
 class CVSRevisionAggregator:
   """This class groups CVSRevisions into CVSCommits that represent
-  at least one SVNRevision."""
+  at least one SVNCommit."""
   def __init__(self, ctx):
     self._ctx = ctx
     self.metadata_db = Database(METADATA_DB, 'r')
@@ -4232,6 +4267,13 @@ class CVSRevisionAggregator:
     # final fill for this symbol has been done, and we never need to
     # fill it again.
     self.done_symbols = [ ]
+
+    # This variable holds the most recently created primary svn_commit
+    # object.  CVSRevisionAggregator maintains this variable merely
+    # for its date, so that it can set dates for the SVNCommits
+    # created in self.attempt_to_commit_symbols().
+    self.latest_primary_svn_commit = None
+
 
   def process_revision(self, c_rev):
     # Each time we read a new line, we scan the commits we've
@@ -4279,12 +4321,13 @@ class CVSRevisionAggregator:
     # Make sure we attempt_to_commit_symbols for this c_rev, even if no
     # commits are ready.
     if len(ready_queue) == 0:
-      self.attempt_to_commit_symbols(ready_queue, c_rev, ) 
+      self.attempt_to_commit_symbols(ready_queue, c_rev) 
 
     for cvs_commit in ready_queue[:]:
-      cvs_commit.process_revisions(self._ctx, self.done_symbols)
+      self.latest_primary_svn_commit \
+          = cvs_commit.process_revisions(self._ctx, self.done_symbols)
       ready_queue.remove(cvs_commit)
-      self.attempt_to_commit_symbols(ready_queue, c_rev, ) 
+      self.attempt_to_commit_symbols(ready_queue, c_rev) 
 
   def flush(self):
     """Commit anything left in self.cvs_commits."""
@@ -4295,7 +4338,8 @@ class CVSRevisionAggregator:
 
     ready_queue.sort()
     for cvs_commit_tuple in ready_queue[:]:
-      cvs_commit_tuple[0].process_revisions(self._ctx, self.done_symbols)
+      self.latest_primary_svn_commit = \
+        cvs_commit_tuple[0].process_revisions(self._ctx, self.done_symbols)
       ready_queue.remove(cvs_commit_tuple)
       del self.cvs_commits[cvs_commit_tuple[1]]
       self.attempt_to_commit_symbols([]) 
@@ -4336,6 +4380,7 @@ class CVSRevisionAggregator:
         continue
       svn_commit = SVNCommit(self._ctx, "closing tag/branch '%s'" % sym)
       svn_commit.set_symbolic_name(sym)
+      svn_commit.set_date(self.latest_primary_svn_commit.get_date())
       svn_commit.flush()
       self.done_symbols.append(sym)
       del self.pending_symbols[sym]

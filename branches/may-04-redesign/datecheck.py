@@ -35,6 +35,10 @@ import time
 line = sys.stdin.readline()
 last_date = 0
 while line:
+
+  if not line[0] == 'r':
+    continue
+  
   # This may get some trailing whitespace for small revision numbers,
   # but that's okay, we want our output to look tabular anyway.
   revstr = line [0:4]
