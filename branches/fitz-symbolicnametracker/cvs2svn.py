@@ -1936,7 +1936,7 @@ class SymbolicNameTracker:
     """Helper for jit_score_node.  Recursively copies START node and
     all nodes under it from SRC to DST."""
     dst[start] = src[start] 
-    for k, v in src[start].items(): # dup read of prev line
+    for k, v in dst[start].items():
       if k[0] == '/': #Skip flags
         continue
       self.copy_node_tree(src, dst, v)
