@@ -3328,7 +3328,8 @@ class SymbolicNameFillingGuide:
 
   After calling self.register() on a series of openings and closings,
   call self.make_node_tree() to prepare self.node_tree for
-  examination.
+  examination.  See the docstring for self.make_node_tree() for
+  details on the structure of self.node_tree.
 
   By walking self.node_tree and calling self.get_best_revnum() on each
   node, the caller can determine what subversion revision number to
@@ -3540,8 +3541,13 @@ class SymbolicNameFillingGuide:
 
   def make_node_tree(self):
     """Generates the SymbolicNameFillingGuide's node tree from
-    self.things.  Each leaf node contains the opening and (optionally)
-    closing for the path that ends in that leaf node."""
+    self.things.  Each leaf node maps self.opening_key to the earliest
+    subversion revision from which this node/path may be copied; and
+    optionally map self.closing_key to the subversion revision one
+    higher than the last revision from which this node/path may be
+    copied.  Intermediate nodes never contain opening or closing
+    flags."""
+
     for svn_path, open_close in self.things.items():
       parent_key = self.root_key
 
@@ -4742,7 +4748,7 @@ class SVNRepositoryMirror:
     by recursive calls."""
 
     parent_key = key
-    for entry, key in symbol_fill.node_tree[key].items():
+    for entry, key in symbol_fill.node_tree[parent_key].items():
 
       if entry[0] == '/': #Skip flags
         continue
@@ -4767,10 +4773,28 @@ class SVNRepositoryMirror:
         # here--our parent's copy already has everything we need.
         # Just continue bubbling down.
         if src_revnum != preferred_revnum:
-          self.copy_path(src_path_so_far, dest_path, src_revnum)
+          # Do the copy
+          new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
+          # Delete invalid entries that got swept in by the copy.
+          valid_entries = symbol_fill.node_tree[key]
+          bad_entries = self._get_invalid_entries(valid_entries, new_entries)
+          
+          for entry in bad_entries:
+            del_path = dest_path + '/' + entry
+            self.delete_path(del_path)
 
-        # TODO Manage deletes (prunes) (which calls the delegate)
       self._fill(symbol_fill, key, name, src_path_so_far, src_revnum)
+
+  def _get_invalid_entries(self, valid_entries, all_entries):
+    """Return a list of keys in ALL_ENTRIES that do not occur in
+    VALID_ENTRIES.  Ignore any key that begins with '/'."""
+    bogons = [ ]
+    for key in all_entries.keys():
+      if key[0] == '/':
+        continue
+      if not valid_entries.has_key(key):
+        bogons.append(key)
+    return bogons
 
   def _open_path(self, path):
     """Open a chain of mutable nodes for PATH from the youngest
@@ -4806,8 +4830,10 @@ class SVNRepositoryMirror:
     DEST_PATH.
 
     In the youngest revision of the repository, DEST_PATH's parent
-    *must* exist, but DEST_PATH *cannot* exist"""
+    *must* exist, but DEST_PATH *cannot* exist.
 
+    Return the contents of the new node at DEST_PATH as a dictionary.
+    """
     # get the contents of the node of our src_path
     ign, src_node_contents = self._node_for_path(src_path, src_revnum)
     # get the dest node from self.youngest--it will always be mutable.
@@ -4836,6 +4862,7 @@ class SVNRepositoryMirror:
     dest_node_contents[dest_basename] = key
     self.nodes_db[dest_node_key] = dest_node_contents
     self.delegate.copy_path(src_path, dest_path, src_revnum)
+    return new_node
 
   def _node_for_path(self, path, revnum, ignore_leaf=None):
     """Locates the node key in the filesystem for the last element of
