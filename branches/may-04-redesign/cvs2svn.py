@@ -2055,31 +2055,6 @@ class CVSCommit:
 
     self.files[c_rev.fname] = 1
 
-  def _get_properties(self, c_rev):
-    # we already have the date, so just format it
-    date = format_date(self.t_max)
-    try: 
-      ### FIXME: The 'replace' behavior should be an option, like
-      ### --encoding is.
-      unicode_author = unicode(self.author, ctx.encoding, 'replace')
-      unicode_log = unicode(self.log, ctx.encoding, 'replace')
-      props = { 'svn:author' : unicode_author.encode('utf8'),
-                'svn:log' : unicode_log.encode('utf8'),
-                'svn:date' : date }
-    except UnicodeError:
-      print '%s: problem encoding author or log message:' % warning_prefix
-      print "  author: '%s'" % self.author
-      print "  log:    '%s'" % self.log
-      print "  date:   '%s'" % date
-      for c_rev in self.changes:
-        print "    rev %s of '%s'" % (c_rev.rev, c_rev.fname)
-      print "Consider rerunning with (for example) '--encoding=latin1'."
-      # Just fall back to the original data.
-      props = { 'svn:author' : self.author,
-                'svn:log' : self.log,
-                'svn:date' : date }
-    return props
-
   def _pre_commit(self):    
     """Generates any SVNCommits that must exist before the main
     commit."""
@@ -2346,6 +2321,8 @@ class SVNCommit:
       print "  date:   '%s'" % date
       print "(for rev %s of '%s')" % (cvs_rev.rev, cvs_rev.fname)
       print "Consider rerunning with (for example) '--encoding=latin1'."
+      ### TODO: Is falling back to the original (unknown encoding) data
+      ### *really* a good idea?
       return { 'svn:author' : self._author,
                'svn:log'    : self._log_msg,
                'svn:date'   : date }
