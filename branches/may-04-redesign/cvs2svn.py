@@ -102,6 +102,11 @@ SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
 NODES_DB = 'cvs2svn-nodes.db'
 
+# Offsets pointing to the beginning of each SYMBOLIC_NAME in
+# SYMBOL_OPENINGS_CLOSINGS_SORTED
+SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
+
+
 # Maps CVSRevision.unique_key()s to lists of symbolic names, where
 # the CVSRevision is the last such that is a source for those symbolic
 # names.  For example, if branch B's number is 1.3.0.2 in this CVS
@@ -2995,8 +3000,38 @@ def pass6(ctx):
   Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
   pass
 
+
+def generate_offsets_for_symbolings():
+  """This function iterates through all the lines in
+  SYMBOL_OPENINGS_CLOSINGS_SORTED, writing out a file mapping
+  SYMBOLIC_NAME to the file offset in SYMBOL_OPENINGS_CLOSINGS_SORTED
+  where SYMBOLIC_NAME is first encountered.  This will allow us to
+  seek to the various offsets in the file and sequentially read only
+  the openings and closings that we need."""
+
+  ###TODO This is a fine example of a db that can be in-memory and
+  #just flushed to disk when we're done.  Later, it can just be sucked
+  #back into memory.
+  ###TODO we need to make sure that this file is deleted before
+  ###starting this pass.  Find a better way. :)
+  if os.path.isfile(SYMBOL_OFFSETS_DB):
+    os.unlink(SYMBOL_OFFSETS_DB)
+  offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
+  
+  file = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
+  old_sym = ""
+  while 1:
+    line = file.readline()
+    if not line:
+      break
+    sym, svn_revnum, cvs_rev_key = line.split(" ", 2)
+    if not sym == old_sym:
+      print sym
+      old_sym = sym
+      offsets_db[sym] = file.tell() - len(line) + 1
+
 def pass7(ctx):
-  pass
+  generate_offsets_for_symbolings()
 
 ###TODO move this stuff out of here! pass8 should be here.
 class RepositoryHead(Singleton):
