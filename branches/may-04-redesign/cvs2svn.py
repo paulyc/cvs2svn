@@ -598,6 +598,9 @@ class CVSRevision:
     else:
       return rcs_path, None
 
+  def filename(self):
+    "Return the last path component of self.fname."
+    return self.fname.split('/')[-1][:-2]
 
 class CollectData(rcsparse.Sink):
   def __init__(self, ctx):
@@ -1751,7 +1754,7 @@ class PersistenceManager(Singleton):
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
     was committed."""
-    return int(self.cvs2svn_db[cvs_rev_unique_key])
+    return int(self.cvs2svn_db.get(cvs_rev_unique_key, SVN_INVALID_REVNUM))
 
   def get_svn_commit(self, svn_revnum):
     """Return an SVNCommit that corresponds to SVN_REVNUM.
@@ -2042,12 +2045,36 @@ class CVSCommit:
         if c_rev.is_default_branch_revision():
           self.default_branch_cvs_revisions.append(c_rev)
 
-    for c_rev in self.deletes:
+    # Utility function for the loop over self.deletes.
+    def add_revision(c_rev):
       svn_commit.add_revision(c_rev)
       if c_rev.is_default_branch_revision():
         self.default_branch_cvs_revisions.append(c_rev)
 
-    svn_commit.flush()
+    for c_rev in self.deletes:
+      # When a file is added on a branch, CVS not only adds the file
+      # on the branch, but generates a trunk revision (typically
+      # 1.1) for that file in state 'dead'.  We only want to add
+      # this revision if the log message is not the standard cvs
+      # fabricated log message.
+      if c_rev.prev_rev is None:
+        cvs_generated_msg = ('file %s was initially added on branch %s.\n'
+                             % (c_rev.filename(),
+                                c_rev.branches[0]))
+        author, log_msg = PersistenceManager().svn_commit_metadata[c_rev.digest]
+        if not log_msg == cvs_generated_msg:
+          add_revision(c_rev)
+      else:
+        add_revision(c_rev)
+
+    # There is a slight chance that we didn't actually register any
+    # CVSRevisions with our SVNCommit (see loop over self.deletes
+    # above), so if we have no CVSRevisions, we don't flush the
+    # svn_commit to disk and roll back our revnum.
+    if len(svn_commit.cvs_revs) > 0:
+      svn_commit.flush()
+    else:
+      SVNRevNum().rollback_revnum()
 
     if not self._ctx.trunk_only:    
       for c_rev in self.revisions():
@@ -2317,6 +2344,9 @@ class SVNRevNum(Singleton):
     self.revnum = self.revnum + 1
     return self.revnum
 
+  def rollback_revnum(self):
+    "Decrement the Subversion revision number."
+    self.revnum = self.revnum - 1
 
 class CVSRevisionAggregator:
   """This class groups CVSRevisions into CVSCommits that represent

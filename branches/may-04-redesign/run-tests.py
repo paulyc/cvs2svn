@@ -488,7 +488,7 @@ def prune_with_care():
       print "Revision %d failed to remove '%s'." % (rev, path)
       raise svntest.Failure
 
-  rev = 47
+  rev = 46
   for path in ('/trunk/full-prune-reappear',
                '/trunk/full-prune-reappear/appears-later'):
     if not (logs[rev].changed_paths.get(path) == 'A'):
@@ -502,7 +502,7 @@ def interleaved_commits():
   repos, wc, logs = ensure_conversion('main')
 
   # The initial import.
-  rev = 37
+  rev = 36
   for path in ('/trunk/interleaved',
                '/trunk/interleaved/1',
                '/trunk/interleaved/2',
@@ -666,7 +666,7 @@ def simple_branch_commits():
   # See test-data/main-cvsrepos/proj/README.
   repos, wc, logs = ensure_conversion('main')
 
-  rev = 35
+  rev = 34
   if not logs[rev].changed_paths == {
     '/branches/B_MIXED/proj/default': 'M',
     '/branches/B_MIXED/proj/sub1/default': 'M',
@@ -702,16 +702,9 @@ def mixed_time_branch_with_added_file():
   # See test-data/main-cvsrepos/proj/README.
   repos, wc, logs = ensure_conversion('main')
 
-  # Empty revision, purely to store the log message of the dead 1.1 revision
-  # required by the RCS file format
-  # NOTE: This log message is created by CVS when the file
-  # branch_B_MIXED_only is added to the branch
-  check_rev(logs, 32, 'file branch_B_MIXED_only was initially added on '
-      'branch B_MIXED.', {})
-
   # A branch from the same place as T_MIXED in the previous test,
   # plus a file added directly to the branch
-  check_rev(logs, 33, sym_log_msg('B_MIXED'), {
+  check_rev(logs, 32, sym_log_msg('B_MIXED'), {
     '/branches/B_MIXED (from /trunk:30)': 'A',
     '/branches/B_MIXED/partial-prune': 'D',
     '/branches/B_MIXED/single-files': 'D',
@@ -720,7 +713,7 @@ def mixed_time_branch_with_added_file():
     '/branches/B_MIXED/proj/sub3 (from /trunk/proj/sub3:29)': 'R',
     })
 
-  check_rev(logs, 34, 'Add a file on branch B_MIXED.', {
+  check_rev(logs, 33, 'Add a file on branch B_MIXED.', {
     '/branches/B_MIXED/proj/sub2/branch_B_MIXED_only': 'A',
     })
 
@@ -730,7 +723,7 @@ def mixed_commit():
   # See test-data/main-cvsrepos/proj/README.
   repos, wc, logs = ensure_conversion('main')
 
-  check_rev(logs, 36, 'A single commit affecting one file on branch B_MIXED '
+  check_rev(logs, 35, 'A single commit affecting one file on branch B_MIXED '
       'and one on trunk.', {
     '/trunk/proj/sub2/default': 'M',
     '/branches/B_MIXED/proj/sub2/branch_B_MIXED_only': 'M',
@@ -742,15 +735,16 @@ def split_time_branch():
   # See test-data/main-cvsrepos/proj/README.
   repos, wc, logs = ensure_conversion('main')
 
+  rev = 41
   # First change on the branch, creating it
-  check_rev(logs, 42, sym_log_msg('B_SPLIT'), {
-    '/branches/B_SPLIT (from /trunk:36)': 'A',
+  check_rev(logs, rev, sym_log_msg('B_SPLIT'), {
+    '/branches/B_SPLIT (from /trunk:35)': 'A',
     '/branches/B_SPLIT/partial-prune': 'D',
     '/branches/B_SPLIT/single-files': 'D',
     '/branches/B_SPLIT/proj/sub1/subsubB': 'D',
     })
 
-  check_rev(logs, 43, 'First change on branch B_SPLIT.', {
+  check_rev(logs, rev + 1, 'First change on branch B_SPLIT.', {
     '/branches/B_SPLIT/proj/default': 'M',
     '/branches/B_SPLIT/proj/sub1/default': 'M',
     '/branches/B_SPLIT/proj/sub1/subsubA/default': 'M',
@@ -759,17 +753,17 @@ def split_time_branch():
     })
 
   # A trunk commit for the file which was not branched
-  check_rev(logs, 44, 'A trunk change to sub1/subsubB/default.  '
+  check_rev(logs, rev + 2, 'A trunk change to sub1/subsubB/default.  '
       'This was committed about an', {
     '/trunk/proj/sub1/subsubB/default': 'M',
     })
 
   # Add the file not already branched to the branch, with modification:w
-  check_rev(logs, 45, sym_log_msg('B_SPLIT'), {
-    '/branches/B_SPLIT/proj/sub1/subsubB (from /trunk/proj/sub1/subsubB:44)': 'A',
+  check_rev(logs, rev + 3, sym_log_msg('B_SPLIT'), {
+    '/branches/B_SPLIT/proj/sub1/subsubB (from /trunk/proj/sub1/subsubB:43)': 'A',
     })
 
-  check_rev(logs, 46, 'This change affects sub3/default and '
+  check_rev(logs, rev + 4, 'This change affects sub3/default and '
       'sub1/subsubB/default, on branch', {
     '/branches/B_SPLIT/proj/sub1/subsubB/default': 'M',
     '/branches/B_SPLIT/proj/sub3/default': 'M',
@@ -1297,9 +1291,27 @@ def no_spurious_svn_commits():
   repos, wc, logs = ensure_conversion('phoenix')
 
   # Check spurious commit that could be created in CVSCommit._pre_commit
-  check_rev(logs, 18, 'File added on branch xiphophorus', {
+  #   (When you add a file on a branch, CVS creates a trunk revision
+  #   in state 'dead'.  If the log message of that commit is equal to
+  #   the one that CVS generates, we do not ever create a 'fill'
+  #   SVNCommit for it.)
+  #
+  # and spurious commit that could be created in CVSCommit._commit
+  #   (When you add a file on a branch, CVS creates a trunk revision
+  #   in state 'dead'.  If the log message of that commit is equal to
+  #   the one that CVS generates, we do not create a primary SVNCommit
+  #   for it.)
+  check_rev(logs, 17, 'File added on branch xiphophorus', {
     '/branches/xiphophorus/added-on-branch.txt' : 'A',
     })
+
+  # Check to make sure that a commit *is* generated:
+  #   (When you add a file on a branch, CVS creates a trunk revision
+  #   in state 'dead'.  If the log message of that commit is NOT equal
+  #   to the one that CVS generates, we create a primary SVNCommit to
+  #   serve as a home for the log message in question.
+  check_rev(logs, 18, 'file added-on-branch2.txt was initially added on '
+            + 'branch xiphophorus,\nand this log message was tweaked', {})
 
 def peer_path_pruning():
   "make sure that filling prunes paths correctly"
