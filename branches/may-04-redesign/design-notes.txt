@@ -64,7 +64,7 @@ The fields are:
 
    1.  a fixed-width timestamp
    2.  a digest of the log message + author
-   3.  the type of change ("C"hange, or "D"elete)
+   3.  the type of change ("A"dd, "C"hange, or "D"elete)
    4.  the revision number of the previous revision along this line of
        development (or "*", if it's the first revision on this line of
        development).

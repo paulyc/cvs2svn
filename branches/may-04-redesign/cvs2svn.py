@@ -525,6 +525,15 @@ class CollectData(rcsparse.Sink):
     # self.tree_completed.
     self.prev = { }
 
+    # Track the state of each revision so that in set_revision_info,
+    # we can determine if our op is an add/change/delete.  We can do
+    # this because in set_revision_info, we'll have all of the
+    # revisions for a file at our fingertips, and we need to examine
+    # the state of our prev_rev to determine if we're an add or a
+    # change--without the state of the prev_rev, we are unable to
+    # distinguish between an add and a change.
+    self.rev_state = { }
+
     # Hash mapping branch numbers, like '1.7.2', to branch names,
     # like 'Release_1_0_dev'.
     self.branch_names = { }
@@ -687,11 +696,9 @@ class CollectData(rcsparse.Sink):
 
   def define_revision(self, revision, timestamp, author, state,
                       branches, next):
-    ### what else?
-    if state == 'dead':
-      op = OP_DELETE
-    else:
-      op = OP_CHANGE
+
+    # Record the state of our revision for later calculations
+    self.rev_state[revision] = state
 
     # Check that this revision is not on a branch that has been forced
     # to be a tag.
@@ -706,7 +713,7 @@ class CollectData(rcsparse.Sink):
       self.forced_tag_error_branches.append(branch_rev)
 
     # store the rev_data as a list in case we have to jigger the timestamp
-    self.rev_data[revision] = [int(timestamp), author, op, None]
+    self.rev_data[revision] = [int(timestamp), author, None]
 
     # When on trunk, the RCS 'next' revision number points to what
     # humans might consider to be the 'previous' revision number.  For
@@ -809,7 +816,7 @@ class CollectData(rcsparse.Sink):
           # may need to shift).
           while t_p >= t_c:
             self.rev_data[prev][0] = t_c - 1	# new timestamp
-            self.rev_data[prev][3] = t_p	# old timestamp
+            self.rev_data[prev][2] = t_p	# old timestamp
 
             #print "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
             #      % (relative_name(self.cvsroot, self.fname),
@@ -829,7 +836,7 @@ class CollectData(rcsparse.Sink):
         return
 
   def set_revision_info(self, revision, log, text):
-    timestamp, author, op, old_ts = self.rev_data[revision]
+    timestamp, author, old_ts = self.rev_data[revision]
     digest = sha.new(log + '\0' + author).hexdigest()
     if old_ts:
       # the timestamp on this revision was changed. log it for later
@@ -849,6 +856,24 @@ class CollectData(rcsparse.Sink):
       rel_name = relative_name(self.cvsroot, self.fname)[:-2]
       if self.default_branches_db.has_key(rel_name):
         del self.default_branches_db[rel_name]
+
+    # How to tell if a CVSRevision is an add, a change, or a deletion:
+    #
+    # It's a delete if RCS state is 'dead'
+    #
+    # It's an add if RCS state is 'Exp.' and 
+    #      - we either have no previous revision
+    #        or 
+    #      - we have a previous revision whose state is 'dead'
+    # 
+    # Anything else is a change.
+    if self.rev_state[revision] == 'dead':
+      op = OP_DELETE
+    elif ((self.prev_rev.get(revision, None) is None)
+          or (self.rev_state[self.prev_rev[revision]] == 'dead')):
+      op = OP_ADD
+    else:
+      op = OP_CHANGE
 
     if text:
       deltatext_code = DELTATEXT_NONEMPTY
@@ -3206,6 +3231,9 @@ def pass7(ctx):
   generate_offsets_for_symbolings()
 
 ###TODO move this stuff out of here! pass8 should be here.
+
+###TODO Now that we're determining change/add/delete in the revs file,
+# do we even need this anymore?
 class RepositoryHead(Singleton):
   # We're a singleton, so we use init, not __init__
   def init(self):
@@ -3387,11 +3415,12 @@ class CVSCommit:
     if c_rev.timestamp > self.t_max:
       self.t_max = c_rev.timestamp
 
-    if c_rev.op == OP_CHANGE:
-      self.changes.append(c_rev)
-    else:
-      # OP_DELETE
+    if c_rev.op == OP_DELETE:
       self.deletes.append(c_rev)
+    else:
+      # OP_CHANGE or OP_ADD
+      self.changes.append(c_rev)
+
     self.files[c_rev.fname] = 1
 
   def _get_properties(self, c_rev):
@@ -3449,6 +3478,7 @@ class CVSCommit:
       # branch.  After the fill, the path on which we're committing
       # will exist.
       if c_rev.branch_name: ###TODO collapse if clauses
+        ###TODO Check c_rev.op to see if we're an add!
         if not RepositoryHead().has_path(c_rev.svn_path):
           ### TODO: Possible correctness issue here.  If we have a
           # branch with a single file on it, and that file was deleted
@@ -3472,6 +3502,7 @@ class CVSCommit:
     ### lists
     for c_rev in self.deletes:
       if c_rev.branch_name:
+        ###TODO Check c_rev.op to see if we're an add!
         if not RepositoryHead().has_path(c_rev.svn_path):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
