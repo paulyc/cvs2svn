@@ -3717,8 +3717,38 @@ class DumpfileDelegate(SVNRepositoryDelegate):
 
 class StdoutDelegate(SVNRepositoryDelegate):
   """Makes no changes to the disk, but writes out information to
-  STDOUT about what the SVNRepositoryMirror is doing."""
-  pass
+  STDOUT about what the SVNRepositoryMirror is doing.  Of course, our
+  print statements will state that we're doing something, when in
+  reality, we aren't doing anything other than printing out that we're
+  doing something.  Kind of zen, really."""
+  def __init__(self):
+    print "Starting Subversion repository."
+
+  def start_commit(self, svn_revnum):
+    """Prints out the Subversion revision number of the commit that is
+    being started."""
+    print "  Starting Subversion commit", self.mirror.current_revnum
+
+  def add_path(self, c_rev):
+    """Print a line stating that we are 'adding' c_rev.svn_path."""
+    print "    Adding", c_rev.svn_path
+
+  def change_path(self, c_rev):
+    """Print a line stating that we are 'changing' c_rev.svn_path."""
+    print "    Changing", c_rev.svn_path
+
+  def delete_path(self, c_rev):
+    """Print a line stating that we are 'deleting' c_rev.svn_path."""
+    print "    Deleting", c_rev.svn_path
+  
+  def copy_path(self, c_rev):
+    """Print a line stating that we are 'copying' c_rev.svn_path."""
+    ###TODO WHERE IN THE SAM HILL ARE WE COPYING *FROM*?!?!
+    print "    Copying", c_rev.svn_path
+  
+  def finish(self):
+    """State that we are done creating our repository."""
+    print "Finished creating Subversion repository."
 
 
   
