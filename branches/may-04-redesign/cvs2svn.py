@@ -3016,8 +3016,10 @@ class SVNRepositoryMirror:
       dest = dest + '/' + '/'.join(components[1:])
     return dest
 
-  def _fill(self, symbol_fill, key, name,
-            parent_path_so_far=None, preferred_revnum=None, prune_ok=None):
+  ###TODO This method is wonky and needs to be reviewed *carefully*
+  ### Review with kfogel
+  def _fill(self, symbol_fill, key, name, parent_path_so_far=None,
+            preferred_revnum=None, prune_ok=None, copied_paths=None):
     """Descends through all nodes in SYMBOL_FILL.node_tree that are
     rooted at KEY, which is a string key into SYMBOL_FILL.node_tree.
     Generates copy (and delete) commands for all destination nodes
@@ -3035,11 +3037,16 @@ class SVNRepositoryMirror:
     have happened yet).
 
     PRUNE_OK means that a copy has been made in this recursion, and
-    it's safe to prune directories that are not in SYMBOL_FILL.node_tree.
+    it's safe to prune directories that are not in
+    SYMBOL_FILL.node_tree, provided that said directory is a child of
+    one of the COPIED_PATHS.
 
-    PARENT_PATH_SO_FAR, PREFERRED_REVNUM and PRUNE_OK should only be
-    passed in by recursive calls."""
+    COPIED_PATHS is a list of paths that have already been copied in
+    this fill.  These paths are safe to prune.
 
+    PARENT_PATH_SO_FAR, PREFERRED_REVNUM, PRUNE_OK, and COPIED_PATHS
+    should only be passed in by recursive calls."""
+    if copied_paths is None: copied_paths = [ ]
     # If we set prune_ok, we need to set this as well to avoid
     # spurious peer-level prunes.
     peer_path_unsafe_for_pruning = 0
@@ -3052,7 +3059,8 @@ class SVNRepositoryMirror:
         src_path_so_far = parent_path_so_far + '/' + entry
       else:
         if entry == self._ctx.branches_base:
-          self._fill(symbol_fill, key, name, entry, preferred_revnum, prune_ok)
+          self._fill(symbol_fill, key, name, entry, preferred_revnum,
+                     prune_ok, copied_paths)
           continue
         else:
           src_path_so_far = entry
@@ -3078,6 +3086,7 @@ class SVNRepositoryMirror:
       if not self.path_exists(dest_path):
         # Do the copy
         new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
+        copied_paths.append(dest_path)
         prune_ok = peer_path_unsafe_for_pruning = 1
         # Delete invalid entries that got swept in by the copy.
         valid_entries = symbol_fill.node_tree[key]
@@ -3094,7 +3103,8 @@ class SVNRepositoryMirror:
         #   del_path = dest_path + '/' + entry
         #   self.delete_path(del_path)
 
-      self._fill(symbol_fill, key, name, src_path_so_far, src_revnum, prune_ok)
+      self._fill(symbol_fill, key, name, src_path_so_far, src_revnum,
+                 prune_ok, copied_paths)
 
     if peer_path_unsafe_for_pruning:
       return
@@ -3110,7 +3120,10 @@ class SVNRepositoryMirror:
       bad_entries = self._get_invalid_entries(expected_contents, this_contents)
       for entry in bad_entries:
         del_path = this_path + '/' + entry
-        self.delete_path(del_path)
+        for path in copied_paths:
+          if del_path.find(path) == 0: # del_path starts is child of PATH
+            self.delete_path(del_path)
+            break
 
   def _get_invalid_entries(self, valid_entries, all_entries):
     """Return a list of keys in ALL_ENTRIES that do not occur in
