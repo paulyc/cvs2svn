@@ -1325,6 +1325,12 @@ def peer_path_pruning():
     '/branches/BRANCH/foo (from /trunk/foo:7)' : 'R',
     })
 
+def invalid_closings_on_trunk():
+  "verify correct revs are copied to default branches"
+  # The conversion will fail if the bug is present, and
+  # ensure_conversion would raise svntest.Failure.
+  repos, wc, logs = ensure_conversion('empty-trunk')
+  
 #----------------------------------------------------------------------
 
 ########################################################################
@@ -1366,6 +1372,7 @@ test_list = [ None,
               peer_path_pruning,
               XFail(empty_trunk),
               no_spurious_svn_commits,
+              XFail(invalid_closings_on_trunk),
              ]
 
 if __name__ == '__main__':
