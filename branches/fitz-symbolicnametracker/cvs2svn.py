@@ -1636,14 +1636,14 @@ class SymbolicNameTracker:
     # each directory or file.  Includes "/" so as never to conflict
     # with any real entry.
     ### TODO These should be 2 chars when not debugging
-    self.opening_revs_key = "/openings"
-    self.closing_revs_key = "/closings"
+    self.opening_revs_key = "/o"
+    self.closing_revs_key = "/c"
 
     # When a node is copied into the repository, the revision copied
     # is stored under the appropriate key, and the corresponding
     # opening and closing rev lists are removed.
-    self.copyfrom_rev_key = "/copyfrom-rev"
-    self.file_key = "/is_file"
+    self.copyfrom_rev_key = "/r"
+    self.file_key = "/f"
     ###TODO self.tags should be stored in the symnames_db
     self.tags = {}
 
