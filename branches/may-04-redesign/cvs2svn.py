@@ -395,6 +395,15 @@ class Database:
 class CVSRevision:
   def __init__(self, ctx, *args):
     """Initialize a new CVSRevision with context CTX and ARGS.
+
+    If CTX is None, the following members and methods of the
+    instantiated CVSRevision class object will be unavailable (or
+    simply will not work correctly, if at all):
+       cvs_path
+       svn_path
+       svn_trunk_path
+       is_default_branch_revision()
+    
     If there is one argument in ARGS, it is a string, in the format of
     a line from a revs file. Do *not* include a trailing newline.
 
@@ -459,9 +468,10 @@ class CVSRevision:
     else:
       raise TypeError, 'CVSRevision() takes 2 or 12 arguments (%d given)' % \
           (len(args) + 1)
-    self.cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
-    self.svn_path = self._make_path(self.cvs_path, self.branch_name)
-    self.svn_trunk_path = self._make_path(self.cvs_path)
+    if ctx is not None:
+      self.cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
+      self.svn_path = self._make_path(self.cvs_path, self.branch_name)
+      self.svn_trunk_path = self._make_path(self.cvs_path)
 
   # The 'primary key' of a CVS Revision is the revision number + the
   # filename.  To provide a unique key (say, for a dict), we just glom
