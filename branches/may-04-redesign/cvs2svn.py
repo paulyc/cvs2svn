@@ -3215,7 +3215,8 @@ class CommitMapper(Singleton):
       svn_commit.add_revision(c_rev)
 
     name = self.svn_commit_names.get(str(svn_revnum), None)
-    svn_commit.set_symbolic_name(name)
+    if name:
+      svn_commit.set_symbolic_name(name)
 
     if len(svn_commit.cvs_revs) and name:
       msg = """An SVNCommit cannot have cvs_revisions *and* a
@@ -3525,7 +3526,7 @@ class SVNCommit:
     invoking add_revision()."""
     self._ctx = ctx
     self._description = description
-    self._cvs_revs = cvs_revs
+    self.cvs_revs = cvs_revs
     if not revnum:
       if cvs_revs:
         ###TODO error here
@@ -3542,11 +3543,11 @@ class SVNCommit:
     CommitMapper(self._ctx).set_name(self.revnum, name)
 
   def add_revision(self, cvs_rev):
-    self._cvs_revs.append(cvs_rev)
+    self.cvs_revs.append(cvs_rev)
 
   def flush(self):
     print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self._description)
-    CommitMapper(self._ctx).set_cvs_revs(self.revnum, self._cvs_revs)
+    CommitMapper(self._ctx).set_cvs_revs(self.revnum, self.cvs_revs)
 
   def __str__(self):
     """ Print a human-readable description of this SVNCommit.  This
@@ -3560,7 +3561,7 @@ class SVNCommit:
       ret = ret + "   NO symbolic name\n"
     ret = ret + "   debug description: " + self._description + "\n"
     ret = ret + "   cvs_revs:\n"
-    for c_rev in self._cvs_revs:
+    for c_rev in self.cvs_revs:
       ret = ret + "     " + c_rev.unique_key() + "\n"
     return ret
 
@@ -3874,14 +3875,16 @@ def pass8(ctx):
 
   svncounter = 1
 
+  
+  repos = SVNRepositoryMirror(ctx, StdoutDelegate())
   ###TODO switch to 1 for debugging
-  while(0):
+  while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
       break
     print "=" * 75
     print svn_commit
-
+    
     #sue-dough code
 
     # If our svn_commit has c_revs
