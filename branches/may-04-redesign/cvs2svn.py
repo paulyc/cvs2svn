@@ -2493,7 +2493,7 @@ class SVNRepositoryMirror:
   is handled by delegates.  See self.add_delegate method for how to
   set delegates.
 
-  You must invoke start_commit between SVNCommits.
+  You must invoke _start_commit between SVNCommits.
 
   *** WARNING *** All path arguments to methods in this class CANNOT
       have leading or trailing slashes.
@@ -2542,20 +2542,20 @@ class SVNRepositoryMirror:
     svn_commit.set_date(date)
     svn_commit.set_log_msg("New Repository initialized by cvs2svn.")
 
-    self.start_commit(svn_commit)
-    self.mkdir(self._ctx.trunk_base)
+    self._start_commit(svn_commit)
+    self._mkdir(self._ctx.trunk_base)
     if not self._ctx.trunk_only:
-      self.mkdir(self._ctx.branches_base)
-      self.mkdir(self._ctx.tags_base)
+      self._mkdir(self._ctx.branches_base)
+      self._mkdir(self._ctx.tags_base)
 
-  def start_commit(self, svn_commit):
+  def _start_commit(self, svn_commit):
     """Stabilize the current commit, then start the next one.
     (Effectively increments youngest by assigning the new revnum to
     youngest)"""
-    self.stabilize_youngest()
+    self._stabilize_youngest()
     self.revs_db[str(svn_commit.revnum)] = self.revs_db[str(self.youngest)]
     self.youngest = svn_commit.revnum
-    self.invoke_delegates('start_commit', svn_commit)
+    self._invoke_delegates('start_commit', svn_commit)
 
   def _stabilize_directory(self, key):
     """Remove the mutable flag from the directory whose node key is
@@ -2569,12 +2569,12 @@ class SVNRepositoryMirror:
           self._stabilize_directory(dir[entry_key])
       self.nodes_db[key] = dir
 
-  def stabilize_youngest(self):
+  def _stabilize_youngest(self):
     """Stabilize the current revision by removing mutable flags."""
     root_key = self.revs_db[str(self.youngest)]
     self._stabilize_directory(root_key)
 
-  def delete_path(self, path, should_prune=None):
+  def _delete_path(self, path, should_prune=None):
     """Delete PATH from the tree.  PATH may not have a leading slash.
 
     Return the path actually deleted or None if PATH did not exist.
@@ -2710,31 +2710,31 @@ class SVNRepositoryMirror:
     else:
       retpath = path
 
-    self.invoke_delegates('delete_path', retpath)
+    self._invoke_delegates('delete_path', retpath)
     return retpath
 
-  def mkdir(self, path):
+  def _mkdir(self, path):
     """Create PATH in the repository mirror at the youngest revision."""
     # Since we make no distinction from a file and a directory in the
     # mirror, we can merely leverage self._add_or_change_path here
     self._add_or_change_path(path)
-    self.invoke_delegates('mkdir', path)
+    self._invoke_delegates('mkdir', path)
 
-  def change_path(self, cvs_rev):
+  def _change_path(self, cvs_rev):
     """Register a change in self.youngest for the CVS_REV's svn_path
     in the repository mirror."""
     self._add_or_change_path(cvs_rev.svn_path)
-    self.invoke_delegates('change_path', cvs_rev)
+    self._invoke_delegates('change_path', cvs_rev)
 
-  def add_path(self, cvs_rev):
+  def _add_path(self, cvs_rev):
     """Add the CVS_REV's svn_path to the repository mirror."""
     self._add_or_change_path(cvs_rev.svn_path)
-    self.invoke_delegates('add_path', cvs_rev)
+    self._invoke_delegates('add_path', cvs_rev)
 
   def _add_or_change_path(self, svn_path):
     """From the youngest revision, bubble down a chain of mutable
     nodes for SVN_PATH.  Create new (mutable) nodes as necessary, and
-    calls self.invoke_delegates('mkdir', path)) once on each
+    calls self._invoke_delegates('mkdir', path)) once on each
     intermediate path it creates.
 
     This makes nodes mutable only as needed, otherwise, mutates any
@@ -2766,7 +2766,7 @@ class SVNRepositoryMirror:
         # If we create a new node and it's not a leaf node, then we've just
         # created a new directory.  Let the delegates know.
         if component is not last_component:
-          self.invoke_delegates('mkdir', path_so_far)
+          self._invoke_delegates('mkdir', path_so_far)
       else:
         # NOTE: The following clause is essentially _open_path, but to
         # use it here would mean that we would have to re-walk our
@@ -2817,7 +2817,7 @@ class SVNRepositoryMirror:
     parent = self.nodes_db[parent_key]
     return parent_key, parent
 
-  def fill_symbolic_name(self, symbolic_name):
+  def _fill_symbolic_name(self, symbolic_name):
     """Performs all copies necessary to create as much of the the tag
     or branch SYMBOLIC_NAME as possible given the current revision of
     the repository mirror.
@@ -2835,7 +2835,7 @@ class SVNRepositoryMirror:
       branch_dest = self._dest_path_for_source_path(symbolic_name,
                                                     symbol_fill.branch_source)
       # ...and our branch still doesn't exist...
-      if not self.path_exists(branch_dest):
+      if not self._path_exists(branch_dest):
         # ...that means that our first commit on the branch was to a
         # file added on the branch, so we copy the branch source
         # directory.
@@ -2843,8 +2843,8 @@ class SVNRepositoryMirror:
         # This case is covered by test 16.
         #
         # ...we create the branch.
-        entries = self.copy_path(symbol_fill.branch_source, branch_dest,
-                                 symbol_fill.dead_opening_rev) 
+        entries = self._copy_path(symbol_fill.branch_source, branch_dest,
+                                  symbol_fill.dead_opening_rev) 
         # Now since we've just copied trunk to a branch that's
         # *supposed* to be empty, we delete any entries in the
         # copied directory.
@@ -2852,23 +2852,23 @@ class SVNRepositoryMirror:
           if entry[0] == '/':
             continue
           del_path = branch_dest + '/' + entry
-          self.delete_path(del_path) # Delete but don't prune.
+          self._delete_path(del_path) # Delete but don't prune.
 
-  def synchronize_default_branch(self, svn_commit):
+  def _synchronize_default_branch(self, svn_commit):
     """Propagate any changes that happened on a non-trunk default
     branch to the trunk of the repository.  See
     CVSCommit._post_commit() for details on why this is necessary."""
     for cvs_rev in svn_commit.cvs_revs:
       if cvs_rev.op == OP_ADD or cvs_rev.op == OP_CHANGE:
-        if self.path_exists(cvs_rev.svn_trunk_path):
+        if self._path_exists(cvs_rev.svn_trunk_path):
           # Delete the path on trunk...
-          self.delete_path(cvs_rev.svn_trunk_path)
+          self._delete_path(cvs_rev.svn_trunk_path)
         # ...and copy over from branch
-        self.copy_path(cvs_rev.svn_path, cvs_rev.svn_trunk_path,
-                       svn_commit.motivating_revnum)
+        self._copy_path(cvs_rev.svn_path, cvs_rev.svn_trunk_path,
+                        svn_commit.motivating_revnum)
       elif cvs_rev.op == OP_DELETE:
         # delete trunk path
-        self.delete_path(cvs_rev.svn_trunk_path)
+        self._delete_path(cvs_rev.svn_trunk_path)
       else:
         msg = ("Unknown CVSRevision operation '%s' in default branch sync."
                % cvs_rev.op)
@@ -2957,7 +2957,7 @@ class SVNRepositoryMirror:
       # as our preferred_revnum, then we don't need to make a copy
       # here--our parent's copy already has everything we need.
       # Just continue bubbling down.
-      path_exists = self.path_exists(dest_path)
+      path_exists = self._path_exists(dest_path)
       if src_revnum != preferred_revnum and prune_ok and path_exists:
         components = dest_path.split('/')
         # Take care to never delete and re-copy a directory in the top
@@ -2966,12 +2966,12 @@ class SVNRepositoryMirror:
         if not ((len(components) == 2)
                 and ((components[0] == self._ctx.branches_base)
                      or (components[0] == self._ctx.tags_base))):
-          self.delete_path(dest_path)
+          self._delete_path(dest_path)
           path_exists = 0
 
       if not path_exists:
         # Do the copy
-        new_entries = self.copy_path(src_path_so_far, dest_path, src_revnum)
+        new_entries = self._copy_path(src_path_so_far, dest_path, src_revnum)
         copied_paths.append(dest_path)
         prune_ok = peer_path_unsafe_for_pruning = 1
         # Delete invalid entries that got swept in by the copy.
@@ -2979,7 +2979,7 @@ class SVNRepositoryMirror:
         bad_entries = self._get_invalid_entries(valid_entries, new_entries)
         for entry in bad_entries:
           del_path = dest_path + '/' + entry
-          self.delete_path(del_path)
+          self._delete_path(del_path)
 
       self._fill(symbol_fill, key, name, src_path_so_far, src_revnum,
                  prune_ok, copied_paths)
@@ -3000,7 +3000,7 @@ class SVNRepositoryMirror:
         del_path = this_path + '/' + entry
         for path in copied_paths:
           if del_path.find(path) == 0: # del_path starts is child of PATH
-            self.delete_path(del_path)
+            self._delete_path(del_path)
             break
 
   def _get_invalid_entries(self, valid_entries, all_entries):
@@ -3041,7 +3041,7 @@ class SVNRepositoryMirror:
 
     return this_node_key, this_node_contents
 
-  def copy_path(self, src_path, dest_path, src_revnum):
+  def _copy_path(self, src_path, dest_path, src_revnum):
     """Copy SRC_PATH at subversion revision number SRC_REVNUM to
     DEST_PATH.
 
@@ -3077,7 +3077,7 @@ class SVNRepositoryMirror:
     key, new_node = self._new_mutable_node(src_node_contents)
     dest_node_contents[dest_basename] = key
     self.nodes_db[dest_node_key] = dest_node_contents
-    self.invoke_delegates('copy_path', src_path, dest_path, src_revnum)
+    self._invoke_delegates('copy_path', src_path, dest_path, src_revnum)
     return new_node
 
   def _node_for_path(self, path, revnum, ignore_leaf=None):
@@ -3106,7 +3106,7 @@ class SVNRepositoryMirror:
 
   ###PERF This *might* be a bit pricey to do.  Look here for perf
   ###problems.
-  def path_exists(self, path):
+  def _path_exists(self, path):
     """If PATH exists in self.youngest of the svn repository mirror,
     return true, else return None.
     
@@ -3130,24 +3130,21 @@ class SVNRepositoryMirror:
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, and changing the repository.  Invoke
-    the delegates' start_commit() method."""
+    the delegates' _start_commit() method."""
     
     if svn_commit.revnum == 2:
       self._initialize_repository(svn_commit.get_date())
 
-    ###TODO Make a decision about whether or not the self.methods
-    ###called here are going to be public or not.  If they're going to
-    ###remain private, then prefix them with an underscore.
-    self.start_commit(svn_commit)
+    self._start_commit(svn_commit)
 
     if svn_commit.symbolic_name:
       Log().write(LOG_VERBOSE, "Filling symbolic name:",
                   svn_commit.symbolic_name)
-      self.fill_symbolic_name(svn_commit.symbolic_name)
+      self._fill_symbolic_name(svn_commit.symbolic_name)
     elif svn_commit.motivating_revnum:
       Log().write(LOG_VERBOSE, "Synchronizing default_branch motivated by %d"
                   % svn_commit.motivating_revnum)
-      self.synchronize_default_branch(svn_commit)
+      self._synchronize_default_branch(svn_commit)
     else: # This actually commits CVSRevisions
       if len(svn_commit.cvs_revs) > 1: plural = "s"
       else: plural = ""
@@ -3155,19 +3152,19 @@ class SVNRepositoryMirror:
                   % (len(svn_commit.cvs_revs), plural))
       for cvs_rev in svn_commit.cvs_revs:
         # See comment in CVSCommit._commit() for what this is all
-        # about.  Note that although asking self.path_exists() is
+        # about.  Note that although asking self._path_exists() is
         # somewhat expensive, we only do it if the first two (cheap)
         # tests succeed first.
         if not ((cvs_rev.deltatext_code == DELTATEXT_EMPTY)
                 and (cvs_rev.rev == "1.1.1.1")
-                and self.path_exists(cvs_rev.svn_path)):
+                and self._path_exists(cvs_rev.svn_path)):
           if cvs_rev.op == OP_ADD:
-            self.add_path(cvs_rev)
+            self._add_path(cvs_rev)
           elif cvs_rev.op == OP_CHANGE:
-            self.change_path(cvs_rev)
+            self._change_path(cvs_rev)
 
         if cvs_rev.op == OP_DELETE:
-          path = self.delete_path(cvs_rev.svn_path, self._ctx.prune)
+          path = self._delete_path(cvs_rev.svn_path, self._ctx.prune)
 
   def cleanup(self):
     """Callback for the Cleanup.register in self.__init__."""
@@ -3184,7 +3181,7 @@ class SVNRepositoryMirror:
     SVNRepositoryMirrorDelegate for more information."""
     self.delegates.append(delegate)
 
-  def invoke_delegates(self, method, *args):
+  def _invoke_delegates(self, method, *args):
     """Iterate through each of our delegates, in the order that they
     were added, and call the delegate's method named METHOD with the
     arguments in ARGS."""
@@ -3193,11 +3190,11 @@ class SVNRepositoryMirror:
 
   def finish(self):
     """Calls the delegate finish method."""
-    self.invoke_delegates('finish')
+    self._invoke_delegates('finish')
     # Just stabilize the last revision.  This may or may not affect
     # anything, but if we end up using the mirror for anything after
     # this, it's nice to know the '/mutable' entries are gone.
-    self.stabilize_youngest()
+    self._stabilize_youngest()
     self.cleanup()
 
 
