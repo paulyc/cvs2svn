@@ -4416,13 +4416,13 @@ class SVNRepositoryMirror:
 
     # This corresponds to the 'revisions' table in a Subversion fs.
     self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'n')
-    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8, self.close)
+    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8, self.cleanup)
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track metadata, not file contents.)
     self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'n')
-    Cleanup().register(SVN_MIRROR_NODES_DB, pass8, self.close)
+    Cleanup().register(SVN_MIRROR_NODES_DB, pass8, self.cleanup)
 
     # Init a root directory with no entries at revision 0.
     self.youngest = 0
@@ -5061,11 +5061,14 @@ class SVNRepositoryMirror:
           else: # Must be a delete
             path = self.delete_path(cvs_rev.svn_path)
 
-  def close(self):
-    self.delegate.finish()
+  def cleanup(self):
+    """Callback for the Cleanup.register in self.__init__."""
     self.revs_db = None
     self.nodes_db = None
 
+  def finish(self):
+    """Calls the delegate finish method."""
+    self.delegate.finish()
 
 
 class SVNRepositoryMirrorDelegate:
@@ -5494,7 +5497,7 @@ def pass8(ctx):
     repos.commit(svn_commit)
 
     svncounter += 1
-  repos.close()
+  repos.finish()
 #  sys.exit(239)
 
 
