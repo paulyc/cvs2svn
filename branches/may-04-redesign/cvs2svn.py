@@ -1536,6 +1536,7 @@ class Dumper:
       self.init_dumpfile()
       self.write_dumpfile_header(self.dumpfile)
     else:
+      self.target = 'old-' + self.target
       if not ctx.existing_svnrepos:
         print "creating repos '%s'" % (self.target)
         run_command('%s create %s %s' % (self.svnadmin, ctx.bdb_txn_nosync
@@ -5176,6 +5177,11 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     self.dumpfile = open(self.dumpfile_path, 'wb')
     self.write_dumpfile_header()
 
+    ###TODO Remove this once we're dumping straight to the repos for real
+    self.target = None
+    if not ctx.dump_only:
+      self.target = ctx.target
+
   def write_dumpfile_header(self):
     # Initialize the dumpfile with the standard headers.
     #
@@ -5452,6 +5458,10 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     """Perform any cleanup necessary after all revisions have been
     committed."""
     self.dumpfile.close()
+    ###TODO Remove this once we've written a real delegate to import.
+    if self.target:
+      os.system('svnadmin create %s' % self.target)
+      os.system('svnadmin load %s -q < kff-cvs2svn-dump' % self.target)
 
 
 class StdoutDelegate(SVNRepositoryMirrorDelegate):
