@@ -212,6 +212,24 @@ CLEAN_REVS_SUFFIX = '.c-revs'
 SORTED_REVS_SUFFIX = '.s-revs'
 RESYNC_SUFFIX = '.resync'
 
+# This list should contain all data files that we create in the course
+# of running the program, with the exception of the
+# DEFAULT_BRANCHES_DB, which is created before pass1.  To avoid
+# running with stale files, we will delete all of these files first
+# thing in pass1.
+###TODO when we make ctx a singleton, add DEFAULT_BRANCHES_DB to the list here
+# and allow it to be created lazily in pass1 when CollectData is instantiated.
+all_files = [CVS_REVS_DB, CVS_REVS_TO_SVN_REVNUMS, 
+             DATAFILE + CLEAN_REVS_SUFFIX, DATAFILE + RESYNC_SUFFIX, 
+             DATAFILE + REVS_SUFFIX, DATAFILE + SORTED_REVS_SUFFIX,
+             METADATA_DB, MOTIVATING_REVNUMS, SVN_COMMIT_NAMES_DATES,
+             SVN_MIRROR_NODES_DB, SVN_MIRROR_REVISIONS_DB,
+             SVN_REVNUMS_TO_CVS_REVS, SYMBOL_CLOSINGS_TMP,
+             SYMBOL_LAST_CVS_REVS_DB, SYMBOL_OFFSETS_DB,
+             SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED,
+             TAGS_DB,
+             ]
+
 ATTIC = os.sep + 'Attic'
 
 SVN_INVALID_REVNUM = -1
@@ -322,7 +340,7 @@ class Cleanup(Singleton):
     if not self._log.has_key(which_pass):
       return
     for file in self._log[which_pass].keys():
-      print "Cleaning up", file
+      Log().write(LOG_VERBOSE, "Deleting", file)
       if self._callbacks.has_key(file):
         self._callbacks[file]()
       os.unlink(file)
@@ -1610,10 +1628,6 @@ def generate_offsets_for_symbolings():
   ###TODO This is a fine example of a db that can be in-memory and
   #just flushed to disk when we're done.  Later, it can just be sucked
   #back into memory.
-  ###TODO we need to make sure that this file is deleted before
-  ###starting this pass.  Find a better way. :)
-  if os.path.isfile(SYMBOL_OFFSETS_DB):
-    os.unlink(SYMBOL_OFFSETS_DB)
   offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
   Cleanup().register(SYMBOL_OFFSETS_DB, pass8)
   
@@ -1649,7 +1663,6 @@ class CommitMapper(Singleton):
     self.svn_commit_names_dates = Database(SVN_COMMIT_NAMES_DATES, 'c')
     Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8)
     self.svn_commit_metadata = Database(METADATA_DB, 'r')
-    Cleanup().register(METADATA_DB, pass8)
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
     ###TODO kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.
@@ -3468,6 +3481,16 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
     Log().write(LOG_QUIET, "Done.")
 
 def pass1(ctx):
+
+  cleanup_banner_shown = None
+  for file in all_files:
+    if os.path.isfile(file):
+      if cleanup_banner_shown is None:
+        Log().write(LOG_VERBOSE, "Cleaning up files from a previous run...")
+        cleanup_banner_shown = 1;
+      Log().write(LOG_VERBOSE, "  Deleting", file)
+      os.unlink(file)
+
   Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
   cd = CollectData(ctx)
   def visit_file(baton, dirname, files):
@@ -3583,10 +3606,6 @@ def pass5(ctx):
   branch or tag.  See SymbolingsLogger for more details.
   """
   Log().write(LOG_QUIET, "Mapping CVS revisions to Subversion commits...")
-  ###TODO we need to make sure that this file is deleted before
-  ###starting this pass.  Find a better way. :)
-  if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
-    os.unlink(SYMBOL_OPENINGS_CLOSINGS)
 
   aggregator = CVSRevisionAggregator(ctx)
   for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
@@ -3732,6 +3751,7 @@ def usage(ctx):
   print '  -s PATH              path for SVN repos'
   print '  -p START[:END]       start at pass START, end at pass END of %d' % len(_passes)
   print '                       If only START is given, run only pass START'
+  print '                       (implicitly enables --skip-cleanup)'
   print '  --existing-svnrepos  load into existing SVN repository'
   print '  --dumpfile=PATH      name of intermediate svn dumpfile'
   print '  --svnadmin=PATH      path to the svnadmin program'
@@ -3807,6 +3827,8 @@ def main():
 
   for opt, value in opts:
     if opt == '-p':
+      # Don't cleanup if we're doing incrementals.
+      ctx.skip_cleanup = 1
       if value.find(':') > 0:
         start_pass, end_pass = map(int, value.split(':'))
       else:
@@ -3961,6 +3983,9 @@ def main():
         "  remove the 'cvs2svn.lock' directory.\n")
     sys.exit(1)
   try:
+    ###TODO: Remove the next 4 lines when we make ctx a singleton
+    if os.path.isfile(DEFAULT_BRANCHES_DB):
+      os.unlink(DEFAULT_BRANCHES_DB)
     ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, 'c')
     Cleanup().register(DEFAULT_BRANCHES_DB, pass8, clear_default_branches_db)
     convert(ctx, start_pass, end_pass)
