@@ -1970,12 +1970,31 @@ class CVSCommit:
       """Return 1 if this is the first commit on a new branch (for
       this file) and we need to fill the branch; else return 0
       (meaning that some other file's first commit on the branch has
-      already done the fill for us)."""
+      already done the fill for us).
+
+      If C_REV.op is OP_ADD, only return 1 if the branch that this
+      commit is on has no last filled revision.
+      """
+
+      # Different '.' counts indicate that c_rev is now on a different
+      # line of development (and may need a fill)
       if c_rev.rev.count('.') != c_rev.prev_rev.count('.'):
         pm = PersistenceManager()
         svn_revnum = pm.get_svn_revnum(c_rev.unique_key(c_rev.prev_rev))
-        if svn_revnum > pm.last_filled.get(c_rev.branch_name, 0):
-          return 1
+        # It should be the case that when we have a file F that
+        # is added on branch B (thus, F on trunk is in state
+        # 'dead'), we generate an SVNCommit to fill B iff the branch
+        # has never been filled before.
+        #
+        # If this c_rev.op == OP_ADD, *and* the branch has never
+        # been filled before, then fill it now.  Otherwise, no need to
+        # fill it.
+        if c_rev.op == OP_ADD:
+          if pm.last_filled.get(c_rev.branch_name, None) is None:
+            return 1
+        else:
+          if svn_revnum > pm.last_filled.get(c_rev.branch_name, 0):
+            return 1
       return 0
 
     for c_rev in self.changes + self.deletes:
@@ -1988,34 +2007,6 @@ class CVSCommit:
           and c_rev.branch_name not in accounted_for_sym_names \
           and c_rev.branch_name not in self.done_symbols \
           and fill_needed(c_rev):
-        ###TODO IMPT Check c_rev.op to see if we're an add.  Why?
-        ###
-        ### Here's why:
-        ###
-        ### It should be the case that when we have a file F that
-        ### is added on branch B (thus, F on trunk is in state
-        ### 'dead'), we generate an SVNCommit to fill B iff the branch
-        ### has never been filled before.
-        ###
-        ### Right now, though, we will sometimes generate an empty
-        ### SVNCommit, because we're not detecting whether B has ever
-        ### been filled before.
-        ###
-        ### Solution: In pass5(), keep a list of all unique branches
-        ### that we've ever filled (in memory is fine), and only
-        ### generate a fill in the above case if the symbol in
-        ### question isn't in this list.
-        ###
-        ### IOW:
-        ###
-        ### If this c_rev.op == OP_ADD, and c_rev.prev_rev is on a
-        ### different line of development and is in state 'dead',
-        ### *and* the branch has never been filled before, then fill
-        ### it now.  Otherwise, no need to fill it.
-        ###
-        ### This logic can probably all be implemented in
-        ### fill_needed(), since it's got the c_rev and it talks to
-        ### the PersistenceManager.
         svn_commit = SVNCommit(self._ctx, "pre-commit symbolic name '%s'"
                                % c_rev.branch_name)
         svn_commit.set_symbolic_name(c_rev.branch_name)

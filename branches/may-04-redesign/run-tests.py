@@ -1292,6 +1292,14 @@ def empty_trunk():
   # ensure_conversion would raise svntest.Failure.
   repos, wc, logs = ensure_conversion('empty-trunk')
   
+def no_spurious_svn_commits():
+  "ensure that we don't create any spurious commits"
+  repos, wc, logs = ensure_conversion('phoenix')
+
+  # Check spurious commit that could be created in CVSCommit._pre_commit
+  check_rev(logs, 18, 'File added on branch xiphophorus', {
+    '/branches/xiphophorus/added-on-branch.txt' : 'A',
+    })
 
 #----------------------------------------------------------------------
 
@@ -1332,6 +1340,7 @@ test_list = [ None,
               compose_tag_three_sources,
               pass5_when_to_fill,
               XFail(empty_trunk),
+              no_spurious_svn_commits,
              ]
 
 if __name__ == '__main__':
