@@ -72,14 +72,17 @@ The fields are:
    6.  the revision number of the next revision along this line of
        development (or "*", if it's the last revision on this line of
        development).
-   7.  "N" if this revision has non-empty deltatext, else "E" for empty
-   8.  the RCS keyword substitution mode ("kkv", "kb", etc), or "*" if none
-   9.  the branch on which this commit happened, or "*" if not on a branch
-   10.  the number of tags rooted at this revision (followed by their
+   7.  1 if the RCS file is in the Attic, "*" if it isn't.
+   8.  1 is the RCS file has the executable bit set, "*" if not.
+   9.  The size of the RCS file, in kilobytes.
+   10.  "N" if this revision has non-empty deltatext, else "E" for empty
+   11.  the RCS keyword substitution mode ("kkv", "kb", etc), or "*" if none
+   12.  the branch on which this commit happened, or "*" if not on a branch
+   13.  the number of tags rooted at this revision (followed by their
        names, space-delimited)  
-   11. the number of branches rooted at this revision (followed by
+   14. the number of branches rooted at this revision (followed by
        their names, space-delimited) 
-   12. the path of the RCS file in the repository
+   15. the path of the RCS file in the repository
 
 (Of course, in the above example, fields 9 and 10 are "0", so they have
 no additional data.)

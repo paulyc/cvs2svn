@@ -397,7 +397,7 @@ class CVSRevision:
     If there is one argument in ARGS, it is a string, in the format of
     a line from a revs file. Do *not* include a trailing newline.
 
-    If there are multiple ARGS, there must be 11 of them,
+    If there are multiple ARGS, there must be 15 of them,
     comprising a parsed revs line:
        timestamp       -->  (int) date stamp for this cvs revision
        digest          -->  (string) digest of author+logmsg
@@ -405,21 +405,25 @@ class CVSRevision:
        prev_rev        -->  (string or None) previous CVS rev, e.g., "1.2"
        rev             -->  (string) this CVS rev, e.g., "1.3"
        next_rev        -->  (string or None) next CVS rev, e.g., "1.4"
+       file_in_attic   -->  (char or None) true if RCS file is in Attic
+       file_executable -->  (char or None) true if RCS file has exec bit set. 
+       file_size       -->  (int) size of the RCS file
        deltatext_code  -->  (char) 'N' if non-empty deltatext, else 'E'
-       fname           -->  (string) relative path of file in CVS repos
        mode            -->  (string or None) "kkv", "kb", etc.
        branch_name     -->  (string or None) branch on which this rev occurred
        tags            -->  (list of strings) all tags on this revision
        branches        -->  (list of strings) all branches rooted in this rev
+       fname           -->  (string) relative path of file in CVS repos
 
     The two forms of initialization are equivalent."""
     self._ctx = ctx
-    if len(args) == 12:
+    if len(args) == 15:
       (self.timestamp, self.digest, self.op, self.prev_rev, self.rev, 
-       self.next_rev, self.deltatext_code, self.fname, 
+       self.next_rev, self.file_in_attic, self.file_executable,
+       self.file_size, self.deltatext_code, self.fname, 
        self.mode, self.branch_name, self.tags, self.branches) = args
     elif len(args) == 1:
-      data = args[0].split(' ', 10)
+      data = args[0].split(' ', 13)
       self.timestamp = int(data[0], 16)
       self.digest = data[1]
       self.op = data[2]
@@ -430,15 +434,22 @@ class CVSRevision:
       self.next_rev = data[5]
       if self.next_rev == "*":
         self.next_rev = None
-      self.deltatext_code = data[6]
-      self.mode = data[7]
+      self.file_in_attic = data[6]
+      if self.file_in_attic == "*":
+        self.file_in_attic == None
+      self.file_executable = data[7]
+      if self.file_executable == "*":
+        self.file_executable == None
+      self.file_size = int(data[8])
+      self.deltatext_code = data[9]
+      self.mode = data[10]
       if self.mode == "*":
         self.mode = None
-      self.branch_name = data[8]
+      self.branch_name = data[11]
       if self.branch_name == "*":
         self.branch_name = None
-      ntags = int(data[9])
-      tags = data[10].split(' ', ntags + 1)
+      ntags = int(data[12])
+      tags = data[13].split(' ', ntags + 1)
       nbranches = int(tags[ntags])
       branches = tags[ntags + 1].split(' ', nbranches)
       self.fname = branches[nbranches]
@@ -462,9 +473,11 @@ class CVSRevision:
     return revnum + "/" + self.fname
 
   def __str__(self):
-    return ('%08lx %s %s %s %s %s %s %s %s %d%s%s %d%s%s %s' % (
+    return ('%08lx %s %s %s %s %s %s %s %d %s %s %s %d%s%s %d%s%s %s' % (
       self.timestamp, self.digest, self.op,
       (self.prev_rev or "*"), self.rev, (self.next_rev or "*"),
+      (self.file_in_attic or "*"), (self.file_executable or "*"),
+      self.file_size,
       self.deltatext_code, (self.mode or "*"), (self.branch_name or "*"),
       len(self.tags), self.tags and " " or "", " ".join(self.tags),
       len(self.branches), self.branches and " " or "", " ".join(self.branches),
@@ -625,9 +638,31 @@ class CollectData(rcsparse.Sink):
 
     # See set_fname() for initializations of other variables.
 
-  def set_fname(self, fname):
-    "Prepare to receive data for a new file."
-    self.fname = fname
+  def set_fname(self, canonical_name, filename):
+    """Prepare to receive data for FILENAME.  FILENAME is the absolute
+    filesystem path to the file in question, and CANONICAL_NAME is
+    FILENAME with the 'Attic' component removed (if the file is indeed
+    in the Attic) ."""
+    self.fname = canonical_name
+
+    # We calculate and save some file metadata here, where we can do
+    # it only once per file, instead of waiting until later where we
+    # would have to do the same calculations once per CVS *revision*.
+    
+    # If the paths are not the same, then that means that the
+    # canonical_name has had the 'Attic' component stripped out.
+    self.file_in_attic = None
+    if not canonical_name == filename:
+      self.file_in_attic = 1
+
+    file_stat = os.stat(filename)
+    # The size of our file in kilobytes
+    self.file_size_kb = file_stat[stat.ST_SIZE] / 1024
+
+    # Whether or not the executable bit is set.
+    self.file_executable = None
+    if file_stat[0] & stat.S_IXUSR:
+      self.file_executable = 1      
 
     # revision -> [timestamp, author, operation, old-timestamp]
     self.rev_data = { }
@@ -994,6 +1029,8 @@ class CollectData(rcsparse.Sink):
     c_rev = CVSRevision(self._ctx, timestamp, digest, op,
                         self.prev_rev[revision], revision,
                         self.next_rev.get(revision),
+                        self.file_in_attic, self.file_executable,
+                        self.file_size_kb,
                         deltatext_code, self.fname,
                         self.mode, self.rev_to_branch_name(revision),
                         self.taglist.get(revision, []),
@@ -3525,11 +3562,10 @@ def pass1(ctx):
         continue
       pathname = os.path.join(dirname, fname)
       if dirname[-6:] == ATTIC:
-        # drop the 'Attic' portion from the pathname
-        ### we should record this so we can easily insert it back in
-        cd.set_fname(os.path.join(dirname[:-6], fname))
+        # drop the 'Attic' portion from the pathname for the canonical name.
+        cd.set_fname(os.path.join(dirname[:-6], fname), pathname)
       else:
-        cd.set_fname(pathname)
+        cd.set_fname(pathname, pathname)
       Log().write(LOG_NORMAL, pathname)
       try:
         rcsparse.parse(open(pathname, 'rb'), cd)
