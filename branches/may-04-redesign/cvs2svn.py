@@ -230,6 +230,10 @@ DELTATEXT_EMPTY    = 'E'
 
 DIGEST_END_IDX = 9 + (sha.digestsize * 2)
 
+# Constants used in SYMBOL_OPENINGS_CLOSINGS
+OPENING = '0'
+CLOSING = 'C'
+
 # Officially, CVS symbolic names must use a fairly restricted set of
 # characters.  Unofficially, CVS 1.10 allows any character but [$,.:;@]
 # We don't care if some repositories out there use characters outside the
@@ -2956,7 +2960,7 @@ class SymbolingsLogger(Singleton):
     svn commit order."""
 
     for name in names:
-      self._log(name, svn_revnum, c_rev.svn_path)
+      self._log(name, svn_revnum, c_rev.svn_path, OPENING)
 
       # If our c_rev has a next_rev, then that's the closing rev for
       # this source revision.  Log it to closings for later processing
@@ -2972,9 +2976,16 @@ class SymbolingsLogger(Singleton):
         or (len(c_rev.branches) > 0)): # OPENING activity here
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
 
-  def _log(self, name, svn_revnum, svn_path):
+  def _log(self, name, svn_revnum, svn_path, type):
+    """Write out a single line to the symbol_openings_closings file
+    representing that svn_revnum of svn_path is either the opening or
+    closing (TYPE) of NAME (a symbolic name).
+
+    TYPE should only be one of the following global constants:
+    OPENING or CLOSING."""
     ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
-    self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, svn_path))
+    self.symbolings.write('%s %.8d %s %s\n' % (name, svn_revnum,
+                                               type, svn_path))
       
   def close(self):
     # Iterate through the closings file, lookup the svn_revnum for
@@ -2992,7 +3003,7 @@ class SymbolingsLogger(Singleton):
       print "'" + rev_key + "'"
       c_rev = cvs_revs_db.get_revision(rev_key)
       print c_rev
-      self._log(name, svn_revnum, c_rev.svn_path)
+      self._log(name, svn_revnum, c_rev.svn_path, CLOSING)
 
     self.symbolings.close()
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
@@ -3076,7 +3087,7 @@ class TagsDatabase(Database):
   
   def log_revision(self, c_rev):
     for tag in c_rev.tags:
-      self.db[tag] = None
+      self.db[tag] = ""
 
 
 def sort_file(infile, outfile):
@@ -3223,6 +3234,11 @@ def pass6(ctx):
   Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
   pass
 
+class SymbolingsReaderEmptyFillError(Exception):
+  """Exception raised if we encounter an attempted fill of a symbolic
+  name that contains no openings or closings (and consequently,
+  nothing would be filled)."""
+  pass
 
 class SymbolingsReader:
   """Provides an interface to the SYMBOL_OPENINGS_CLOSINGS_SORTED file
@@ -3243,20 +3259,17 @@ class SymbolingsReader:
       self.offsets[key] = offsets_db[key]
 
   def symbol_fill_for_symbol(self, symbolic_name, svn_revnum):
-    """Given SYMBOLIC_NAME and SVN_REVNUM, return all openings
-    and closings for that symbolic_name that happened in the
-    repository up to and including SVN_REVNUM. 
+    """Given SYMBOLIC_NAME and SVN_REVNUM, return a new
+    SymbolicNameFill object.
 
-    Note that if a CVSRevision has an opening rev that will be
-    returned here, and the closing rev takes place later than
-    SVN_REVNUM, the closing will not be returned (it will be
-    discarded later).  That's perfectly fine, because we can still do
-    a valid fill without the closing--we always try to fill what we
-    can as soon as we can.
-    
-    Returns a fully functional and armed SymbolicName Fill object."""
+    Note that if we encounter an opening rev in this fill, but the
+    corresponding closing rev takes place later than SVN_REVNUM, the
+    closing will not be passed to SymbolicNameFill in this fill (and
+    will be discarded when encountered in a later fill).  This is
+    perfectly fine, because we can still do a valid fill without the
+    closing--we always try to fill what we can as soon as we can."""
     # set our read offset for self.symbolings to the offset for
-    # symbolic_name (move our start point back one)
+    # symbolic_name
     self.symbolings.seek(self.offsets[symbolic_name])
 
     symbol_fill = SymbolicNameFill(self._ctx, symbolic_name)
@@ -3264,16 +3277,13 @@ class SymbolingsReader:
       line = self.symbolings.readline().rstrip()
       if not line:
         break
-      name, revnum, svn_path = line.split(" ", 2)
+      name, revnum, type, svn_path = line.split(" ", 3)
       revnum = int(revnum)
-      # Trivia note: There will never be an opening or closing whose
-      # svn_revision == svn_revnum.  Why this is so is left as an
-      # exercise for the reader. :-)
-      if (revnum > svn_revnum
+      if (revnum >= svn_revnum
           or name != symbolic_name):
         break
 
-      symbol_fill.add_path_and_revision(svn_path, revnum)
+      symbol_fill.register(svn_path, revnum, type)
 
     # get current offset of the read marker and set it to the offset
     # for the beginning of the line we just read if we used anything
@@ -3281,15 +3291,21 @@ class SymbolingsReader:
     if not symbol_fill.is_empty():
       # Subtract one cause we rstripped the CR above.
       self.offsets[symbolic_name] = self.symbolings.tell() - len(line) - 1
-
+    else:
+      raise SymbolingsReaderEmptyFillError, ("Read no valid openings "
+                                             + "or closings for '%s' "
+                                             % symbolic_name)
+                               
     symbol_fill.make_node_tree()
     return symbol_fill
   
 
 class SymbolicNameFill:
   """A SymbolicNameFill is essentially a node tree representing a
-     series of opening and closing source revisions for a collection
-     of source paths in a symbolic name in a particular SVNCommit.
+  series of opening and closing source revisions for a collection of
+  source paths in a symbolic name in a particular SVNCommit.
+    
+    Returns a fully functional and armed SymbolicNameFill object.
 
      From this information, you can determine:
 
@@ -3474,27 +3490,27 @@ class SymbolicNameFill:
           self._list_revnums_for_key(node_contents, revnum_type_key)
     return revnums
 
-
-
-  def add_path_and_revision(self, svn_path, svn_revnum):
+  def register(self, svn_path, svn_revnum, type):
     """ Collects opening and closing revisions for this
     SymbolicNameFill.  SVN_PATH is the source path that needs to be
     copied into self.symbolic_name, and SVN_REVNUM is either the first
     svn revision number that we can copy from (our opening), or the
     last (not inclusive) svn revision number that we can copy from
-    (our closing).
-
-    The opening for a given SVN_PATH must be passed before the
+    (our closing).  TYPE indicates whether this path is an opening or
     closing.
+
+    The opening for a given SVN_PATH must be passed before the closing
+    for it to have any effect... any closing encountered before a
+    corresponding opening will be discarded.
 
     It is not necessary to pass a corresponding closing for every
     opening.
     """
-    #keep rev (1st sight of PATH is the opening)
-    if not self.things.has_key(svn_path):
+    # Always log an OPENING
+    if type == OPENING:
       self.things[svn_path] = {self.opening_key: svn_revnum}
-    #keep rev (2nd sight of PATH is the closing)
-    else:
+    # Only log a closing if we've already registered the opening for that path.
+    elif self.things.has_key(svn_path):
       self.things[svn_path][self.closing_key] = svn_revnum
 
   def make_node_tree(self):
@@ -4446,6 +4462,7 @@ class SVNRepositoryMirror:
     symbol_fill = self.symbolings_reader.symbol_fill_for_symbol(
       symbolic_name, self.youngest)
 
+    ###TODO The next 5 lines are unused. Idiot.
     base_path = None
     if self.tags_db.has_key(symbolic_name):
       base_dest_path = self._ctx.tags_base
