@@ -1558,6 +1558,14 @@ def make_revision_props(ctx, symbolic_name, is_tag, date=None):
            'svn:date' : date or format_date(time.time())}
 
 
+class DummySymbolicNameTracker:
+  def __getattr__(self, attr):
+    return self.noop
+
+  def noop(self, *foo):
+    pass
+
+
 class SymbolicNameTracker:
   """Track the Subversion path/revision ranges of CVS symbolic names.
   This is done in a .db file, representing a tree in the usual way.
@@ -2665,10 +2673,13 @@ def pass3(ctx):
 
 
 def pass4(ctx):
-  sym_tracker = SymbolicNameTracker()
+  if ctx.trunk_only:
+    sym_tracker = DummySymbolicNameTracker()
+  else:
+    sym_tracker = SymbolicNameTracker()
+    symbols_closed_by_revkey = get_symbol_closing_revs(ctx)
   metadata_db = Database(METADATA_DB, 'r')
 
-  symbols_closed_by_revkey = get_symbol_closing_revs(ctx)
   # A dictionary of Commit objects, keyed by digest.  Each object
   # represents one logical commit, which may involve multiple files.
   #
@@ -2735,6 +2746,8 @@ def pass4(ctx):
       c = commits[c_rev.digest] = Commit(author, log)
     c.add(c_rev)
 
+    if ctx.trunk_only:
+      continue
     #####################################################################
     for sym in symbols_closed_by_revkey.get(c_rev.unique_key(), []):
       pending_symbols[sym] = None
@@ -2784,7 +2797,8 @@ def pass5(ctx):
   os.unlink(SVN_REVISIONS_DB)
   os.unlink(NODES_DB)
   os.unlink(SYMBOLIC_NAME_ROOTS_DB)
-  os.unlink(SYMBOLIC_NAMES_DB)
+  if not ctx.trunk_only:
+    os.unlink(SYMBOLIC_NAMES_DB)
   os.unlink(METADATA_DB)
 
   # This is the only DB reference still reachable at this point; lose
