@@ -224,11 +224,9 @@ class CVSRevision:
   def cvs_path(self):
     return relative_name(self.ctx.cvsroot, self.fname[:-2])
 
-  def write_revs_line(self, output, timestamp=None):
-    if not timestamp:
-      timestamp = self.timestamp
+  def write_revs_line(self, output):
     output.write('%08lx %s %s %s %s ' % \
-                 (timestamp, self.digest, self.op,
+                 (self.timestamp, self.digest, self.op,
                   self.rev, self.deltatext_code))
     if not self.branch_name:
       self.branch_name = "*"
@@ -2502,8 +2500,6 @@ def pass2(ctx):
     for record in resync[c_rev.digest]:
       if record[0] <= c_rev.timestamp <= record[1]:
         # bingo! remap the time on this (record[2] is the new time).
-        c_rev.write_revs_line(output, record[2])
-
         print "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
               % (relative_name(ctx.cvsroot, c_rev.fname),
                  c_rev.rev, time.ctime(c_rev.timestamp), time.ctime(record[2]))
@@ -2512,6 +2508,9 @@ def pass2(ctx):
         # bounds of the earlier/latest commit in this group.
         record[0] = min(record[0], c_rev.timestamp - COMMIT_THRESHOLD/2)
         record[1] = max(record[1], c_rev.timestamp + COMMIT_THRESHOLD/2)
+
+        c_rev.timestamp = record[2]
+        c_rev.write_revs_line(output)
 
         # stop looking for hits
         break
