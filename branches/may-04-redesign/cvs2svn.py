@@ -3849,13 +3849,20 @@ class SVNRepositoryMirror:
     Repository revision number, changing the repository, and informing
     the delegate (if any)."""
 
+    self.delegate.start_commit(svn_commit.revnum)
     if svn_commit.symbolic_name:
       ## This will entail nothing more than copying and deleting.
       pass # This is a branch/tag create/fill/finish
       
     else: # This will actually commit CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
-        self.delegate.add_path(cvs_rev)
+        if cvs_rev.op == OP_ADD:
+          self.delegate.add_path(cvs_rev)
+        elif cvs_rev.op == OP_CHANGE:
+          self.delegate.change_path(cvs_rev)
+        else: # Must be a delete
+          self.delegate.delete_path(cvs_rev)
+
         ### Possible actions:
         # 1. Modify an existing path.
 #         if self.path_exists(cvs_rev.svn_path):
@@ -3866,6 +3873,7 @@ class SVNRepositoryMirror:
         # 3. Delete a path.
 
   def close(self):
+    self.delegate.finish()
     self.revs_db = None
     self.nodes_db = None
 
@@ -3937,7 +3945,8 @@ class StdoutDelegate(SVNRepositoryDelegate):
   def start_commit(self, svn_revnum):
     """Prints out the Subversion revision number of the commit that is
     being started."""
-    print "  Starting Subversion commit", self.mirror.current_revnum
+    print " ", "=" * 40
+    print "  Starting Subversion commit", svn_revnum
 
   def add_path(self, c_rev):
     """Print a line stating that we are 'adding' c_rev.svn_path."""
@@ -3974,7 +3983,6 @@ def pass8(ctx):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
       break
-    print "=" * 75
     #print svn_commit
 
     repos.commit(svn_commit)
@@ -3991,7 +3999,7 @@ def pass8(ctx):
     
     # else ERROR
     svncounter += 1
-
+  repos.close()
 #  sys.exit(239)
 
 
