@@ -435,8 +435,8 @@ class CVSRevision:
       raise TypeError, 'CVSRevision() takes 2 or 12 arguments (%d given)' % \
           (len(args) + 1)
     self.cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
-    self.svn_path = make_path(self._ctx, self.cvs_path, self.branch_name)
-    self.svn_trunk_path = make_path(self._ctx, self.cvs_path)
+    self.svn_path = self._make_path(self.cvs_path, self.branch_name)
+    self.svn_trunk_path = self._make_path(self.cvs_path)
 
   # The 'primary key' of a CVS Revision is the revision number + the
   # filename.  To provide a unique key (say, for a dict), we just glom
@@ -486,6 +486,90 @@ class CVSRevision:
         return 1
     # else
     return None
+
+  ### TODO tag_name is currently unused... can we get rid of it?
+  def _make_path(self, path, branch_name = None, tag_name = None):
+    """Return the trunk path, branch path, or tag path for PATH.
+
+    If PATH is empty or None, return the root trunk|branch|tag path.
+
+    It is an error to pass both a BRANCH_NAME and a TAG_NAME."""
+
+    # For a while, we treated each top-level subdir of the CVS
+    # repository as a "project root" and interpolated the appropriate
+    # genealogy (trunk|tag|branch) in according to the official
+    # recommended layout.  For example, the path '/foo/bar/baz.c' on
+    # branch 'Rel2' would become
+    #
+    #   /foo/branches/Rel2/bar/baz.c
+    #
+    # and on trunk it would become
+    #
+    #   /foo/trunk/bar/baz.c
+    #
+    # However, we went back to the older and simpler method of just
+    # prepending the genealogy to the front, instead of interpolating.
+    # So now we produce:
+    #
+    #   /branches/Rel2/foo/bar/baz.c
+    #   /trunk/foo/bar/baz.c
+    #
+    # Why?  Well, Jack Repenning pointed out that this way is much
+    # friendlier to "anonymously rooted subtrees" (that's a tree where
+    # the name of the top level dir doesn't matter, the point is that if
+    # you cd into it and, say, run 'make', something good will happen).
+    # By interpolating, we made it impossible to point cvs2svn at some
+    # subdir in the CVS repository and convert it as a project, because
+    # we'd treat every subdir underneath it as an independent project
+    # root, which is probably not what the user wanted.
+    #
+    # Also, see Blair Zajac's post
+    #
+    #    http://subversion.tigris.org/servlets/ReadMsg?list=dev&msgNo=38965
+    #
+    # and the surrounding thread, for why what people really want is a
+    # way of specifying an in-repository prefix path, not interpolation.
+
+    # Check caller sanity.
+    if branch_name and tag_name:
+      sys.stderr.write("%s: make_path() miscalled: both branch and tag given.\n"
+                       % error_prefix)
+      sys.exit(1)
+
+    if branch_name:
+      branch_name = _clean_symbolic_name(branch_name)
+      if path:
+        return self._ctx.branches_base + '/' + branch_name + '/' + path
+      else:
+        return self._ctx.branches_base + '/' + branch_name
+    elif tag_name:
+      tag_name = _clean_symbolic_name(tag_name)
+      if path:
+        return self._ctx.tags_base + '/' + tag_name + '/' + path
+      else:
+        return self._ctx.tags_base + '/' + tag_name
+    else:
+      if path:
+        return self._ctx.trunk_base + '/' + path
+      else:
+        return self._ctx.trunk_base
+
+  def _get_cvs_file_path(self):
+    """Return the path and executable status of the rcs file for C_REV.
+    Use like this:     path, exec_status = c_rev._get_cvs_file_path()
+    If the rcs file is executable, the exec_status is 1, else it is None."""
+    try:
+      rcs_path = self.fname
+      f_st = os.stat(rcs_path)
+    except os.error:
+      dirname, fname = os.path.split(rcs_path)
+      rcs_path = os.path.join(dirname, 'Attic', fname)
+      f_st = os.stat(rcs_path)
+    # One of the above should have worked.  Now see about exec status.
+    if f_st[0] & stat.S_IXUSR:
+      return rcs_path, 1
+    else:
+      return rcs_path, None
 
 
 class CollectData(rcsparse.Sink):
@@ -913,76 +997,6 @@ class CollectData(rcsparse.Sink):
 def run_command(command):
   if os.system(command):
     sys.exit('Command failed: "%s"' % command)
-
-###TODO Move this into CVSRevision!    
-def make_path(ctx, path, branch_name = None, tag_name = None):
-  """Return the trunk path, branch path, or tag path for PATH.
-  CTX holds the name of the branches or tags directory, which is
-  prepended to PATH when constructing a branch or tag path.
-
-  If PATH is empty or None, return the root trunk|branch|tag path.
-
-  It is an error to pass both a BRANCH_NAME and a TAG_NAME."""
-
-  # For a while, we treated each top-level subdir of the CVS
-  # repository as a "project root" and interpolated the appropriate
-  # genealogy (trunk|tag|branch) in according to the official
-  # recommended layout.  For example, the path '/foo/bar/baz.c' on
-  # branch 'Rel2' would become
-  #
-  #   /foo/branches/Rel2/bar/baz.c
-  #
-  # and on trunk it would become
-  #
-  #   /foo/trunk/bar/baz.c
-  #
-  # However, we went back to the older and simpler method of just
-  # prepending the genealogy to the front, instead of interpolating.
-  # So now we produce:
-  #
-  #   /branches/Rel2/foo/bar/baz.c
-  #   /trunk/foo/bar/baz.c
-  #
-  # Why?  Well, Jack Repenning pointed out that this way is much
-  # friendlier to "anonymously rooted subtrees" (that's a tree where
-  # the name of the top level dir doesn't matter, the point is that if
-  # you cd into it and, say, run 'make', something good will happen).
-  # By interpolating, we made it impossible to point cvs2svn at some
-  # subdir in the CVS repository and convert it as a project, because
-  # we'd treat every subdir underneath it as an independent project
-  # root, which is probably not what the user wanted.
-  #
-  # Also, see Blair Zajac's post
-  #
-  #    http://subversion.tigris.org/servlets/ReadMsg?list=dev&msgNo=38965
-  #
-  # and the surrounding thread, for why what people really want is a
-  # way of specifying an in-repository prefix path, not interpolation.
-
-  # Check caller sanity.
-  if branch_name and tag_name:
-    sys.stderr.write("%s: make_path() miscalled: both branch and tag given.\n"
-                     % error_prefix)
-    sys.exit(1)
-
-  if branch_name:
-    branch_name = _clean_symbolic_name(branch_name)
-    if path:
-      return ctx.branches_base + '/' + branch_name + '/' + path
-    else:
-      return ctx.branches_base + '/' + branch_name
-  elif tag_name:
-    tag_name = _clean_symbolic_name(tag_name)
-    if path:
-      return ctx.tags_base + '/' + tag_name + '/' + path
-    else:
-      return ctx.tags_base + '/' + tag_name
-  else:
-    if path:
-      return ctx.trunk_base + '/' + path
-    else:
-      return ctx.trunk_base
-
 
 def relative_name(cvsroot, fname):
   l = len(cvsroot)
@@ -3256,29 +3270,11 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
                         "\n"
                         "\n" % self._utf8_path(path))
 
-  ###TODO Move this to CVSRevision
-  def _get_cvs_path(self, c_rev):
-    """Return the path and executable status of the rcs file for C_REV.
-    Use like this:     path, exec_status = self._get_cvs_path(C_REV)
-    If the rcs file is executable, the exec_status is 1, else it is None."""
-    try:
-      rcs_path = c_rev.fname
-      f_st = os.stat(rcs_path)
-    except os.error:
-      dirname, fname = os.path.split(rcs_path)
-      rcs_path = os.path.join(dirname, 'Attic', fname)
-      f_st = os.stat(rcs_path)
-    # One of the above should have worked.  Now see about exec status.
-    if f_st[0] & stat.S_IXUSR:
-      return rcs_path, 1
-    else:
-      return rcs_path, None
-
   def _add_or_change_path(self, c_rev, op):
     """Emit the addition or change corresponding to C_REV.
     OP is either the constant OP_ADD or OP_CHANGE."""
 
-    rcs_path, exec_status = self._get_cvs_path(c_rev)
+    rcs_path, exec_status = c_rev._get_cvs_file_path()
 
     # We begin with only a "CVS revision" property.
     if self.set_cvs_revnum_properties:
