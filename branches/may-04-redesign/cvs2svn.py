@@ -5466,30 +5466,30 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
   def start_commit(self, svn_commit):
     """Prints out the Subversion revision number of the commit that is
     being started."""
-    print " ", "=" * 40
-    print "  Starting Subversion commit", svn_commit.revnum
+    print "=" * 60
+    print "Starting Subversion commit", svn_commit.revnum
 
   def mkdir(self, path):
     """Print a line stating that we are creating directory PATH."""
-    print "    New Directory", path
+    print "  New Directory", path
 
   def add_path(self, c_rev):
     """Print a line stating that we are 'adding' c_rev.svn_path."""
-    print "    Adding", c_rev.svn_path
+    print "  Adding", c_rev.svn_path
 
   def change_path(self, c_rev):
     """Print a line stating that we are 'changing' c_rev.svn_path."""
-    print "    Changing", c_rev.svn_path
+    print "  Changing", c_rev.svn_path
 
   def delete_path(self, path):
     """Print a line stating that we are 'deleting' PATH."""
-    print "    Deleting", path
+    print "  Deleting", path
   
   def copy_path(self, src_path, dest_path, src_revnum):
     """Print a line stating that we are 'copying' revision SRC_REVNUM
     of SRC_PATH to DEST_PATH."""
-    print "    Copying revision", src_revnum, "of", src_path
-    print "                  to", dest_path
+    print "  Copying revision", src_revnum, "of", src_path
+    print "                to", dest_path
   
   def finish(self):
     """State that we are done creating our repository."""
