@@ -3041,7 +3041,7 @@ class SVNRepositoryMirror:
     passed in by recursive calls."""
 
     # If we set prune_ok, we need to set this as well to avoid
-    # Spurious peer-level prunes.
+    # spurious peer-level prunes.
     peer_path_unsafe_for_pruning = 0
     parent_key = key
     for entry, key in symbol_fill.node_tree[parent_key].items():
