@@ -3091,6 +3091,10 @@ class SVNRepositoryMirror:
   def finish(self):
     """Calls the delegate finish method."""
     self.invoke_delegates('finish')
+    # Just stabilize the last revision.  This may or may not affect
+    # anything, but if we end up using the mirror for anything after
+    # this, it's nice to know the '/mutable' entries are gone.
+    self.stabilize_youngest()
     self.cleanup()
 
 
