@@ -2333,17 +2333,15 @@ class Commit:
 
     for c_rev in self.deletes:
       # compute a repository path, dropping the ,v from the file name
-      cvs_path = relative_name(ctx.cvsroot, c_rev.fname[:-2])
-      svn_path = make_path(ctx, cvs_path, c_rev.branch_name)
-      print "    deleting %s : '%s'" % (c_rev.rev, svn_path)
+      print "    deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path())
       if svn_rev == SVN_INVALID_REVNUM:
         svn_rev = dumper.start_revision(props)
       # Uh, can this even happen on a deleted path?  Hmmm.  If not,
       # there's no risk, since tags and branches would just be empty
       # and therefore enrooting would be a no-op.  Still, it would
       # be clearer to know for sure and simply not call it.
-      sym_tracker.enroot_tags(svn_path, svn_rev, c_rev.tags)
-      sym_tracker.enroot_branches(svn_path, svn_rev, c_rev.branches)
+      sym_tracker.enroot_tags(c_rev.svn_path(), svn_rev, c_rev.tags)
+      sym_tracker.enroot_branches(c_rev.svn_path(), svn_rev, c_rev.branches)
       ### FIXME: this will return path_deleted == None if no path
       ### was deleted.  But we'll already have started the revision
       ### by then, so it's a bit late to use the knowledge!  Need to
