@@ -251,6 +251,7 @@ DIGEST_END_IDX = 9 + (sha.digestsize * 2)
 # Constants used in SYMBOL_OPENINGS_CLOSINGS
 OPENING = '0'
 CLOSING = 'C'
+DEAD_OPENING = 'D'
 
 # Officially, CVS symbolic names must use a fairly restricted set of
 # characters.  Unofficially, CVS 1.10 allows any character but [$,.:;@]
@@ -2971,21 +2972,48 @@ class SymbolingsLogger(Singleton):
     Cleanup().register(SYMBOL_CLOSINGS_TMP, pass5)
 
   def log_names_for_rev(self, names, c_rev, svn_revnum):
-    """Write out SYMBOLIC_NAME SVN_REVNUM CVS_REV.SVN_PATH.  This
-    allows us to run the logfile through sort and have all openings
-    and closings for a given symbolic name grouped by symbolic name in
-    svn commit order."""
-
+    """Iterate through NAMES.  Based on the type of C_REV we have,
+    either log an opening and a closing, or log a dead opening.  The
+    dead opening and the opening both use SVN_REVNUM, but the closing
+    will have its revnum determined later."""a
     for name in names:
       name = _clean_symbolic_name(name)
-      self._log(name, svn_revnum, c_rev.svn_path, OPENING)
-
+      if c_rev.op == OP_DELETE:
+        self._log_dead_opening(name, c_rev, svn_revnum)
+      else:
+        self._log(name, svn_revnum, c_rev.svn_path, OPENING)
+      
       # If our c_rev has a next_rev, then that's the closing rev for
       # this source revision.  Log it to closings for later processing
       # since we don't know the svn_revnum yet.
       if c_rev.next_rev is not None:
         self.closings.write('%s %s\n' %
                             (name, c_rev.unique_key(c_rev.next_rev))) 
+
+  def _log_dead_opening(self, name, c_rev, svn_revnum):
+    """If we have a C_REV on branch NAME whose op is OP_DELETE, it's a
+    special case.  It means that we've encountered a situation where a
+    file was added on a branch, so in RCS, the file is added as rev
+    1.1 in state 'dead', and the file itself is added on the branch.
+    Therefore, we have no copy to make here.
+
+    However, if this addition is the first commit on a branch, we
+    *need* to generate a copy to get the branch created in the first
+    place.  So we pass SVN_REVNUM and the branch source path to
+    self.log as a DEAD_OPENING, and SymbolicNameFillingGuide will set
+    its has_dead_opening flag to true.  If
+    SVNRepositoryMirror.fill_symbolic_name completes a fill using that
+    SymbolicNameFillingGuide and the branch still has NOT been copied,
+    the mirror should do then the copy.
+    
+    This case is covered by test 16."""
+    # For copies from trunk, we just want the first path element
+    path = c_rev.svn_path.split('/')[0]
+    if c_rev.branch_name:
+      # For copies from a branch, we want the first *two* path
+      # elements (e.g. 'branches/my_branch')
+      path = '/'.join(c_rev.svn_path.split('/')[:2])
+    self._log(name, svn_revnum, path, DEAD_OPENING)
 
   def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens a symbolic name."""
@@ -2996,8 +3024,7 @@ class SymbolingsLogger(Singleton):
     #   AND
     # - This c_rev is not 'dead'... that is, it's not a file added on a
     # - branch.
-    if (((len(c_rev.tags) > 0) or (len(c_rev.branches) > 0))
-        and not (c_rev.op == OP_DELETE)): 
+    if ((len(c_rev.tags) > 0) or (len(c_rev.branches) > 0)):
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
 
   def _log(self, name, svn_revnum, svn_path, type):
@@ -3371,6 +3398,20 @@ class SymbolicNameFillingGuide:
     # The dictionary that holds our node tree, seeded with the root key.
     self.node_tree = { self.root_key : { } }
 
+    # If we have logged a c_rev with an opening rev in state 'dead'.
+    # See SymbolingsLogger._log_dead_opening for more information.
+    #
+    # True if one of our opening revisions was in state 'dead', false
+    # otherwise.  Note that this will always log the *last* dead
+    # opening... we don't need to track more than one as it's just
+    # going to help us make sure we made the copy necessary to create
+    # our branch.
+    self.has_dead_opening = None
+    # The subversion revision number to copy from
+    self.dead_opening_rev = None
+    # The source path for our branch
+    self.branch_source = None
+
   def get_best_revnum(self, node, preferred_revnum):
     """ Determine the best subversion revision number to use when
     copying the source tree beginning at NODE. Returns a
@@ -3533,6 +3574,12 @@ class SymbolicNameFillingGuide:
     for it to have any effect... any closing encountered before a
     corresponding opening will be discarded.
 
+    We have a special case when our TYPE is a DEAD_OPENING, and we set
+    self.has_dead_opening and self.branch_source and
+    self.dead_opening.  It's OK To overwrite these variables if we
+    have multiple dead openings as we just need one to make sure that
+    our branch gets copied.
+
     It is not necessary to pass a corresponding closing for every
     opening.
     """
@@ -3540,8 +3587,12 @@ class SymbolicNameFillingGuide:
     if type == OPENING:
       self.things[svn_path] = {self.opening_key: svn_revnum}
     # Only log a closing if we've already registered the opening for that path.
-    elif self.things.has_key(svn_path):
+    elif type == CLOSING and self.things.has_key(svn_path):
       self.things[svn_path][self.closing_key] = svn_revnum
+    elif type == DEAD_OPENING:
+      self.has_dead_opening = 1
+      self.dead_opening_rev = svn_revnum
+      self.branch_source = svn_path
 
   def make_node_tree(self):
     """Generates the SymbolicNameFillingGuide's node tree from
@@ -3577,9 +3628,10 @@ class SymbolicNameFillingGuide:
     #print_node_tree(self.node_tree, self.root_key) 
 
   def is_empty(self):
-    """Returns true if we haven't accumulated any openings or
+    """Returns true if we haven't accumulated any openings, dead openings, or
     closings, false otherwise."""
-    return not len(self.things)
+    return ((not len(self.things))
+             and (self.has_dead_opening is None))
 
 
 def generate_offsets_for_symbolings():
@@ -4738,13 +4790,28 @@ class SVNRepositoryMirror:
     return parent_key, parent
 
   def fill_symbolic_name(self, symbolic_name):
+
     """Performs all copies necessary to create as much of the the tag
     or branch SYMBOLIC_NAME as possible given the current revision of
-    the repository mirror."""
+    the repository mirror.  Before we return, guarantee that our
+    symbolic name has been created."""
     symbol_fill = self.symbolings_reader.filling_guide_for_symbol(
       symbolic_name, self.youngest)
 
     self._fill(symbol_fill, symbol_fill.root_key, symbolic_name)
+
+    # If our symbol fill had a dead opening...
+    if symbol_fill.has_dead_opening:
+      print "FITZ:", symbolic_name
+      print "FITZ:", symbol_fill.branch_source
+      branch_dest = self._dest_path_for_source_path(symbolic_name,
+                                                    symbol_fill.branch_source)
+      # ...and our branch still doesn't exist...
+      if not self.path_exists(branch_dest):
+        # ...we create the branch.
+        self.copy_path(symbol_fill.branch_source, branch_dest,
+                       symbol_fill.dead_opening_rev) 
+
 
   ###TODO We need a test here, to make sure that tag copies get the
   ###correct version of a file when a file is tagged while the default
