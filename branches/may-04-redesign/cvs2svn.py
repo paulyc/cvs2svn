@@ -472,7 +472,7 @@ class CollectData(rcsparse.Sink):
     self.resync = open(DATAFILE + RESYNC_SUFFIX, 'w')
     Cleanup().register(DATAFILE + RESYNC_SUFFIX, pass2)
     self.default_branches_db = ctx.default_branches_db
-    self.metadata_db = Database(METADATA_DB, 'n')
+    self.metadata_db = Database(METADATA_DB, 'c')
     Cleanup().register(METADATA_DB, pass8)
     self.fatal_errors = []
     self.next_faked_branch_num = 999999
@@ -497,8 +497,8 @@ class CollectData(rcsparse.Sink):
     # it is forced to be treated as a tag by the user.
     self.forced_tag_branches = { }
 
-    self.cvs_rev_db = CVSRevisionDatabase('n')
-    self.tags_db = TagsDatabase('n')
+    self.cvs_rev_db = CVSRevisionDatabase('c')
+    self.tags_db = TagsDatabase('c')
 
     # See set_fname() for initializations of other variables.
 
@@ -1761,6 +1761,17 @@ class CommitMapper(Singleton):
     """Store MOTIVATING_REVNUM as the value of SVN_REVNUM"""
     self.motivating_revnums[str(svn_revnum)] = str(motivating_revnum)
 
+  def cleanup(self):
+    """This should be called before the program exits to make sure
+    that our databases get properly closed."""
+    # Python 2.2 doesn't properly close these databases when using
+    # bsddb3, so we set them to None so they'll be gc'ed.
+    self.svn2cvs_db = None
+    self.cvs2svn_db = None
+    self.svn_commit_names_dates = None
+    if not self._ctx.trunk_only:
+      self.motivating_revnums = None
+      
 
 ### TODO add digest to constructor, then use it in __cmp__
 class CVSCommit:
@@ -2345,13 +2356,13 @@ class SVNRepositoryMirror:
     self.delegates = [ ]
 
     # This corresponds to the 'revisions' table in a Subversion fs.
-    self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'n')
+    self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'c')
     Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8, self.cleanup)
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track metadata, not file contents.)
-    self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'n')
+    self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'c')
     Cleanup().register(SVN_MIRROR_NODES_DB, pass8, self.cleanup)
 
     # Init a root directory with no entries at revision 0.
@@ -3027,6 +3038,7 @@ class SVNRepositoryMirror:
   def finish(self):
     """Calls the delegate finish method."""
     self.invoke_delegates('finish')
+    self.cleanup()
 
 
 
@@ -3539,7 +3551,7 @@ def pass4(ctx):
     return
 
   Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
-  last_sym_name_db = LastSymbolicNameDatabase('n')
+  last_sym_name_db = LastSymbolicNameDatabase('c')
 
   for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
@@ -3926,12 +3938,15 @@ def main():
         "  remove the 'cvs2svn.lock' directory.\n")
     sys.exit(1)
   try:
-    ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, 'n')
+    ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, 'c')
     Cleanup().register(DEFAULT_BRANCHES_DB, pass8, clear_default_branches_db)
     convert(ctx, start_pass=start_pass)
+    ctx.default_branches_db = None
   finally:
     try: os.rmdir('cvs2svn.lock')
     except: pass
+
+    CommitMapper().cleanup()
 
   if ctx.mime_types_file:
     ctx.mime_mapper.print_missing_mappings()
