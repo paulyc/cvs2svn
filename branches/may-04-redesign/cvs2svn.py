@@ -95,7 +95,6 @@ DATAFILE = 'cvs2svn-data'
 DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 
 SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
-SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
 
 # Skeleton version of an svn filesystem.
 # See class RepositoryMirror for how these work.
@@ -109,7 +108,7 @@ SVN_MIRROR_REVISIONS_DB = 'cvs2svn-svn-revisions.db'
 SVN_MIRROR_NODES_DB = 'cvs2svn-svn-nodes.db'
 
 # Offsets pointing to the beginning of each SYMBOLIC_NAME in
-# SYMBOL_OPENINGS_CLOSINGS_SORTED
+# SYMBOL_OPENINGS_CLOSINGS
 SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
 
 
@@ -351,7 +350,6 @@ class CVSRevision:
        self.next_rev, self.deltatext_code, self.fname, 
        self.mode, self.branch_name, self.tags, self.branches) = args
     elif len(args) == 1:
-      print args[0]
       data = args[0].split(' ', 10)
       self.timestamp = int(data[0], 16)
       self.digest = data[1]
@@ -386,13 +384,19 @@ class CVSRevision:
 
   # The 'primary key' of a CVS Revision is the revision number + the
   # filename.  To provide a unique key (say, for a dict), we just glom
-  # them together in a string
-  def unique_key(self):
-    return self.rev + "/" + self.fname
+  # them together in a string.  By passing in self.prev_rev or
+  # self.next_rev, you can get the unique key for their respective
+  # CVSRevisions.
+  def unique_key(self, revnum=None):
+    if revnum is None:
+      revnum = self.rev
+    return revnum + "/" + self.fname
 
   def write_revs_line(self, output):
     if not self.prev_rev:
       self.prev_rev = '*'
+    if not self.next_rev:
+      self.next_rev = '*'
     output.write('%08lx %s %s %s %s %s %s ' % \
                  (self.timestamp, self.digest, self.op,
                   self.prev_rev, self.rev, self.next_rev,
@@ -2873,8 +2877,8 @@ def read_resync(fname):
 
 
 class SymbolingsLogger(Singleton):
-  """Manage the file (and all related temporary data structures) that
-  contains lines for symbol openings and closings.
+  """Manage the file that contains lines for symbol openings and
+  closings.
 
   Determine valid SVNRevision ranges from which a file can be copied
   when creating a branch or tag in Subversion.  Do this by finding
@@ -2909,17 +2913,6 @@ class SymbolingsLogger(Singleton):
   def init(self):
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
     Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
-    ### TODO Warning: Openings can get REALLY BIG (the pathological
-    ### case is NUM_CVS_FILES * NUM_SYMBOLIC_NAMES *
-    ### AVG_SIZE_OF_SYMBOLIC_NAME).  This may be a memory issue, and
-    ### we may have to move openings (or part of openings) to disk.
-    ### Fortunately, we're not really hammering it, so the move to
-    ### disk won't be A Big Problem.
-
-    ### We could figure out the last (date-wise) CVS revision to a
-    ### file pass4 by keeping a db of last revs, but that would be
-    ### premature optimization at this point.
-    self.openings = {} ### TODO describe openings format somewhere.
 
   def log_names_for_rev(self, names, c_rev, svn_revnum):
     """Write out SYMBOLIC_NAME SVN_REVNUM CVS_REV.UNIQUE_KEY().  This
@@ -2930,32 +2923,18 @@ class SymbolingsLogger(Singleton):
       ###TODO 8 places gives us 999,999,999 SVN revs.  That *should* be enough.
       self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, c_rev.unique_key())) 
 
-  def clear_prev_rev(self, c_rev):
-    # Remove the openings that we just closed
-    del self.openings[c_rev.svn_path][c_rev.prev_rev]
-    # And drop the key entirely if we just removed the last bit of it.
-    if len(self.openings[c_rev.svn_path]) == 0:
-      del self.openings[c_rev.svn_path]
+      # If our c_rev has a next_rev, then that's the closing rev for
+      # this source revision.  Log it.
+      if c_rev.next_rev is not None:
+        self.symbolings.write('%s %.8d %s\n' % (name, svn_revnum, c_rev.unique_key(c_rev.next_rev))) 
 
   def check_revision(self, c_rev, svn_revnum):
-    """Examine a CVS Revision to see if it either opens or closes a
-    symbolic name."""
+    """Examine a CVS Revision to see if it either opens a symbolic name."""
     ## TODO check symbolic_names
     if ((len(c_rev.tags) > 0)          # There is branch/tag 
         or (len(c_rev.branches) > 0)): # OPENING activity here
-      if not c_rev.svn_path in self.openings: # Create a new entry
-        self.openings[c_rev.svn_path] = { c_rev.rev: c_rev.symbolic_names()}
-      else: # Add to the existing one
-        self.openings[c_rev.svn_path][c_rev.rev] = c_rev.symbolic_names()
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
       
-    if ((c_rev.svn_path in self.openings) # This c_rev is a closing
-        and c_rev.prev_rev                  # for a previous rev.
-        and (self.openings[c_rev.svn_path].has_key(c_rev.prev_rev))): 
-      self.log_names_for_rev(
-        self.openings[c_rev.svn_path][c_rev.prev_rev], c_rev, svn_revnum)
-      self.clear_prev_rev(c_rev)
-
   ###TODO Since we're a singleton and don't go out of scope, if we
   ###don't explicitly close our file, we don't flush until we exit,
   ###and, well, that causes problems when you try to sort a file that
@@ -3163,6 +3142,7 @@ def pass5(ctx):
     os.unlink(SYMBOL_OPENINGS_CLOSINGS)
   aggregator = CVSRevisionAggregator(ctx)
 
+  ###TODO Can we move this to pass4?
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
     aggregator.process_revision(c_rev)
@@ -3171,15 +3151,14 @@ def pass5(ctx):
 
 
 def pass6(ctx):
-  sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
-  Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
-  pass
+  ###TODO Renumber passes.  Again.
+  print "Nothing to do here"
 
 
 def generate_offsets_for_symbolings():
   """This function iterates through all the lines in
-  SYMBOL_OPENINGS_CLOSINGS_SORTED, writing out a file mapping
-  SYMBOLIC_NAME to the file offset in SYMBOL_OPENINGS_CLOSINGS_SORTED
+  SYMBOL_OPENINGS_CLOSINGS, writing out a file mapping
+  SYMBOLIC_NAME to the file offset in SYMBOL_OPENINGS_CLOSINGS
   where SYMBOLIC_NAME is first encountered.  This will allow us to
   seek to the various offsets in the file and sequentially read only
   the openings and closings that we need."""
@@ -3194,7 +3173,7 @@ def generate_offsets_for_symbolings():
   offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
   Cleanup().register(SYMBOL_OFFSETS_DB, pass8)
   
-  file = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
+  file = open(SYMBOL_OPENINGS_CLOSINGS, 'r')
   old_sym = ""
   while 1:
     line = file.readline()
