@@ -3639,6 +3639,90 @@ class CVSRevisionAggregator:
 
 
 
+class SVNRepositoryMirror:
+  """Mirror a Subversion Repository as it is constructed, one
+  SVNCommit at a time.  The mirror is skeletal; it does not contain
+  file contents.  If you set the delegate, as soon as SVNRepository
+  performs a repository action method ([add|change|delete|copy]path),
+  it will call the delegate's corresponding repository action method.
+  See SVNRepositoryDelegate for more information."""
+  def __init__(self, delegate=None):
+    """Set up the SVNRepositoryMirror and prepare it for
+    SVNCommits."""
+    self.delegate = delegate
+    self.delegate.set_mirror(self)
+
+  def commit(self, svn_commit):
+    """Add an SVNCommit to the SVNRepository, incrementing the
+    Repository revision number, changing the repository, and informing
+    the delegate."""
+    pass
+
+
+class SVNRepositoryDelegate:
+  """Abstract superclass for any delegate to SVNRepository.  If you
+  subclass, you must implement all of the below methods.  You must
+  call set_mirror before calling any other method.
+
+  For each method, a subclass implements, in its own way, the
+  Subversion operation implied by the method's name.  For example, for
+  the add_path method, the DumpfileDelegate would write out a
+  "Node-add:" command to a Subversion dumpfile, the StdoutDelegate
+  would merely print that the path is being added to the repository,
+  and the RepositoryDelegate would actually cause the path to be added
+  to the Subversion repository that it is creating.
+  """
+
+  def set_mirror(self, mirror):
+    """Set the SVNRepositoryMirror for this instance."""
+    self.mirror = mirror
+
+  def start_commit(self, svn_revnum):
+    """Perform any actions needed when commit SVN_REVNUM is started;
+    see subclass implementation for details."""
+    raise NotImplementedError
+
+  def add_path(self, c_rev):
+    """C_REV is a CVSRevision; see subclass implementation for
+    details."""
+    raise NotImplementedError
+
+  def change_path(self, c_rev):
+    """C_REV is a CVSRevision; see subclass implementation for
+    details."""
+    raise NotImplementedError
+
+  def delete_path(self, c_rev):
+    """C_REV is a CVSRevision; see subclass implementation for
+    details."""
+    raise NotImplementedError
+  
+  def copy_path(self, c_rev):
+    """C_REV is a CVSRevision; see subclass implementation for
+    details."""
+    raise NotImplementedError
+  
+  def finish(self):
+    """Perform any cleanup necessary after all revisions have been
+    committed."""
+    raise NotImplementedError
+
+class RepositoryDelegate(SVNRepositoryDelegate):
+  """Creates a new Subversion Repository."""
+  pass
+
+class DumpfileDelegate(SVNRepositoryDelegate):
+  """Creates a Subversion Dumpfile."""
+  pass
+
+class StdoutDelegate(SVNRepositoryDelegate):
+  """Makes no changes to the disk, but writes out information to
+  STDOUT about what the SVNRepositoryMirror is doing."""
+  pass
+
+
+  
+
 def pass8(ctx):
 
   svncounter = 1
