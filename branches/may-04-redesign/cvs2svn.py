@@ -3927,6 +3927,7 @@ def main():
     if opt1val and opt2val:
       sys.stderr.write(error_prefix + ": cannot pass both '%s' and '%s'.\n" \
           % (opt1name, opt2name))
+      sys.exit(1)
 
   not_both(ctx.target, '-s', ctx.dump_only, '--dump-only')
 
@@ -3938,6 +3939,9 @@ def main():
 
   not_both(ctx.dump_only, '--dump-only',
     ctx.bdb_txn_nosync, '--bdb-txn-nosync')
+
+  not_both(ctx.quiet, '-q',
+    ctx.verbose, '-v')
 
   if ((string.find(ctx.trunk_base, '/') > -1)
       or (string.find(ctx.tags_base, '/') > -1)
