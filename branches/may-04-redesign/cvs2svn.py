@@ -1951,7 +1951,6 @@ class CVSCommit:
   Revisions in the grouping."""
 
   def __init__(self, ctx, digest, author, log):
-    self.isClosed = 0
     self._ctx = ctx
 
     self.digest = author
