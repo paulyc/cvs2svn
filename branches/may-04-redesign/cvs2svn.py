@@ -1689,12 +1689,12 @@ class PersistenceManager(Singleton):
   def init(self, ctx):
     self._ctx = ctx
     self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, DB_OPEN_CREATE)
-    Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8)
+    Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8, self.cleanup)
     self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, DB_OPEN_CREATE)
-    Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
+    Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8, self.cleanup)
     self.svn_commit_names_dates = Database(SVN_COMMIT_NAMES_DATES,
                                            DB_OPEN_CREATE)
-    Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8)
+    Cleanup().register(SVN_COMMIT_NAMES_DATES, pass8, self.cleanup)
     self.svn_commit_metadata = Database(METADATA_DB, DB_OPEN_READ)
     self.cvs_revisions = CVSRevisionDatabase(DB_OPEN_READ, ctx)
     ###PERF kff Elsewhere there are comments about sucking the tags db
@@ -1703,7 +1703,7 @@ class PersistenceManager(Singleton):
     if not ctx.trunk_only:
       self.tags_db = TagsDatabase(DB_OPEN_READ)
       self.motivating_revnums = Database(MOTIVATING_REVNUMS, DB_OPEN_CREATE)
-      Cleanup().register(MOTIVATING_REVNUMS, pass8)
+      Cleanup().register(MOTIVATING_REVNUMS, pass8, self.cleanup)
     
     # "branch_name" -> svn_revnum in which branch was last filled.
     # This is used by CVSCommit._pre_commit, to prevent creating a fill
@@ -4018,8 +4018,6 @@ def main():
   finally:
     try: os.rmdir('cvs2svn.lock')
     except: pass
-
-    PersistenceManager(ctx).cleanup()
 
   if ctx.mime_types_file:
     ctx.mime_mapper.print_missing_mappings()
