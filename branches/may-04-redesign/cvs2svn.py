@@ -4947,12 +4947,19 @@ class SVNRepositoryMirror:
       self.synchronize_default_branch(svn_commit)
     else: # This actually commits CVSRevisions
       for cvs_rev in svn_commit.cvs_revs:
-        if cvs_rev.op == OP_ADD:
-          self.add_path(cvs_rev)
-        elif cvs_rev.op == OP_CHANGE:
-          self.change_path(cvs_rev)
-        else: # Must be a delete
-          path = self.delete_path(cvs_rev.svn_path)
+        # See comment in CVSCommit._commit() for what this is all
+        # about.  Note that although asking self.path_exists() is
+        # somewhat expensive, we only do it if the first two (cheap)
+        # tests succeed first.
+        if not ((cvs_rev.deltatext_code == DELTATEXT_EMPTY)
+                and (cvs_rev.rev == "1.1.1.1")
+                and self.path_exists(cvs_rev.svn_path)):
+          if cvs_rev.op == OP_ADD:
+            self.add_path(cvs_rev)
+          elif cvs_rev.op == OP_CHANGE:
+            self.change_path(cvs_rev)
+          else: # Must be a delete
+            path = self.delete_path(cvs_rev.svn_path)
 
   def close(self):
     self.delegate.finish()
@@ -5375,8 +5382,8 @@ def pass8(ctx):
   svncounter = 1
 
   # kff: toggle between these two lines to test the DumpfileDelegate or not
-  repos = SVNRepositoryMirror(ctx, StdoutDelegate())
-  # repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
+  # repos = SVNRepositoryMirror(ctx, StdoutDelegate())
+  repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
 
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
