@@ -815,13 +815,16 @@ def phoenix_branch():
     '/branches/volsung_20010721/phoenix': 'A' })
 
 
+###TODO: We check for 4 changed paths here to accomodate creating tags
+###and branches in rev 1, but that will change, so this will
+###eventually change back.
 def ctrl_char_in_log():
   "handle a control char in a log message"
   # This was issue #1106.
   repos, wc, logs = ensure_conversion('ctrl-char-in-log')
   if not ((logs[1].changed_paths.get('/trunk') == 'A')
           and (logs[1].changed_paths.get('/trunk/ctrl-char-in-log') == 'A')
-          and (len(logs[1].changed_paths) == 2)):
+          and (len(logs[1].changed_paths) == 4)):
     print "Revision 1 of 'ctrl-char-in-log,v' was not converted successfully."
     raise svntest.Failure
   if logs[1].msg.find('\x04') < 0:
