@@ -2,63 +2,67 @@
 
 ### This is a debugging script, not required for normal cvs2svn.py usage.
 
-'''Take a list of revisions and dates, say which are out of order.
-Feed this standard input in the following format:
+'''Tell which revisions are out of order w.r.t. date in a repository.
+Takes "svn log -q -r1:HEAD" output, prints results like this:
 
-      r42  2003-06-02 22:20:31 -0500 (Mon, 02 Jun 2003)
-      r43  2003-06-02 22:20:31 -0500 (Mon, 02 Jun 2003)
-      r44  2003-06-02 23:29:14 -0500 (Mon, 02 Jun 2003)
-      r45  2003-06-02 23:29:14 -0500 (Mon, 02 Jun 2003)
-      r46  2003-06-02 23:33:13 -0500 (Mon, 02 Jun 2003)
-      r47  2003-06-10 15:19:47 -0500 (Tue, 10 Jun 2003)
-      r48  2003-06-02 23:33:13 -0500 (Mon, 02 Jun 2003)
-      r49  2003-06-10 15:19:48 -0500 (Tue, 10 Jun 2003)
-      r50  2003-06-02 23:33:13 -0500 (Mon, 02 Jun 2003)
-
-The "rX"s begin at the left edge, the indentation above is just for
-readability in this doc string.  You can get this sort of input by
-running "svn log -q" and emacsulating the results appropriately.
-
-The output of this script looks like:
-
-      r42  1054596031      OK  (2003-06-02 22:20:31 -0500)
-      r43  1054596031      OK  (2003-06-02 22:20:31 -0500)
-      r44  1054600154      OK  (2003-06-02 23:29:14 -0500)
-      r45  1054600154      OK  (2003-06-02 23:29:14 -0500)
-      r46  1054600393      OK  (2003-06-02 23:33:13 -0500)
-      r47  1055261987      OK  (2003-06-10 15:19:47 -0500)
-      r48  1054600393  NOT OK  (2003-06-02 23:33:13 -0500)
-      r49  1055261988      OK  (2003-06-10 15:19:48 -0500)
-      r50  1054600393  NOT OK  (2003-06-02 23:33:13 -0500)
+      $ svn log -q -r1:HEAD | ./datecheck.py
+      [...]
+      r42           OK  2003-06-02 22:20:31 -0500
+      r43           OK  2003-06-02 22:20:31 -0500
+      r44           OK  2003-06-02 23:29:14 -0500
+      r45           OK  2003-06-02 23:29:14 -0500
+      r46           OK  2003-06-02 23:33:13 -0500
+      r47           OK  2003-06-10 15:19:47 -0500
+      r48       NOT OK  2003-06-02 23:33:13 -0500
+      r49           OK  2003-06-10 15:19:48 -0500
+      r50       NOT OK  2003-06-02 23:33:13 -0500
+      [...]
 '''
 
 import sys
 import time
 
+log_msg_separator = "-" * 72 + "\n"
+
 line = sys.stdin.readline()
 last_date = 0
 while line:
 
-  if not line[0] == 'r':
-    sys.stderr.write("Error: invalid input: '%s...'.\n" % line[0:30])
-    sys.exit(1)
-  
-  # This may get some trailing whitespace for small revision numbers,
-  # but that's okay, we want our output to look tabular anyway.
-  revstr = line [0:4]
-  # We only need the machine-readable portion of the date.
-  datestr = line[5:24]
-  # We'll parse the offset by hand, and adjust the date accordingly,
-  # because http://docs.python.org/lib/module-time.html doesn't seem
-  # to offer any way to parse "-0500", "-0600" suffixes.  Arggh.
-  offsetstr = line[25:30]
-  offset_sign    = offsetstr[0:1]
-  offset_hours   = int(offsetstr[1:3])
-  offset_minutes = int(offsetstr[3:5])
+  if not line:
+    break
+
+  if line == log_msg_separator:
+    line = sys.stdin.readline()
+    continue
+
+  # We're looking at a revision line like this:
+  #
+  # "r1 | svn | 2001-08-30 23:24:14 -0500 (Thu, 30 Aug 2001)"
+  #
+  # Parse out 
+
+  rev, ignored, date_full = line.split("|")
+  rev = rev.strip()
+  date_full = date_full.strip()
+
+  # We only need the machine-readable portion of the date, so ignore
+  # the parenthesized part on the end, which is meant for humans.
+
+  # Get the "2004-06-02 00:15:08" part of "2004-06-02 00:15:08 -0500".
+  date = date_full[0:19]
+  # Get the "-0500" part of "2004-06-02 00:15:08 -0500".
+  offset = date_full[20:25]
+
+  # Parse the offset by hand and adjust the date accordingly, because
+  # http://docs.python.org/lib/module-time.html doesn't seem to offer
+  # a standard way to parse "-0500", "-0600", etc, suffixes.  Arggh.
+  offset_sign    = offset[0:1]
+  offset_hours   = int(offset[1:3])
+  offset_minutes = int(offset[3:5])
 
   # Get a first draft of the date...
-  date_as_int = time.mktime(time.strptime(datestr, "%Y-%m-%d %H:%M:%S"))
-  # ... but it's still not correct, we have to adjust for the offset.
+  date_as_int = time.mktime(time.strptime(date, "%Y-%m-%d %H:%M:%S"))
+  # ... but it's still not correct, we must adjust for the offset.
   if offset_sign == "-":
     date_as_int -= (offset_hours * 3600)
     date_as_int -= (offset_minutes * 60)
@@ -73,7 +77,6 @@ while line:
   if last_date > date_as_int:
     ok_not_ok = "NOT OK"
   
-  print "%s %10d  %s  (%s %s)" % (revstr, date_as_int, ok_not_ok,
-                                  datestr, offsetstr)
+  print "%-8s  %s  %s %s" % (rev, ok_not_ok, date, offset)
   last_date = date_as_int
   line = sys.stdin.readline()
