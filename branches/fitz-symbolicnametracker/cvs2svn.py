@@ -259,6 +259,16 @@ class CVSRevision:
       output.write('%s ' % (branch))
     output.write('%s\n' % self.fname)
 
+  def contains_symbolic_name(self, name):
+    if name in self.tags:
+      return 1
+    elif name in self.branches:
+      return 1
+    elif self.branch_name == name:
+      return 1
+    else:
+      return 0
+
 
 class CollectData(rcsparse.Sink):
   def __init__(self, cvsroot, log_fname_base, default_branches_db):
@@ -1782,6 +1792,12 @@ class SymbolicNameTracker:
       for component in components:
         self.bump_rev_count(parent_key, svn_rev, closing_key)
         parent = self.db[parent_key]
+        # If this symbolic name isn't even in the tracker anymore,
+        # bail (RepositoryMirror may return closed names for tags and
+        # branches that are already closed, and we should just ignore
+        # them).
+        if parent_key == self.root_key and not parent.has_key(name):
+          return
         # Check for a "can't happen".
         if not parent.has_key(component):
           sys.stderr.write("%s: in path '%s', value for parent key '%s' "
@@ -2173,7 +2189,41 @@ class SymbolicNameTracker:
         if name[0] != '/':
           self.fill_tag(dumper, ctx, name, [1])
 
+      if 0: # Left in temporarily for debugging
+        print "Cleaning up:"
+        for name in parent.keys():
+          if name[0] != '/':
+            print "Deleting", name
+            self.cleanup_symbol(name)
 
+  # Removes the entire node tree rooted at /NAME from the
+  # SymbolicNameTracker.
+  def cleanup_symbol(self, name):
+    parent_key = self.root_key
+    root_dir = self.db[parent_key]      # "/"
+    sym_key = root_dir[name]            # "NAME" 
+    self.del_node(sym_key)              # Recursively delete the node-tree
+    del self.db[sym_key]                # Delete the node itself
+    del root_dir[name]                  # Delete NAME from the root_dir
+    self.db[self.root_key] = root_dir   # Save the new root_dir
+
+  # Recursively deletes all children of NODE, where NODE is a key in
+  # self.db.
+  def del_node(self, node):
+    entries = self.db[node]
+    for key in entries.keys():
+      if key[0] == '/': # Skip flags
+        continue
+      self.del_node(entries[key])
+      del self.db[entries[key]]
+
+  # Left in temporarily for debugging purposes
+  #def __del__(self):
+  #  print "=" * 75
+  #  for key in self.db.db.keys():
+  #    print key, self.db[key]
+
+        
 def is_trunk_vendor_revision(default_branches_db, cvs_path, cvs_rev):
   """Return 1 if CVS_REV of CVS_PATH is a trunk (i.e., head) vendor
   revision according to DEFAULT_BRANCHES_DB, else return None."""
@@ -2192,6 +2242,7 @@ def is_trunk_vendor_revision(default_branches_db, cvs_path, cvs_rev):
   return None
 
 
+### TODO add digest to constructor, then use it in __cmp__
 class Commit:
   def __init__(self, author, log):
     self.author = author
@@ -2210,6 +2261,7 @@ class Commit:
     self.t_min = 1L<<32
     self.t_max = 0
 
+  ###TODO: Tertiary sort by digest
   def __cmp__(self, other):
     # Commits should be sorted by t_max.  If both self and other have
     # the same t_max, break the tie using t_min.
@@ -2217,6 +2269,17 @@ class Commit:
 
   def has_file(self, fname):
     return self.files.has_key(fname)
+
+  def revisions(self):
+    return self.changes + self.deletes
+
+  def contains_symbolic_name(self, name):
+    """Returns true if any CVSRevision in this commit is on a tag or a
+    branch or is the origin of a tag or branch."""
+    for c_rev in self.revisions():
+      if c_rev.contains_symbolic_name(name):
+        return 1
+    return 0
 
   def add(self, c_rev):
     # Record the time range of this commit.
@@ -2488,6 +2551,50 @@ def read_resync(fname):
 
   return resync
 
+class SymbolicName:
+  def __init__(self, name, isTag=None):
+    self.name = name
+    self.isTag = isTag
+
+
+def get_symbol_closing_revs(ctx):
+  """Iterate through sorted revs, accumulating tags and branches as it
+  goes.  Returns a dictionary whose key is the last revision a
+  symbolicname was seen in, and whose value is a list of all
+  symbolicnames that were last seen in that revision."""
+
+  # Once we've gone through all the revs,
+  # symbols.keys() will be a list of all tags and branches, and
+  # their corresponding values will be a key into the last CVS revision
+  # that they were used in.
+  symbols = {}
+  tags = {}
+  for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
+    c_rev = CVSRevision(ctx, line)
+
+    for tag in c_rev.tags:
+      symbols[tag] = c_rev.unique_key()
+      tags[tag] = 1
+    for branch in c_rev.branches:
+      symbols[branch] = c_rev.unique_key()
+    if c_rev.branch_name:
+      symbols[branch] = c_rev.unique_key()
+
+  # Creates an inversion of symbols above--a dictionary of lists (key
+  # = CVS rev unique_key: val = list of symbols that close in that
+  # rev.
+  symbol_revs = {}
+  for symbol in symbols.keys():
+    value = symbols[symbol]
+    if tags.has_key(symbol):
+      sym = SymbolicName(symbol, 1)
+    else:
+      sym = SymbolicName(symbol)
+    if symbol_revs.has_key(value):
+      symbol_revs[value].append(sym)
+    else:
+      symbol_revs[value] = [sym]
+  return symbol_revs
 
 def pass1(ctx):
   cd = CollectData(ctx.cvsroot, DATAFILE, ctx.default_branches_db)
@@ -2568,6 +2675,7 @@ def pass4(ctx):
   sym_tracker = SymbolicNameTracker()
   metadata_db = Database(METADATA_DB, 'r')
 
+  symbol_pkeys = get_symbol_closing_revs(ctx)
   # A dictionary of Commit objects, keyed by digest.  Each object
   # represents one logical commit, which may involve multiple files.
   #
@@ -2586,6 +2694,7 @@ def pass4(ctx):
   # Start the dumpfile object.
   dumper = Dumper(ctx)
 
+  pending_symbols = []
   # process the logfiles, creating the target
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
@@ -2632,6 +2741,45 @@ def pass4(ctx):
       author, log = metadata_db[c_rev.digest]
       c = commits[c_rev.digest] = Commit(author, log)
     c.add(c_rev)
+
+    #####################################################################
+    ###TODO rename symbol_pkeys
+    open_symbols = []
+    if symbol_pkeys.has_key(c_rev.unique_key()):
+      for key in symbol_pkeys[c_rev.unique_key()]:
+        if not key in pending_symbols:
+          pending_symbols.append(key)
+
+    ### TODO need to sort these somehow
+    # Make a copy here because we're going to modify pending_symbols
+    # inside the for loop.
+    symbols = list(pending_symbols)
+    for sym in symbols:
+      for k, v in commits.items():
+        if v.contains_symbolic_name(sym.name):
+          if not sym in open_symbols:
+            open_symbols.append(sym)
+            break
+      else:
+        if not sym in pending_symbols:
+          pending_symbols.append(sym)
+
+    # Make a copy here because we're going to modify pending_symbols
+    # inside the for loop.
+    symbols = list(pending_symbols)
+    for sym in symbols:
+      if sym in open_symbols: # sym is still open--don't close it now.
+        continue
+      if sym.isTag:
+        sym_tracker.fill_tag(dumper, ctx, sym.name, [1])
+      else:
+        sym_tracker.fill_branch(dumper, ctx, sym.name, [1])
+      sym_tracker.cleanup_symbol(sym.name)
+      pending_symbols.remove(sym)
+    for key in open_symbols:
+      if not key in pending_symbols:
+        pending_symbols.append(key)
+    #####################################################################
 
   # End of the sorted revs file.  Flush any remaining commits:
   if commits:
