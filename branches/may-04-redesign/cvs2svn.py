@@ -188,6 +188,50 @@ DIGEST_END_IDX = 9 + (sha.digestsize * 2)
 symbolic_name_re = re.compile('^[a-zA-Z].*$')
 symbolic_name_transtbl = string.maketrans('/\\',',;')
 
+
+class Singleton(object):
+  """If you wish to have a class that you can only instantiate once,
+  then this is your superclass."""
+  def __new__(cls, *args, **kwds):
+    singleton = cls.__dict__.get("__singleton__")
+    if singleton is not None:
+      return singleton
+    cls.__singleton__ = singleton = object.__new__(cls)
+    singleton.init(*args, **kwds)
+    return singleton
+
+
+class Cleanup(Singleton):
+  """This singleton class manages any files created by cvs2svn. When
+  you first create a file, call Cleanup.register, passing the
+  filename, and the last pass that you need the file.  After the end
+  of that pass, your file will be cleaned up after running an optional
+  callback."""
+
+  # We're a singleton, so we use init, not __init__
+  def init(self):
+    self._log = {}
+    self._callbacks = {}
+
+  def register(self, file, which_pass, callback=None):
+    """Register FILE for cleanup at the end of WHICH_PASS, running
+    function CALLBACK prior to removal."""
+    if not self._log.has_key(which_pass):
+      self._log[which_pass] = []
+    self._log[which_pass].append(file)
+    if callback:
+      self._callbacks[file] = callback
+
+  def cleanup(self, which_pass):
+    if not self._log.has_key(which_pass):
+      return
+    for file in self._log[which_pass]:
+      print "Cleaning up", file
+      if self._callbacks.has_key(file):
+        self._callbacks[file]()
+      os.unlink(file)
+
+
 # A wrapper for anydbm that uses the marshal module to store items as
 # strings.
 class Database:
@@ -319,9 +363,12 @@ class CollectData(rcsparse.Sink):
                forced_branches, forced_tags):
     self.cvsroot = cvsroot
     self.revs = open(log_fname_base + REVS_SUFFIX, 'w')
+    Cleanup().register(log_fname_base + REVS_SUFFIX, pass2)
     self.resync = open(log_fname_base + RESYNC_SUFFIX, 'w')
+    Cleanup().register(log_fname_base + RESYNC_SUFFIX, pass2)
     self.default_branches_db = default_branches_db
     self.metadata_db = Database(METADATA_DB, 'n')
+    Cleanup().register(METADATA_DB, pass8)
     self.fatal_errors = []
     self.next_faked_branch_num = 999999
 
@@ -822,12 +869,14 @@ class RepositoryMirror:
     # This corresponds to the 'revisions' table in a Subversion fs.
     self.revs_db_file = SVN_REVISIONS_DB
     self.revs_db = Database(self.revs_db_file, 'n')
+    Cleanup().register(self.revs_db_file, pass8)
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track metadata, not file contents.)
     self.nodes_db_file = NODES_DB
     self.nodes_db = Database(self.nodes_db_file, 'n')
+    Cleanup().register(self.nodes_db_file, pass8)
 
     # This tracks which symbolic names the current "head" of a given
     # filepath could be the origin node for.  When the next commit on
@@ -839,6 +888,7 @@ class RepositoryMirror:
     # list.
     self.symroots_db_file = SYMBOLIC_NAME_ROOTS_DB
     self.symroots_db = Database(self.symroots_db_file, 'n')
+    Cleanup().register(self.symroots_db_file, pass8)
 
     # When copying a directory (say, to create part of a branch), we
     # pass change_path() a list of expected entries, so it can remove
@@ -1737,6 +1787,7 @@ class SymbolicNameTracker:
   def __init__(self):
     self.db_file = SYMBOLIC_NAMES_DB
     self.db = Database(self.db_file, 'n')
+    Cleanup().register(self.db_file, pass8)
     self.root_key = gen_key()
     self.db[self.root_key] = {}
 
@@ -2675,6 +2726,7 @@ class SymbolingsLogger:
   ### TODO cleanup file!
   def __init__(self):
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'w')
+    Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
     ### TODO Warning: Openings can get REALLY BIG (the pathological
     ### case is NUM_CVS_FILES * NUM_SYMBOLIC_NAMES *
     ### AVG_SIZE_OF_SYMBOLIC_NAME).  This may be a memory issue, and
@@ -2746,6 +2798,7 @@ def pass2(ctx):
   resync = read_resync(ctx.log_fname_base + RESYNC_SUFFIX)
 
   output = open(ctx.log_fname_base + CLEAN_REVS_SUFFIX, 'w')
+  Cleanup().register(ctx.log_fname_base + CLEAN_REVS_SUFFIX, pass3)
 
   # process the revisions file, looking for items to clean up
   for line in fileinput.FileInput(ctx.log_fname_base + REVS_SUFFIX):
@@ -2791,6 +2844,8 @@ def pass3(ctx):
   os.environ['LC_ALL'] = 'C'
   run_command('sort %s > %s' % (ctx.log_fname_base + CLEAN_REVS_SUFFIX,
                                 ctx.log_fname_base + SORTED_REVS_SUFFIX))
+  ### TODO pass8 is too late for this, but we may need it again after pass5
+  Cleanup().register(ctx.log_fname_base + SORTED_REVS_SUFFIX, pass8)
   if lc_all_tmp is None:
     del os.environ['LC_ALL']
   else:
@@ -2809,7 +2864,9 @@ def pass4(ctx):
   symbols = {}
   ###TODO cleanup files
   tags_db = Database(TAGS_DB, 'n')
+  Cleanup().register(TAGS_DB, pass8) ###TODO cleanup earlier?
   cvs_revs_db = Database(CVS_REVS_DB, 'n')
+  Cleanup().register(CVS_REVS_DB, pass5)
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
@@ -2831,6 +2888,7 @@ def pass4(ctx):
   # = CVS rev unique_key: val = list of symbols that close in that
   # rev.
   symbol_revs_db = Database(SYMBOL_LAST_CVS_REVS_DB, 'n')
+  Cleanup().register(SYMBOL_LAST_CVS_REVS_DB, pass8)
   for sym, rev_unique_key in symbols.items():
     if symbol_revs_db.has_key(rev_unique_key):
       ary = symbol_revs_db[rev_unique_key]
@@ -2972,30 +3030,6 @@ def pass8(ctx):
   if ctx.verbose:
     print count, 'commits processed.'
 
-
-def pass9(ctx):
-  if ctx.skip_cleanup:
-    return
-
-  # Remove our database files
-  os.unlink(SVN_REVISIONS_DB)
-  os.unlink(NODES_DB)
-  os.unlink(SYMBOLIC_NAME_ROOTS_DB)
-  if not ctx.trunk_only:
-    os.unlink(SYMBOLIC_NAMES_DB)
-  os.unlink(METADATA_DB)
-
-  # This is the only DB reference still reachable at this point; lose
-  # it before removing the file.
-  ctx.default_branches_db = None
-  os.unlink(DEFAULT_BRANCHES_DB)
-  
-  # Remove our other data files
-  for suffix in (REVS_SUFFIX, CLEAN_REVS_SUFFIX,
-                 SORTED_REVS_SUFFIX, RESYNC_SUFFIX):
-    os.unlink('cvs2svn-data' + suffix)
-
-
 _passes = [
   pass1,
   pass2,
@@ -3005,7 +3039,6 @@ _passes = [
   pass6,
   pass7,
   pass8,
-  pass9,
   ]
 
 
@@ -3069,11 +3102,14 @@ def convert(ctx, start_pass=1):
     sys.stderr.write(error_prefix + ': \'%s\' does not exist.\n' % ctx.cvsroot)
     sys.exit(1)
 
+  cleanup = Cleanup()
   times = [ None ] * len(_passes)
   for i in range(start_pass - 1, len(_passes)):
     times[i] = time.time()
     print '----- pass %d -----' % (i + 1)
     _passes[i](ctx)
+    if not ctx.skip_cleanup:
+      cleanup.cleanup(_passes[i])
   times.append(time.time())
 
   for i in range(start_pass, len(_passes)+1):
@@ -3293,6 +3329,11 @@ def main():
     ctx.mime_mapper = MimeMapper()
     ctx.mime_mapper.set_mime_types_file(ctx.mime_types_file)
 
+  def clear_default_branches_db():
+    # This is the only DB reference still reachable at this point;
+    # lose it before removing the file.
+    ctx.default_branches_db = None
+
   # Lock the current directory for temporary files.
   try:
     os.mkdir('cvs2svn.lock')
@@ -3306,6 +3347,7 @@ def main():
     sys.exit(1)
   try:
     ctx.default_branches_db = Database(DEFAULT_BRANCHES_DB, 'n')
+    Cleanup().register(DEFAULT_BRANCHES_DB, pass8, clear_default_branches_db)
     convert(ctx, start_pass=start_pass)
   finally:
     try: os.rmdir('cvs2svn.lock')
