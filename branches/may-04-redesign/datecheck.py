@@ -16,7 +16,10 @@ Feed this standard input in the following format:
       r50  2003-06-02 23:33:13 -0500 (Mon, 02 Jun 2003)
 
 The "rX"s begin at the left edge, the indentation above is just for
-readability in this doc string.  The output will look like this:
+readability in this doc string.  You can get this sort of input by
+running "svn log -q" and emacsulating the results appropriately.
+
+The output of this script looks like:
 
       r42  1054596031      OK  (2003-06-02 22:20:31 -0500)
       r43  1054596031      OK  (2003-06-02 22:20:31 -0500)
