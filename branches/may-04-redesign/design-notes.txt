@@ -70,14 +70,15 @@ The fields are:
        file).
    5.  the revision number
    6.  "N" if this revision has non-empty deltatext, else "E" for empty
-   7.  the branch on which this commit happened, or "*" if not on a branch
-   8.  the number of tags rooted at this revision (followed by their
+   7.  the RCS keyword substitution mode ("kkv", "kb", etc), or "*" if none
+   8.  the branch on which this commit happened, or "*" if not on a branch
+   9.  the number of tags rooted at this revision (followed by their
        names, space-delimited)  
-   9.  the number of branches rooted at this revision (followed by
+   10. the number of branches rooted at this revision (followed by
        their names, space-delimited) 
-   10. the path of the RCS file in the repository
+   11. the path of the RCS file in the repository
 
-(Of course, in the above example, fields 6 and 7 are "0", so they have
+(Of course, in the above example, fields 9 and 10 are "0", so they have
 no additional data.)
 
 Also, for resync'd revisions, a line like this is written out to

@@ -102,6 +102,12 @@ SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
 NODES_DB = 'cvs2svn-nodes.db'
 
+# Skeleton version of an svn filesystem.
+# (These supersede and will eventually replace the two above.)
+# See class SVNRepositoryMirror for how these work.
+SVN_MIRROR_REVISIONS_DB = 'cvs2svn-svn-revisions.db'
+SVN_MIRROR_NODES_DB = 'cvs2svn-svn-nodes.db'
+
 # Offsets pointing to the beginning of each SYMBOLIC_NAME in
 # SYMBOL_OPENINGS_CLOSINGS_SORTED
 SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
@@ -257,17 +263,21 @@ class Cleanup(Singleton):
 
   def register(self, file, which_pass, callback=None):
     """Register FILE for cleanup at the end of WHICH_PASS, running
-    function CALLBACK prior to removal."""
+    function CALLBACK prior to removal.  Registering a given FILE is
+    idempotent; you may register as many times as you wish, but it
+    will only be cleaned up once."""
+    ###TODO We support idempotency for files, but not callbacks.  Fix.
     if not self._log.has_key(which_pass):
-      self._log[which_pass] = []
-    self._log[which_pass].append(file)
+      self._log[which_pass] = {}
+    self._log[which_pass][file] = 1
     if callback:
       self._callbacks[file] = callback
 
   def cleanup(self, which_pass):
+    """Clean up all files, and invoke callbacks, for pass WHICH_PASS."""
     if not self._log.has_key(which_pass):
       return
-    for file in self._log[which_pass]:
+    for file in self._log[which_pass].keys():
       print "Cleaning up", file
       if self._callbacks.has_key(file):
         self._callbacks[file]()
@@ -313,6 +323,27 @@ class StringWriter:
 
 class CVSRevision:
   def __init__(self, ctx, *args):
+    """Initialize a new CVSRevision with context CTX and ARGS.
+    If there is one argument in ARGS, it is a string, in the format of
+    a line from a revs file.  If there are multiple ARGS, there must be
+    11 of them, comprising a parsed revs line:
+
+       timestamp       -->  (int) date stamp for this cvs revision
+       digest          -->  (string) digest of author+logmsg
+       op              -->  (char) 'C' for change, 'D' for delete
+       prev_rev        -->  (string) previous CVS Rev, e.g., "1.2"
+       rev             -->  (string) this CVS rev, e.g., "1.3"
+       deltatext_code  -->  (char) 'N' if non-empty deltatext, else 'E'
+       fname           -->  (string) relative path of file in CVS repos
+       mode            -->  (string) "kkv", "kb", etc, or None.
+       branch_name     -->  (string) branch on which this rev occurred
+       tags            -->  (list of strings) all tags on this revision
+       branches        -->  (list of strings) all branches rooted in this rev
+
+    The two forms of initialization are equivalent.  You can construct
+    essentially identical instances, one from a single string argument
+    and the other from multiple arguments, as long as the string
+    represents the same data as the multiple arguments."""
     self._ctx = ctx
     if len(args) == 11:
       self.timestamp, self.digest, self.op, self.prev_rev, self.rev, \
@@ -2923,15 +2954,25 @@ class CVSRevisionDatabase(Database):
   a Database mapping CVSRevision.unique_key() to the actual s-rev
   string for the CVS Revision."""
 
-  def __init__(self, mode):
+  def __init__(self, mode, ctx=None):
+    """Initialize an instance, opening database in MODE (like the MODE
+    argument to Database or anydbm.open()).  CTX is required if you
+    wish to call the get_revision() method."""
+    self._ctx = ctx
     self.cvs_revs_db = Database(CVS_REVS_DB, mode)
-    Cleanup().register(CVS_REVS_DB, pass5)
+    Cleanup().register(CVS_REVS_DB, pass8)
 
   def log_revision(self, c_rev):
     # Add c_rev to the cvs_rev index db
     str = StringWriter()
     c_rev.write_revs_line(str)
     self.cvs_revs_db[c_rev.unique_key()] = str.stringValue()
+
+  def get_revision(self, unique_key):
+    """Return the CVSRevision stored under UNIQUE_KEY.
+    ###TODO Should we error if no such key, or just return None?"""
+    val = self.cvs_revs_db[unique_key]
+    return CVSRevision(self._ctx, val)
 
 
 class TagsDatabase(Database):
@@ -3044,7 +3085,7 @@ def pass4(ctx):
   3. A Database that contains all symbolic names that are tags.
   """
   last_sym_name_db = LastSymbolicNameDatabase('n')
-  cvs_rev_db = CVSRevisionDatabase('n')
+  cvs_rev_db = CVSRevisionDatabase('n', ctx)
   tags_db = TagsDatabase('n')
 
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
@@ -3139,14 +3180,18 @@ class SVNCommitInternalInconsistencyError(Exception):
 
 class CommitMapper(Singleton):
   ###TODO Find a better docstring and/or name for this class.
-  """Provide bidirectional mapping between CVSRevisions and SVNCommits."""
-  def init(self):
+  """Provide bidirectional mapping between CVSRevisions and SVNCommits.
+  CTX is the usual annoying semi-global ctx object, which may become a
+  singleton very soon, grrr."""
+  def init(self, ctx):
+    self._ctx = ctx
     self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, 'c')
     Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8)
     self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, 'c')
     Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
     self.svn_commit_names = Database(SVN_COMMIT_NAMES, 'c')
     Cleanup().register(SVN_COMMIT_NAMES, pass8)
+    self.cvs_revisions = CVSRevisionDatabase('r', ctx)
 
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
@@ -3160,30 +3205,36 @@ class CommitMapper(Singleton):
 
     This method can throw SVNCommitInternalInconsistencyError.
     """
-    svn_commit = SVNCommit("Retrieved from disk", svn_revnum)
+    svn_commit = SVNCommit(self._ctx, "Retrieved from disk", svn_revnum)
     c_rev_keys = self.svn2cvs_db.get(str(svn_revnum), None)
     if c_rev_keys == None:
       return None
-    svn_commit.cvs_rev_unique_keys = c_rev_keys
+
+    for key in c_rev_keys:
+      c_rev = self.cvs_revisions.get_revision(key)
+      svn_commit.add_revision(c_rev)
+
     name = self.svn_commit_names.get(str(svn_revnum), None)
     svn_commit.set_symbolic_name(name)
-    if len(svn_commit.cvs_rev_unique_keys) and name:
+
+    if len(svn_commit.cvs_revs) and name:
       msg = """An SVNCommit cannot have cvs_revisions *and* a
-      corresponding symbolic name to fill."""
+      corresponding symbolic name ('%s') to fill.""" % name
       raise SVNCommitInternalInconsistencyError(msg)
+
     return svn_commit
     
-  def map(self, svn_revnum, cvs_rev_unique_keys):
+  def set_cvs_revs(self, svn_revnum, cvs_revs):
     """Record the bidirectional mapping between SVN_REVNUM and
-    CVS_REV_UNIQUE_KEYS.""" 
-    for key in cvs_rev_unique_keys:
-      print "    KFF:", key
+    CVS_REVS.""" 
+    for c_rev in cvs_revs:
+      print "    KFF:", c_rev.unique_key()
     print "------------------------------------------------------------- KFF"
-    self.svn2cvs_db[str(svn_revnum)] = cvs_rev_unique_keys
-    for cvs_rev_unique_key in cvs_rev_unique_keys:
-      self.cvs2svn_db[cvs_rev_unique_key] = svn_revnum
+    self.svn2cvs_db[str(svn_revnum)] = [x.unique_key() for x in cvs_revs]
+    for c_rev in cvs_revs:
+      self.cvs2svn_db[c_rev.unique_key()] = svn_revnum
 
-  def map_name(self, svn_revnum, name):
+  def set_name(self, svn_revnum, name):
     """Store NAME as the value of SVN_REVNUM"""
     self.svn_commit_names[str(svn_revnum)] = name
 
@@ -3360,7 +3411,7 @@ class CVSCommit:
           # but hey, we're all idealists here, aren't we?
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit("pre-commit branch CHANGE '%s'"
+            svn_commit = SVNCommit(self._ctx, "pre-commit branch CHANGE '%s'"
                                    % c_rev.branch_name)
             svn_commit.set_symbolic_name(c_rev.branch_name)
             svn_commit.flush()
@@ -3375,7 +3426,7 @@ class CVSCommit:
         if not RepositoryHead().has_path(c_rev.svn_path):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            svn_commit = SVNCommit("pre-commit branch DELETE '%s'"
+            svn_commit = SVNCommit(self._ctx, "pre-commit branch DELETE '%s'"
                                    % c_rev.branch_name)
             svn_commit.set_symbolic_name(c_rev.branch_name)
             svn_commit.flush()
@@ -3393,10 +3444,10 @@ class CVSCommit:
     # state 'dead'), the conversion will still generate a Subversion
     # revision containing the log message for the second dead
     # revision, because we don't want to lose that information.
-    svn_commit = SVNCommit("commit")
+    svn_commit = SVNCommit(self._ctx, "commit")
 
     for c_rev in self.changes:
-      svn_commit.add_revision_key(c_rev.unique_key())
+      svn_commit.add_revision(c_rev)
       # print ("    KFF adding or changing %s : '%s'"
       #        % (c_rev.rev, c_rev.svn_path))
 
@@ -3417,7 +3468,7 @@ class CVSCommit:
           self.default_branch_copies.append(c_rev)
 
     for c_rev in self.deletes:
-      svn_commit.add_revision_key(c_rev.unique_key())
+      svn_commit.add_revision(c_rev)
       # compute a repository path, dropping the ,v from the file name
       # print "    KFF deleting %s : '%s'" % (c_rev.rev, c_rev.svn_path)
 
@@ -3443,7 +3494,7 @@ class CVSCommit:
     seen_branches = { }
     for c_rev in self.default_branch_copies + self.default_branch_deletes:
       if not seen_branches.has_key(c_rev.branch_name):
-        svn_commit = SVNCommit("post-commit def_br_[copy|delete]")
+        svn_commit = SVNCommit(self._ctx, "post-commit def_br_[copy|delete]")
         svn_commit.set_symbolic_name(c_rev.branch_name)
         svn_commit.flush()
         seen_branches[c_rev.branch_name] = None
@@ -3463,28 +3514,39 @@ class CVSCommit:
 
 
 class SVNCommit:
-  def __init__(self, description="", revnum=None):
-    ###TODO Document this!
-    self.cvs_rev_unique_keys = []
+  def __init__(self, ctx, description="", revnum=None, cvs_revs=[]):
+    """Instantiate an SVNCommit with CTX.  DESCRIPTION is for debugging only.
+    If REVNUM, the SVNCommit will correspond to that revision number;
+    and if CVS_REVS, then they must be the exact set of CVSRevisions for
+    REVNUM.
+
+    It is an error to pass CVS_REVS without REVNUM, but you may pass
+    REVNUM without CVS_REVS, and then add a revision at a time by
+    invoking add_revision()."""
+    self._ctx = ctx
+    self._description = description
+    self._cvs_revs = cvs_revs
     if not revnum:
+      if cvs_revs:
+        ###TODO error here
+        pass
       self.revnum = SVNRevNum().get_next_revnum()
     else:
       self.revnum = revnum
-    self.description = description
     self.symbolic_name = None
 
   def set_symbolic_name(self, name):
     """Set NAME to be the symbolic name that is filled in this
     SVNCommit."""
     self.symbolic_name = name
-    CommitMapper().map_name(self.revnum, name)
+    CommitMapper(self._ctx).set_name(self.revnum, name)
 
-  def add_revision_key(self, cvs_rev_unique_key):
-    self.cvs_rev_unique_keys.append(cvs_rev_unique_key)
+  def add_revision(self, cvs_rev):
+    self._cvs_revs.append(cvs_rev)
 
   def flush(self):
-    print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self.description)
-    CommitMapper().map(self.revnum, self.cvs_rev_unique_keys)
+    print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self._description)
+    CommitMapper(self._ctx).set_cvs_revs(self.revnum, self._cvs_revs)
 
   def __str__(self):
     """ Print a human-readable description of this SVNCommit.  This
@@ -3496,10 +3558,10 @@ class SVNCommit:
       ret = ret + "   symbolic name: " +  self.symbolic_name + "\n"
     else:
       ret = ret + "   NO symbolic name\n"
-    ret = ret + "   debug description: " + self.description + "\n"
-    ret = ret + "   cvs_revision_unique_keys:\n"
-    for key in self.cvs_rev_unique_keys:
-      ret = ret + "     " + key + "\n"
+    ret = ret + "   debug description: " + self._description + "\n"
+    ret = ret + "   cvs_revs:\n"
+    for c_rev in self._cvs_revs:
+      ret = ret + "     " + c_rev.unique_key() + "\n"
     return ret
 
 class SVNRevNum(Singleton):
@@ -3631,7 +3693,7 @@ class CVSRevisionAggregator:
     for sym in sorted_pending_symbols_keys:
       if open_symbols.has_key(sym): # sym is still open--don't close it.
         continue
-      svn_commit = SVNCommit("closing tag/branch '%s'" % sym)
+      svn_commit = SVNCommit(self._ctx, "closing tag/branch '%s'" % sym)
       svn_commit.set_symbolic_name(sym)
       svn_commit.flush()
       self.done_symbols.append(sym)
@@ -3639,6 +3701,7 @@ class CVSRevisionAggregator:
 
 
 
+# This supersedes and will eventually replace RepositoryMirror.
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
   SVNCommit at a time.  The mirror is skeletal; it does not contain
@@ -3646,16 +3709,70 @@ class SVNRepositoryMirror:
   performs a repository action method ([add|change|delete|copy]path),
   it will call the delegate's corresponding repository action method.
   See SVNRepositoryDelegate for more information."""
-  def __init__(self, delegate=None):
-    """Set up the SVNRepositoryMirror and prepare it for
-    SVNCommits."""
+  def __init__(self, ctx, delegate=None):
+    """Set up the SVNRepositoryMirror and prepare it for SVNCommits."""
+    self._ctx = ctx
     self.delegate = delegate
     self.delegate.set_mirror(self)
+
+    # This corresponds to the 'revisions' table in a Subversion fs.
+    self.revs_db = Database(SVN_MIRROR_REVISIONS_DB, 'n')
+    Cleanup().register(SVN_MIRROR_REVISIONS_DB, pass8)
+
+    # This corresponds to the 'nodes' table in a Subversion fs.  (We
+    # don't need a 'representations' or 'strings' table because we
+    # only track metadata, not file contents.)
+    self.nodes_db = Database(SVN_MIRROR_NODES_DB, 'n')
+    Cleanup().register(SVN_MIRROR_NODES_DB, pass8)
+
+    # We need to retrieve CVSRevisions by their unique keys.
+    self.cvs_rev_db = CVSRevisionDatabase('r', ctx)
+
+    # Init a root directory with no entries at revision 0.
+    self.youngest = 0
+    youngest_key = gen_key()
+    self.revs_db[str(self.youngest)] = youngest_key
+    self.nodes_db[youngest_key] = { }
+
+    ###TODO Will we still need this?
+    #
+    # When copying a directory (say, to create part of a branch), we
+    # pass change_path() a list of expected entries, so it can remove
+    # any that are in the source but don't belong on the branch.
+    # However, because creating a given region of a branch can involve
+    # copying from several sources, we don't want later copy
+    # operations to delete entries that were legitimately created by
+    # earlier copy ops.  So after a copy, the directory records
+    # legitimate entries under this key, in a dictionary (the keys are
+    # entry names, the values can be ignored).
+    self.approved_entries = "/approved-entries"
+
+    ###TODO Will we still need these?
+    #
+    # Set to 1 on a directory that's mutable in the revision currently
+    # being constructed.  (Yes, this is exactly analogous to the
+    # Subversion filesystem code's concept of mutability.)
+    #
+    # It is overloaded with a second piece of information:
+    #
+    # If the value of the flag is 2, then in addition to the node
+    # being mutable, the node and all subnodes were created by a copy
+    # operation in the current revision.  In this and only this
+    # circumstance, it is valid for pruning to occur.
+    self.mutable_flag = "/mutable"
+    # This could represent a new mutable directory or file.
+    self.empty_mutable_thang = { self.mutable_flag : 1 }
+
+  def _affects_only_trunk(self, svn_commit):
+    """Return true if SVNCommit SVN_COMMIT affects only paths on trunk."""
+    ### kff todo
+    pass
 
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
     Repository revision number, changing the repository, and informing
-    the delegate."""
+    the delegate (if any)."""
+    ### kff todo
     pass
 
 
@@ -3757,8 +3874,9 @@ def pass8(ctx):
 
   svncounter = 1
 
-  while(1):
-    svn_commit = CommitMapper().get_svn_commit(svncounter)
+  ###TODO switch to 1 for debugging
+  while(0):
+    svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
       break
     print "=" * 75
