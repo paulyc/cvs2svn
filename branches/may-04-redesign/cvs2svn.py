@@ -3344,7 +3344,6 @@ class CVSCommit:
       # OP_DELETE
       self.deletes.append(c_rev)
     self.files[c_rev.fname] = 1
-    print "FITZ:", c_rev.fname
 
   def _get_properties(self, c_rev):
     # we already have the date, so just format it
@@ -3515,7 +3514,7 @@ class CVSCommit:
 
 
 class SVNCommit:
-  def __init__(self, ctx, description="", revnum=None, cvs_revs=[]):
+  def __init__(self, ctx, description="", revnum=None, cvs_revs=None):
     """Instantiate an SVNCommit with CTX.  DESCRIPTION is for debugging only.
     If REVNUM, the SVNCommit will correspond to that revision number;
     and if CVS_REVS, then they must be the exact set of CVSRevisions for
@@ -3527,10 +3526,12 @@ class SVNCommit:
     self._ctx = ctx
     self._description = description
     self.cvs_revs = cvs_revs
+    if cvs_revs is not None:
+      self.cvs_revs = cvs_revs
+    else:
+      self.cvs_revs = []
+
     if not revnum:
-      if cvs_revs:
-        ###TODO error here
-        pass
       self.revnum = SVNRevNum().get_next_revnum()
     else:
       self.revnum = revnum
