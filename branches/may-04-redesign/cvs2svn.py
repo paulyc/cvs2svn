@@ -2975,7 +2975,7 @@ class SymbolingsLogger(Singleton):
     """Iterate through NAMES.  Based on the type of C_REV we have,
     either log an opening and a closing, or log a dead opening.  The
     dead opening and the opening both use SVN_REVNUM, but the closing
-    will have its revnum determined later."""a
+    will have its revnum determined later."""
     for name in names:
       name = _clean_symbolic_name(name)
       if c_rev.op == OP_DELETE:
