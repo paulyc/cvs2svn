@@ -1187,7 +1187,7 @@ class SymbolingsLogger(Singleton):
       path = '/'.join(c_rev.svn_path.split('/')[:2])
     self._log(name, svn_revnum, path, DEAD_OPENING)
 
-  def check_revision(self, c_rev, svn_revnum):
+  def log_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it opens a symbolic name."""
     # We log this revision if:
     # - There is branch/tag OPENING activity in this c_rev
@@ -2222,7 +2222,7 @@ class CVSCommit:
 
     if not self._ctx.trunk_only:    
       for c_rev in self.revisions():
-        SymbolingsLogger(self._ctx).check_revision(c_rev, svn_commit.revnum)
+        SymbolingsLogger(self._ctx).log_revision(c_rev, svn_commit.revnum)
 
   ###TODO We need a test case where we have a file on a default branch
   #and on the HEAD revision of the default branch in CVS, that file is
