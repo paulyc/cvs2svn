@@ -4802,7 +4802,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     If CTX.set_eol_style is true, then set 'svn:eol-style' to 'native'
     for files not marked with the CVS 'kb' flag.  (But see issue #39
     for how this might change.)""" 
-    ###TODO Remove this debugging "kff" shim.
+    ###TODO kff: Remove this debugging "kff" shim.
     self.dumpfile_path = "kff-" + ctx.dumpfile
     self.set_cvs_revnum_properties = ctx.cvs_revnums
     self.set_eol_style = ctx.set_eol_style
@@ -4816,7 +4816,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
 
   def set_mirror(self, mirror):
     """Set the SVNRepositoryMirror for this instance."""
-    ###TODO We don't actually use this yet.  Will we ever?
+    ###TODO kff: We don't actually use this yet.  Will we ever?
     self.mirror = mirror
 
   def write_dumpfile_header(self):
@@ -5060,24 +5060,24 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
 
   def delete_path(self, c_rev):
     """Emit the deletion of C_REV.svn_path."""
-    ###TODO This just needs to take SVN_PATH, really.
+    ###TODO kff: This just needs to take SVN_PATH, really.
     ###
-    ###TODO Who is responsible for pruning behavior?  The caller, I
-    ### think, but we should make sure that's what we want.
+    ###TODO kff: Who is responsible for pruning behavior?  The caller,
+    ### I think, but we should make sure that's what we want.
     self.dumpfile.write('Node-path: %s\n'
                         'Node-action: delete\n'
                         '\n' % self._utf8_path(c_rev.svn_path))
   
   def copy_path(self, src_path, dest_path, src_revnum):
     """Emit the copying of SRC_PATH at SRC_REV to DEST_PATH."""
-    ###TODO We need to settle whether callers are responsible for
+    ###TODO kff: We need to settle whether callers are responsible for
     ### passing UTF8 paths, or we are responsible for converting.
     ### Right now, we convert, see self._utf8_path().  That might be
     ### fine, just investigate to make sure.
     ###
-    ###TODO Note how the original Dumper.copy_path() took an 'entries'
-    ### arg.  Have we completely avoided the need for that now?  That
-    ### would certainly be nice.
+    ###TODO kff: Note how the original Dumper.copy_path() took an
+    ### 'entries' arg.  Have we completely avoided the need for that
+    ### now?  That would certainly be nice.
 
     # We don't need to include "Node-kind:" for copies; the loader
     # ignores it anyway and just uses the source kind instead.
