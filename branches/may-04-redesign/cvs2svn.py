@@ -98,7 +98,10 @@ DUMPFILE = 'cvs2svn-dump'  # The "dumpfile" we create to load into the repos
 # See class RepositoryMirror for how these work.
 SVN_REVISIONS_DB = 'cvs2svn-revisions.db'
 NODES_DB = 'cvs2svn-nodes.db'
-TAGS_DB = 'tags.db'
+
+SYMBOL_CLOSING_CVS_REVS_DB = 'cvs2svn-symbol-closing-cvs-revs.db'
+CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
+TAGS_DB = 'cvs2svn-tags.db'
 
 # os.popen() on Windows seems to require an access-mode string of 'rb'
 # in cases where the process will output binary information to stdout.
@@ -200,6 +203,24 @@ class Database:
 
   def __delitem__(self, key):
     del self.db[key]
+
+  def get(self, key, default):
+    if self.has_key(key):
+      return self.__getitem__(key)
+    return default
+   
+
+class StringWriter:
+  """Provide a convenient method to accumulate string data from
+  methods that want to write to a stream."""
+  def __init__(self):
+    self.vals = []
+
+  def write(self, val):
+    self.vals.append(val)
+
+  def stringValue(self):
+    return "".join(self.vals)
 
 
 class CVSRevision:
@@ -2630,40 +2651,6 @@ def read_resync(fname):
 
   return resync
 
-###TODO break this out into a separate pass
-def get_symbol_closing_revs(ctx):
-  """Iterate through sorted revs, accumulating tags and branches as it
-  goes.  Returns a dictionary whose key is the last revision a
-  symbolicname was seen in, and whose value is a list of all
-  symbolicnames that were last seen in that revision."""
-
-  # Once we've gone through all the revs,
-  # symbols.keys() will be a list of all tags and branches, and
-  # their corresponding values will be a key into the last CVS revision
-  # that they were used in.
-  tags_db = Database(TAGS_DB, 'n')
-  symbols = {}
-  for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line)
-
-    for tag in c_rev.tags:
-      symbols[tag] = c_rev.unique_key()
-      tags_db[tag] = None
-    for branch in c_rev.branches:
-      symbols[branch] = c_rev.unique_key()
-    if c_rev.branch_name:
-      symbols[c_rev.branch_name] = c_rev.unique_key()
-
-  # Creates an inversion of symbols above--a dictionary of lists (key
-  # = CVS rev unique_key: val = list of symbols that close in that
-  # rev.
-  symbol_revs = {}
-  for sym, rev_unique_key in symbols.items():
-    if symbol_revs.has_key(rev_unique_key):
-      symbol_revs[rev_unique_key].append(sym)
-    else:
-      symbol_revs[rev_unique_key] = [sym]
-  return symbol_revs
 
 def pass1(ctx):
   cd = CollectData(ctx.cvsroot, DATAFILE, ctx.default_branches_db,
@@ -2741,7 +2728,46 @@ def pass3(ctx):
     os.environ['LC_ALL'] = lc_all_tmp
 
 def pass4(ctx):
-  pass
+  """Iterate through sorted revs, accumulating tags and branches as it
+  goes.  Creates a Database whose key is the last revision a
+  symbolicname was seen in, and whose value is a list of all
+  symbolicnames that were last seen in that revision."""
+
+  # Once we've gone through all the revs,
+  # symbols.keys() will be a list of all tags and branches, and
+  # their corresponding values will be a key into the last CVS revision
+  # that they were used in.
+  symbols = {}
+  tags_db = Database(TAGS_DB, 'n')
+  cvs_revs_db = Database(CVS_REVS_DB, 'n')
+  for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
+    c_rev = CVSRevision(ctx, line)
+
+    # Gather last CVS Revision for symbolic name info and tag info
+    for tag in c_rev.tags:
+      symbols[tag] = c_rev.unique_key()
+      tags_db[tag] = None
+    for branch in c_rev.branches:
+      symbols[branch] = c_rev.unique_key()
+    if c_rev.branch_name:
+      symbols[c_rev.branch_name] = c_rev.unique_key()
+
+    # Add c_rev to the cvs_rev index db
+    str = StringWriter()
+    c_rev.write_revs_line(str)
+    cvs_revs_db[c_rev.unique_key()] = str.stringValue()
+
+  # Creates an inversion of symbols above--a dictionary of lists (key
+  # = CVS rev unique_key: val = list of symbols that close in that
+  # rev.
+  symbol_revs_db = Database(SYMBOL_CLOSING_CVS_REVS_DB, 'n')
+  for sym, rev_unique_key in symbols.items():
+    if symbol_revs_db.has_key(rev_unique_key):
+      ary = symbol_revs_db[rev_unique_key]
+      ary.append(sym)
+      symbol_revs_db[rev_unique_key] = ary
+    else:
+      symbol_revs_db[rev_unique_key] = [sym]
 
 def pass5(ctx):
   pass
@@ -2757,8 +2783,8 @@ def pass8(ctx):
     sym_tracker = DummySymbolicNameTracker()
   else:
     sym_tracker = SymbolicNameTracker()
-    symbols_closed_by_revkey = get_symbol_closing_revs(ctx)
     tags_db = Database(TAGS_DB, 'r')
+    symbol_revs_db = Database(SYMBOL_CLOSING_CVS_REVS_DB, 'r')
   metadata_db = Database(METADATA_DB, 'r')
 
   # A dictionary of Commit objects, keyed by digest.  Each object
@@ -2830,7 +2856,7 @@ def pass8(ctx):
     if ctx.trunk_only:
       continue
     #####################################################################
-    for sym in symbols_closed_by_revkey.get(c_rev.unique_key(), []):
+    for sym in symbol_revs_db.get(c_rev.unique_key(), []):
       pending_symbols[sym] = None
 
     open_symbols = {}
