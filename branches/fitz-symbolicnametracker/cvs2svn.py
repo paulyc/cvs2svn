@@ -262,9 +262,9 @@ class CVSRevision:
   def contains_symbolic_name(self, name):
     if name in self.tags:
       return 1
-    elif name in self.branches:
+    if name in self.branches:
       return 1
-    elif self.branch_name == name:
+    if self.branch_name == name:
       return 1
     return 0
 
@@ -2583,7 +2583,6 @@ def get_symbol_closing_revs(ctx):
     if c_rev.branch_name:
       symbols[SymbolicName(branch)] = c_rev.unique_key()
 
-  print "ZON:", len(symbols)
   # Creates an inversion of symbols above--a dictionary of lists (key
   # = CVS rev unique_key: val = list of symbols that close in that
   # rev.
@@ -2745,8 +2744,7 @@ def pass4(ctx):
     ###TODO rename symbol_pkeys
     if symbol_pkeys.has_key(c_rev.unique_key()):
       for key in symbol_pkeys[c_rev.unique_key()]:
-        if not pending_symbols.has_key(key):
-          pending_symbols[key] = 1
+        pending_symbols[key] = None
 
     ### TODO need to sort these
     open_symbols = {}
@@ -2754,11 +2752,10 @@ def pass4(ctx):
       for k, v in commits.items():
         if v.contains_symbolic_name(sym.name):
           if not open_symbols.has_key(sym):
-            open_symbols[sym] = 1
+            open_symbols[sym] = None
             break
       else:
-        if not pending_symbols.has_key(sym):
-          pending_symbols[sym] = 1
+        pending_symbols[sym] = None
 
     ### TODO need to sort these
     for sym in pending_symbols.keys():
