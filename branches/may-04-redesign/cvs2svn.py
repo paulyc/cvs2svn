@@ -443,19 +443,6 @@ class CVSRevision:
       return 1
     return 0
 
-  ###TODO This needs to be deleted when the redesign is done.
-  def contains_symbolic_name(self, name):
-    if name in self.tags:
-      return 1
-    if name in self.branches:
-      return 1
-    ###THIS CODE TO BE DELETED: REMOVING THIS IS NOT CORRECT because if we do, the
-    ###symbolicnametracker blows away the branch in the
-    ###symbolicnamesdb before the last commits on that branch.
-    if self.branch_name == name:
-      return 1
-    return 0
-
   def is_default_branch_revision(self):
     """Return 1 if SELF.rev of SELF.cvs_path is a default branch
     revision according to DEFAULT_BRANCHES_DB (see the conditions
