@@ -2038,9 +2038,6 @@ class CVSCommit:
       for c_rev in self.revisions():
         SymbolingsLogger(self._ctx).log_revision(c_rev, svn_commit.revnum)
 
-  ###TODO IMPT We need a test case where we have a file on a default branch
-  #and on the HEAD revision of the default branch in CVS, that file is
-  #in RCS state 'dead'
   def _post_commit(self):
     """Generates any SVNCommits that we can perform now that _commit
     has happened.  That is, handle non-trunk default branches.
