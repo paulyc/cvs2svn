@@ -4606,11 +4606,11 @@ class SVNRepositoryMirror:
 
   def commit(self, svn_commit):
     """Add an SVNCommit to the SVNRepository, incrementing the
-    Repository revision number, changing the repository, and informing
-    the delegate (if any)."""
+    Repository revision number, and changing the repository.
+    Invoke the delegate's start_commit() method, if there is a delegate."""
 
     self.start_commit(svn_commit.revnum)
-    self.delegate.start_commit(svn_commit.revnum)
+    self.delegate.start_commit(svn_commit)
     if svn_commit.symbolic_name:
       print "COM: Filling name", svn_commit.symbolic_name, "in SVNCommit"
       self.fill_symbolic_name(svn_commit.symbolic_name)
@@ -4658,8 +4658,8 @@ class SVNRepositoryMirrorDelegate:
     """Set the SVNRepositoryMirror for this instance."""
     self.mirror = mirror
 
-  def start_commit(self, svn_revnum):
-    """Perform any actions needed when commit SVN_REVNUM is started;
+  def start_commit(self, svn_commit):
+    """Perform any actions needed to start SVNCommit SVN_COMMIT;
     see subclass implementation for details."""
     raise NotImplementedError
 
@@ -4753,11 +4753,12 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
       print "Consider rerunning with (for example) '--encoding=latin1'"
       sys.exit(1)
 
-  def start_commit(self, svn_revnum):
-    """Emit the start of the next commit, return the new revision number."""
+  def start_commit(self, svn_commit):
+    """Emit the start of SVN_COMMIT (an SVNCommit)."""
 
-    print "XKFF: revision going from %d to %d" % (self.revision, svn_revnum)
-    self.revision = svn_revnum
+    print "XKFF: revision going from %d to %d" \
+          % (self.revision, svn_commit.revnum)
+    self.revision = svn_commit.revnum
 
     # The start of a new commit typically looks like this:
     # 
@@ -4790,10 +4791,8 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
     # are always the same for revisions.
     
     ###TODO Of course, these props should come from the caller.  But
-    ### first we need to change this method to take an SVNCommit
-    ### object, which means we first need to make sure that SVNCommit
-    ### objects have all this information in them.  That change is
-    ### coming RSN.  For now, just fake it.
+    ### we first need to make sure that SVNCommit has all this
+    ### information.  For now, just fake it.
     props = { 'svn:author' : 'cvs2svn',
               'svn:log'    : "This is a fake log message.\n",
               'svn:date'   : "2004-05-25T20:00:00.000000Z",
@@ -4827,7 +4826,6 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
 
     self.dumpfile.write('PROPS-END\n')
     self.dumpfile.write('\n')
-    return self.revision
 
   def mkdir(self, path):
     """Emit the creation of directory PATH."""
@@ -5029,11 +5027,11 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
   def __init__(self):
     print "Starting Subversion repository."
 
-  def start_commit(self, svn_revnum):
+  def start_commit(self, svn_commit):
     """Prints out the Subversion revision number of the commit that is
     being started."""
     print " ", "=" * 40
-    print "  Starting Subversion commit", svn_revnum
+    print "  Starting Subversion commit", svn_commit.revnum
 
   def mkdir(self, path):
     """Print a line stating that we are creating directory PATH."""
@@ -5067,9 +5065,11 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
 def pass8(ctx):
 
   svncounter = 1
+
+  # kff: toggle between these two lines to test the DumpfileDelegate or not
   repos = SVNRepositoryMirror(ctx, StdoutDelegate())
-  # kff: using this for testing, as you might guess
   # repos = SVNRepositoryMirror(ctx, DumpfileDelegate(ctx))
+
   while(1):
     svn_commit = CommitMapper(ctx).get_svn_commit(svncounter)
     if not svn_commit:
