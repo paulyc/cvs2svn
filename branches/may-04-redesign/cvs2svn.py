@@ -3795,6 +3795,11 @@ class CVSCommit:
 
     # This will be set to the SVNCommit that occurs in self._commit.
     self.motivating_commit = None
+
+    # This is a list of all non-primary commits motivated by the main
+    # commit.  We gather these so that we can set their dates to the
+    # same date as the primary commit.
+    self.secondary_commits = [ ]
     
     # State for handling default branches.
     # 
@@ -3933,7 +3938,7 @@ class CVSCommit:
                                    "pre-commit branch '%s' (op == '%s')"
                                    % (c_rev.branch_name, c_rev.op))
             svn_commit.set_symbolic_name(c_rev.branch_name)
-            svn_commit.flush()
+            self.secondary_commits.append(svn_commit)
 
             accounted_for_sym_names.append(c_rev.branch_name)
           RepositoryBranchesInHead().add_path(c_rev.svn_path)
@@ -4041,7 +4046,7 @@ class CVSCommit:
         svn_commit.add_revision(c_rev)
 
     for svn_commit in svn_commits.values():
-      svn_commit.flush()
+      self.secondary_commits.append(svn_commit)
 
   def process_revisions(self, ctx, done_symbols):
     self.done_symbols = done_symbols
@@ -4055,6 +4060,10 @@ class CVSCommit:
     self._pre_commit()
     self._commit()
     self._post_commit()
+
+    for svn_commit in self.secondary_commits:
+      svn_commit.set_date(self.motivating_commit.get_date())
+      svn_commit.flush()
 
 
 class SVNCommit:
@@ -4144,6 +4153,10 @@ class SVNCommit:
     if you do, the value may be overwritten by a later call to
     self.add_revision()."""
     self._max_date = date
+   
+  def get_date(self):
+    """Returns this SVNCommit's date as an integer."""
+    return self._max_date
    
   def get_revprops(self):
     """Return the Subversion revprops for this SVNCommit."""
