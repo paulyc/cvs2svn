@@ -70,7 +70,7 @@ through the s-revs file, doing several other unrelated things:
      the name of the tag/branch in a dictionary in the leaf node, and
      that's not only pricey in terms of reading, writing, and
      marshalling to and from the database, but it makes the nodes.db
-     HUGE). NOTE: Can we do this in pass3.1?
+     HUGE). NOTE: Can we do this in pass4?
 
   2. Generate Subversion commit groups.  As we iterate through the
      s-revs file, we accumulate CVS Revisions into commit groups.  We
