@@ -3636,6 +3636,9 @@ class CommitMapper(Singleton):
     self.svn_commit_metadata = Database(METADATA_DB, 'r')
     Cleanup().register(METADATA_DB, pass8)
     self.cvs_revisions = CVSRevisionDatabase('r', ctx)
+    ###TODO kff Elsewhere there are comments about sucking the tags db
+    ### into memory.  That seems like a good idea.
+    self.tags_db = TagsDatabase('r')
 
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
@@ -3685,10 +3688,12 @@ class CommitMapper(Singleton):
     name = self.svn_commit_names.get(str(svn_revnum), None)
     if name:
       svn_commit.set_symbolic_name(name)
-      ###TODO kff: we need to consult TagsDatabase to see if this is a
-      ### tag instead of a branch.  Below we default to branch.
       svn_commit.set_author(self._ctx.username)
-      svn_commit.set_log_msg(self._manufacture_log_msg(name))
+      if self.tags_db.has_key(name):
+        msg = self._manufacture_log_msg(name, 1)
+      else:
+        msg = self._manufacture_log_msg(name)
+      svn_commit.set_log_msg(msg)
       ###TODO kff: need a real date here, of course.
       svn_commit.set_date(0)
 
