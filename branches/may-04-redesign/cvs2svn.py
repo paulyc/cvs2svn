@@ -456,20 +456,20 @@ class CVSRevision:
       return 1
     return 0
 
-  def is_trunk_vendor_revision(self):
-    """Return 1 if SELF.rev of SELF.cvs_path is a trunk (i.e., head)
-    vendor revision according to DEFAULT_BRANCHES_DB, else return
-    None."""
+  def is_default_branch_revision(self):
+    """Return 1 if SELF.rev of SELF.cvs_path is a default branch
+    revision according to DEFAULT_BRANCHES_DB (see the conditions
+    documented there), else return None."""
     if self._ctx.default_branches_db.has_key(self.cvs_path):
       val = self._ctx.default_branches_db[self.cvs_path]
       val_last_dot = val.rindex(".")
-      received_last_dot = self.rev.rindex(".")
+      our_last_dot = self.rev.rindex(".")
       default_branch = val[:val_last_dot]
-      received_branch = self.rev[:received_last_dot]
+      our_branch = self.rev[:our_last_dot]
       default_rev_component = int(val[val_last_dot + 1:])
-      received_rev_component = int(self.rev[received_last_dot + 1:])
-      if (default_branch == received_branch
-          and received_rev_component <= default_rev_component):
+      our_rev_component = int(self.rev[our_last_dot + 1:])
+      if (default_branch == our_branch
+          and our_rev_component <= default_rev_component):
         return 1
     # else
     return None
@@ -2803,7 +2803,7 @@ class Commit:
               and dumper.probe_path(c_rev.svn_path)):
         closed_tags, closed_branches = \
                      dumper.add_or_change_path(ctx, c_rev)
-        if c_rev.is_trunk_vendor_revision():
+        if c_rev.is_default_branch_revision():
           default_branch_copies.append(c_rev)
         sym_tracker.close_tags(c_rev.svn_path, svn_rev, closed_tags)
         sym_tracker.close_branches(c_rev.svn_path, svn_rev,
@@ -2837,7 +2837,7 @@ class Commit:
       ### etc, etc.
       path_deleted, closed_tags, closed_branches = \
                     dumper.delete_path(ctx, c_rev, c_rev.svn_path)
-      if c_rev.is_trunk_vendor_revision():
+      if c_rev.is_default_branch_revision():
         default_branch_deletes.append(c_rev)
       sym_tracker.close_tags(c_rev.svn_path, svn_rev, closed_tags)
       sym_tracker.close_branches(c_rev.svn_path, svn_rev, closed_branches)
@@ -3978,14 +3978,14 @@ class CVSCommit:
       if not ((c_rev.deltatext_code == DELTATEXT_EMPTY)
               and (c_rev.rev == "1.1.1.1")
               and RepositoryHead().has_path(c_rev.svn_path)):
-        if c_rev.is_trunk_vendor_revision():
+        if c_rev.is_default_branch_revision():
           self.default_branch_copies.append(c_rev)
 
     for c_rev in self.deletes:
       svn_commit.add_revision(c_rev)
       ###TODO QUX2 if RepositoryHead().has_path(c_rev.svn_path):
       ###TODO QUX2   RepositoryHead().remove_path(c_rev.svn_path)
-      if c_rev.is_trunk_vendor_revision():
+      if c_rev.is_default_branch_revision():
         self.default_branch_deletes.append(c_rev)
 
     svn_commit.flush()
