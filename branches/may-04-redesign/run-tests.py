@@ -1228,6 +1228,8 @@ def compose_tag_three_sources():
 
   check_rev(logs, 1, "Add on trunk", {
     '/trunk': 'A',
+    '/branches': 'A',
+    '/tags': 'A',
     '/trunk/tagged-on-trunk-1.2-a': 'A',
     '/trunk/tagged-on-trunk-1.2-b': 'A',
     '/trunk/tagged-on-trunk-1.1': 'A',
@@ -1236,20 +1238,19 @@ def compose_tag_three_sources():
     })
 
   check_rev(logs, 2, sym_log_msg('b1'), {
-    '/branches': 'A',
     '/branches/b1 (from /trunk:1)': 'A',
     })
 
-  check_rev(logs, 3, "Commit on branch b1", {
+  check_rev(logs, 3, sym_log_msg('b2'), {
+    '/branches/b2 (from /trunk:1)': 'A',
+    })
+
+  check_rev(logs, 4, "Commit on branch b1", {
     '/branches/b1/tagged-on-trunk-1.2-a': 'M',
     '/branches/b1/tagged-on-trunk-1.2-b': 'M',
     '/branches/b1/tagged-on-trunk-1.1': 'M',
     '/branches/b1/tagged-on-b1': 'M',
     '/branches/b1/tagged-on-b2': 'M',
-    })
-
-  check_rev(logs, 4, sym_log_msg('b2'), {
-    '/branches/b2 (from /trunk:1)': 'A',
     })
 
   check_rev(logs, 5, "Commit on branch b2", {
@@ -1269,11 +1270,11 @@ def compose_tag_three_sources():
     })
 
   check_rev(logs, 7, sym_log_msg('T',1), {
-    '/tags': 'A',
-    '/tags/T (from /trunk:6)': 'A',
-    '/tags/T/tagged-on-b1 (from /branches/b1/tagged-on-b1:3)': 'R',
+    '/tags/T (from /branches/b1:4)': 'A',
     '/tags/T/tagged-on-b2 (from /branches/b2/tagged-on-b2:5)': 'R',
     '/tags/T/tagged-on-trunk-1.1 (from /trunk/tagged-on-trunk-1.1:1)': 'R',
+    '/tags/T/tagged-on-trunk-1.2-a (from /trunk/tagged-on-trunk-1.2-a:6)': 'R',
+    '/tags/T/tagged-on-trunk-1.2-b (from /trunk/tagged-on-trunk-1.2-b:6)': 'R',
     })
 
 
