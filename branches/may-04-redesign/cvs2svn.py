@@ -4459,17 +4459,12 @@ class SVNRepositoryMirror:
     # Note that we haven't started committing yet
     self.active = 0
 
-
-  def _youngest_key(self):
-    "Returns the value of self.youngest as a string."
-    return str(self.youngest)
-
   def start_commit(self, revnum):
     """Stabilize the current commit, then start the next one.
     (Effectively increments youngest by assigning the new revnum to
     youngest)"""
     self.stabilize_youngest()
-    self.revs_db[str(revnum)] = self.revs_db[self._youngest_key()]
+    self.revs_db[str(revnum)] = self.revs_db[str(self.youngest)]
     self.youngest = revnum
 
   def _stabilize_directory(self, key):
@@ -4486,7 +4481,7 @@ class SVNRepositoryMirror:
 
   def stabilize_youngest(self):
     """Stabilize the current revision by removing mutable flags."""
-    root_key = self.revs_db[self._youngest_key()]
+    root_key = self.revs_db[str(self.youngest)]
     self._stabilize_directory(root_key)
 
   def delete_path(self, path):
@@ -4525,7 +4520,7 @@ class SVNRepositoryMirror:
     those entries.
 
     self._ctx.prune is like the -P option to 'cvs checkout'."""
-    parent_key = self.revs_db[self._youngest_key()]
+    parent_key = self.revs_db[str(self.youngest)]
     parent = self.nodes_db[parent_key]
 
     # As we walk down to find the dest, we remember each parent
@@ -4738,7 +4733,7 @@ class SVNRepositoryMirror:
     parent_key, parent = self._get_root_node_for_revnum(self.youngest)
     if not parent.has_key(self.mutable_flag):
       parent_key, parent = self._new_mutable_node(parent)
-      self.revs_db[self._youngest_key()] = parent_key
+      self.revs_db[str(self.youngest)] = parent_key
     return parent_key, parent
 
   def _get_root_node_for_revnum(self, revnum):
