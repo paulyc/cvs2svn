@@ -4866,14 +4866,17 @@ class SVNRepositoryMirror:
     Repository revision number, and changing the repository.
     Invoke the delegate's start_commit() method, if there is a delegate."""
 
+    ###TODO Make a decision about whether or not the self.methods
+    ###called here are going to be public or not.  If they're going to
+    ###remain private, then prefix them with an underscore.
     self.start_commit(svn_commit.revnum)
     self.delegate.start_commit(svn_commit)
 
     # Create tags and branches in the first commit
     ###TODO don't do this if we're trunk_only
     ###
-    ###TODO kff: Shouldn't we do this in a separate commit, so it's
-    ### not mixed in with a user change?
+    ###TODO: We MUST do this in a separate commit, so it's
+    ### not mixed in with a user change.
     if not self.active:
       self.mkdir(self._ctx.branches_base)
       self.mkdir(self._ctx.tags_base)
