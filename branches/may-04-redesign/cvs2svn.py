@@ -2958,11 +2958,15 @@ def pass4(ctx):
 
 def pass5(ctx):
   symlogger = SymbolingsLogger()
+  aggregator = CVSRevisionAggregator(ctx)
 
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
     symlogger.check_revision(c_rev)
+    aggregator.process_revision(c_rev)
+
+  aggregator.flush()
 
 
 def pass6(ctx):
@@ -3292,7 +3296,6 @@ class SVNCommit:
   def flush(self):
     print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self.description)
     CommitMapper().map(self.revnum, self.cvs_rev_unique_keys)
-    print "SVNREV:", self.revnum, self.description
 
 
 class SVNRevNum(Singleton):
@@ -3366,15 +3369,15 @@ class CVSRevisionAggregator:
     # 'em.
     ready_queue.sort()
 
-    # Make sure we commit_done_symbols for this c_rev, even if no
+    # Make sure we attempt_to_commit_symbols for this c_rev, even if no
     # commits are ready.
     if len(ready_queue) == 0:
-      self.commit_done_symbols(ready_queue, c_rev, ) 
+      self.attempt_to_commit_symbols(ready_queue, c_rev, ) 
 
     for cvs_commit in ready_queue[:]:
       cvs_commit.process_revisions(self._ctx, self.done_symbols)
       ready_queue.remove(cvs_commit)
-      self.commit_done_symbols(ready_queue, c_rev, ) 
+      self.attempt_to_commit_symbols(ready_queue, c_rev, ) 
 
   def flush(self):
     """Commit anything left in self.cvs_commits."""
@@ -3430,7 +3433,6 @@ class CVSRevisionAggregator:
 
 
 def pass8(ctx):
-  aggregator = CVSRevisionAggregator(ctx)
   if ctx.trunk_only:
     sym_tracker = DummySymbolicNameTracker()
   else:
@@ -3462,7 +3464,6 @@ def pass8(ctx):
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line)
 
-    aggregator.process_revision(c_rev)
     ###TODO WARNING: This may leave unclosed commits in the queue!
     if ctx.trunk_only and not trunk_rev.match(c_rev.rev):
       ### note this could/should have caused a flush, but the next item
@@ -3533,7 +3534,6 @@ def pass8(ctx):
       sym_tracker.cleanup_symbol(sym)
       del pending_symbols[sym]
     #####################################################################
-  aggregator.flush()
 
   # End of the sorted revs file.  Flush any remaining commits:
   if commits:
