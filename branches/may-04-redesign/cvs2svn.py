@@ -314,12 +314,12 @@ class StringWriter:
 class CVSRevision:
   def __init__(self, ctx, *args):
     self._ctx = ctx
-    if len(args) == 10:
+    if len(args) == 11:
       self.timestamp, self.digest, self.op, self.prev_rev, self.rev, \
-                      self.deltatext_code, self.fname, self.branch_name, \
-                      self.tags, self.branches = args
+                      self.deltatext_code, self.fname, self.mode, \
+                      self.branch_name, self.tags, self.branches = args
     elif len(args) == 1:
-      data = args[0].split(' ', 8)
+      data = args[0].split(' ', 9)
       self.timestamp = int(data[0], 16)
       self.digest = data[1]
       self.op = data[2]
@@ -328,11 +328,14 @@ class CVSRevision:
         self.prev_rev = None
       self.rev = data[4]
       self.deltatext_code = data[5]
-      self.branch_name = data[6]
+      self.mode = data[6]
+      if self.mode == "*":
+        self.mode = None
+      self.branch_name = data[7]
       if self.branch_name == "*":
         self.branch_name = None
-      ntags = int(data[7])
-      tags = data[8].split(' ', ntags + 1)
+      ntags = int(data[8])
+      tags = data[9].split(' ', ntags + 1)
       nbranches = int(tags[ntags])
       branches = tags[ntags + 1].split(' ', nbranches)
       self.fname = branches[nbranches][:-1]  # strip \n
@@ -357,6 +360,7 @@ class CVSRevision:
     output.write('%08lx %s %s %s %s %s ' % \
                  (self.timestamp, self.digest, self.op,
                   self.prev_rev, self.rev, self.deltatext_code))
+    output.write('%s ' % (self.mode or "*"))
     output.write('%s ' % (self.branch_name or "*"))
     output.write('%d ' % (len(self.tags)))
     for tag in self.tags:
@@ -424,7 +428,7 @@ class CollectData(rcsparse.Sink):
     Cleanup().register(METADATA_DB, pass8)
     self.fatal_errors = []
     self.next_faked_branch_num = 999999
-
+    
     # Branch and tag label types.
     self.BRANCH_LABEL = 0
     self.VENDOR_BRANCH_LABEL = 1
@@ -459,6 +463,9 @@ class CollectData(rcsparse.Sink):
     # like 'Release_1_0_dev'.
     self.branch_names = { }
 
+    # RCS flags (used for keyword expansion).
+    self.mode = None
+    
     # Hash mapping revision numbers, like '1.7', to lists of names
     # indicating which branches sprout from that revision, like
     # ['Release_1_0_dev', 'experimental_driver', ...].
@@ -488,6 +495,9 @@ class CollectData(rcsparse.Sink):
   def set_principal_branch(self, branch):
     self.default_branch = branch
 
+  def set_expansion(self, mode):
+    self.mode = mode
+    
   def set_branch_name(self, branch_number, name):
     """Record that BRANCH_NUMBER is the branch number for branch NAME,
     and that NAME sprouts from BRANCH_NUMBER .
@@ -754,7 +764,7 @@ class CollectData(rcsparse.Sink):
     c_rev = CVSRevision(self._ctx, timestamp, digest, op,
                         self.rcs_prev[revision], revision,
                         deltatext_code, self.fname,
-                        self.rev_to_branch_name(revision),
+                        self.mode, self.rev_to_branch_name(revision),
                         self.get_tags(revision),
                         self.get_branches(revision))
     c_rev.write_revs_line(self.revs)
@@ -1611,15 +1621,37 @@ class Dumper:
     if f_st[0] & stat.S_IXUSR:
       prop_contents = prop_contents + 'K 14\nsvn:executable\nV 1\n*\n'
 
-    # Set MIME type, and maybe eol-style for text files.
-    if ctx.mime_mapper:
-      mime_type = ctx.mime_mapper.get_type_from_filename(c_rev.cvs_path)
-      if mime_type:
-        prop_contents = prop_contents + ('K 13\nsvn:mime-type\nV %d\n%s\n' % \
-            (len(mime_type), mime_type))
-        if ctx.set_eol_style and mime_type.startswith("text/"):
-          prop_contents = prop_contents + 'K 13\nsvn:eol-style\nV 6\nnative\n'
+    mime_type = None
+    eol_style = None
+    
+    # If the file is marked as binary, it gets a default MIME type of
+    # "application/octet-stream".  Otherwise, it gets a default EOL
+    # style of "native".
+    if c_rev.mode == 'b':
+      mime_type = 'application/octet-stream'
+    else:
+      eol_style = 'native'
 
+    ### TODO: Deal with other expansion modes.  What do we do about
+    ### the various keyword expansion styles (name only, value only,
+    ### both name and value, old value, etc.)?  Beats me.
+    
+    # If using the MIME mapper, possibly override the default MIME
+    # type and EOL style.
+    if ctx.mime_mapper:
+      mtype = ctx.mime_mapper.get_type_from_filename(c_rev.cvs_path)
+      if mtype:
+        mime_type = mtype
+        if not mime_type.startswith("text/"):
+          eol_style = None
+
+    # Possibly set the svn:mime-type and svn:eol-style properties.
+    if mime_type:
+      prop_contents = prop_contents + ('K 13\nsvn:mime-type\nV %d\n%s\n' % \
+                                       (len(mime_type), mime_type))
+    if ctx.set_eol_style and eol_style:
+      prop_contents = prop_contents + 'K 13\nsvn:eol-style\nV 6\nnative\n'
+                                         
     # Calculate the property length (+10 for "PROPS-END\n")
     props_len = len(prop_contents) + 10
     
@@ -3879,7 +3911,7 @@ def usage(ctx):
   print '  --mime-types=FILE    specify an apache-style mime.types file for\n' \
         '                       setting svn:mime-type'
   print '  --set-eol-style      automatically set svn:eol-style=native for\n' \
-        '                       text files (needs --mime-types)'
+        '                       text files'
 
 
 def main():
@@ -4047,12 +4079,6 @@ def main():
     sys.stderr.write(error_prefix +
                      ": the svn-repos-path '%s' exists.\nRemove it, or pass "
                      "'--existing-svnrepos'.\n" % ctx.target)
-    sys.exit(1)
-
-  if ctx.set_eol_style and not ctx.mime_types_file:
-    sys.stderr.write(error_prefix +
-                     ": can only pass '--set-eol-style' if you also pass"
-                     " '--mime-types'.\n")
     sys.exit(1)
 
   if ctx.mime_types_file:
