@@ -1244,146 +1244,6 @@ def print_node_tree(tree, root_node, indent_depth=0):
       continue
     print_node_tree(tree, value, (indent_depth + 1))
 
-def pass1(ctx):
-  Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
-  cd = CollectData(ctx)
-  def visit_file(baton, dirname, files):
-    cd = baton
-    for fname in files:
-      if fname[-2:] != ',v':
-        continue
-      pathname = os.path.join(dirname, fname)
-      if dirname[-6:] == ATTIC:
-        # drop the 'Attic' portion from the pathname
-        ### we should record this so we can easily insert it back in
-        cd.set_fname(os.path.join(dirname[:-6], fname))
-      else:
-        cd.set_fname(pathname)
-      Log().write(LOG_NORMAL, pathname)
-      try:
-        rcsparse.parse(open(pathname, 'rb'), cd)
-      except (rcsparse.common.RCSParseError, ValueError, RuntimeError):
-        err = "%s: '%s' is not a valid ,v file" \
-              % (error_prefix, pathname)
-        sys.stderr.write(err + '\n')
-        cd.fatal_errors.append(err)
-      except:
-        print "Exception occurred while parsing %s" % pathname
-        raise
-  os.path.walk(ctx.cvsroot, visit_file, cd)
-  if ctx.verbose:
-    print 'processed', cd.num_files, 'files'
-  if len(cd.fatal_errors) > 0:
-    sys.exit("Pass 1 complete.\n" + "=" * 75 + "\n"
-             + "Error summary:\n"
-             + "\n".join(cd.fatal_errors)
-             + "\nExited due to fatal error(s).")
-  Log().write(LOG_QUIET, "Done")
- 
-def pass2(ctx):
-  "Pass 2: clean up the revision information."
-  Log().write(LOG_QUIET, "Re-synchronizing CVS revision timestamps...")
-
-  # We may have recorded some changes in revisions' timestamp. We need to
-  # scan for any other files which may have had the same log message and
-  # occurred at "the same time" and change their timestamps, too.
-
-  # read the resync data file
-  resync = read_resync(DATAFILE + RESYNC_SUFFIX)
-
-  output = open(DATAFILE + CLEAN_REVS_SUFFIX, 'w')
-  Cleanup().register(DATAFILE + CLEAN_REVS_SUFFIX, pass3)
-
-  # process the revisions file, looking for items to clean up
-  for line in fileinput.FileInput(DATAFILE + REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line[:-1])
-    if not resync.has_key(c_rev.digest):
-      output.write(line)
-      continue
-
-    # we have a hit. see if this is "near" any of the resync records we
-    # have recorded for this digest [of the log message].
-    for record in resync[c_rev.digest]:
-      if record[0] <= c_rev.timestamp <= record[1]:
-        # bingo! remap the time on this (record[2] is the new time).
-        msg = "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
-              % (relative_name(ctx.cvsroot, c_rev.fname),
-                 c_rev.rev, time.ctime(c_rev.timestamp), time.ctime(record[2]))
-        Log().write(LOG_VERBOSE, msg)
-
-        # adjust the time range. we want the COMMIT_THRESHOLD from the
-        # bounds of the earlier/latest commit in this group.
-        record[0] = min(record[0], c_rev.timestamp - COMMIT_THRESHOLD/2)
-        record[1] = max(record[1], c_rev.timestamp + COMMIT_THRESHOLD/2)
-
-        c_rev.timestamp = record[2]
-        output.write(str(c_rev) + "\n")
-
-        # stop looking for hits
-        break
-    else:
-      # the file/rev did not need to have its time changed.
-      output.write(line)
-  Log().write(LOG_QUIET, "Done")
-
-def pass3(ctx):
-  Log().write(LOG_QUIET, "Sorting CVS revisions...")
-  sort_file(DATAFILE + CLEAN_REVS_SUFFIX,
-            DATAFILE + SORTED_REVS_SUFFIX)
-  ### TODO pass8 is too late for this, but we may need it again after pass5
-  Cleanup().register(DATAFILE + SORTED_REVS_SUFFIX, pass8)
-  Log().write(LOG_QUIET, "Done")
-
-def pass4(ctx):
-  """If we're not doing a trunk-only conversion, iterate through sorted revs
-  and generate the LastSymbolicNameDatabase, which contains the last
-  CVSRevision that is a source for each tag or branch.
-  """
-  if ctx.trunk_only:
-    return
-
-  Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
-  last_sym_name_db = LastSymbolicNameDatabase('n')
-
-  for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line[:-1])
-    last_sym_name_db.log_revision(c_rev)
-
-  last_sym_name_db.create_database()
-  Log().write(LOG_QUIET, "Done")
-
-def pass5(ctx):
-  """
-  Generate the SVNCommit <-> CVSRevision mapping
-  databases. CVSCommit._commit also calls SymbolingsLogger to register
-  CVSRevisions that represent an opening or closing for a path on a
-  branch or tag.  See SymbolingsLogger for more details.
-  """
-  Log().write(LOG_QUIET, "Mapping CVS revisions to Subversion commits...")
-  ###TODO we need to make sure that this file is deleted before
-  ###starting this pass.  Find a better way. :)
-  if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
-    os.unlink(SYMBOL_OPENINGS_CLOSINGS)
-
-  aggregator = CVSRevisionAggregator(ctx)
-  for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
-    c_rev = CVSRevision(ctx, line[:-1])
-    if not (ctx.trunk_only and c_rev.branch_name is not None):
-      aggregator.process_revision(c_rev)
-  aggregator.flush()
-
-  if not ctx.trunk_only:
-    SymbolingsLogger(ctx).close()
-  Log().write(LOG_QUIET, "Done")
-
-def pass6(ctx):
-  Log().write(LOG_QUIET, "Sorting symbolic name source revisions...")
-
-  if not ctx.trunk_only:
-    sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
-    Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
-  Log().write(LOG_QUIET, "Done")
-
 class SymbolingsReaderEmptyFillError(Exception):
   """Exception raised if we encounter an attempted fill of a symbolic
   name that contains no openings or closings (and consequently,
@@ -1766,13 +1626,6 @@ def generate_offsets_for_symbolings():
       old_sym = sym
       offsets_db[sym] = file.tell() - len(line)
 
-def pass7(ctx):
-  Log().write(LOG_QUIET, "Determining offsets for all symbolic names...")
-  if not ctx.trunk_only:
-    generate_offsets_for_symbolings()
-  Log().write(LOG_QUIET, "Done.")
-
-###TODO move this stuff out of here! pass8 should be here.
 
 class SVNCommitInternalInconsistencyError(Exception):
   """Exception raised if we encounter an impossible state in the
@@ -3601,6 +3454,151 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
     Log().write(LOG_VERBOSE, "Finished creating Subversion repository.")
     Log().write(LOG_QUIET, "Done.")
 
+def pass1(ctx):
+  Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
+  cd = CollectData(ctx)
+  def visit_file(baton, dirname, files):
+    cd = baton
+    for fname in files:
+      if fname[-2:] != ',v':
+        continue
+      pathname = os.path.join(dirname, fname)
+      if dirname[-6:] == ATTIC:
+        # drop the 'Attic' portion from the pathname
+        ### we should record this so we can easily insert it back in
+        cd.set_fname(os.path.join(dirname[:-6], fname))
+      else:
+        cd.set_fname(pathname)
+      Log().write(LOG_NORMAL, pathname)
+      try:
+        rcsparse.parse(open(pathname, 'rb'), cd)
+      except (rcsparse.common.RCSParseError, ValueError, RuntimeError):
+        err = "%s: '%s' is not a valid ,v file" \
+              % (error_prefix, pathname)
+        sys.stderr.write(err + '\n')
+        cd.fatal_errors.append(err)
+      except:
+        print "Exception occurred while parsing %s" % pathname
+        raise
+  os.path.walk(ctx.cvsroot, visit_file, cd)
+  if ctx.verbose:
+    print 'processed', cd.num_files, 'files'
+  if len(cd.fatal_errors) > 0:
+    sys.exit("Pass 1 complete.\n" + "=" * 75 + "\n"
+             + "Error summary:\n"
+             + "\n".join(cd.fatal_errors)
+             + "\nExited due to fatal error(s).")
+  Log().write(LOG_QUIET, "Done")
+ 
+def pass2(ctx):
+  "Pass 2: clean up the revision information."
+  Log().write(LOG_QUIET, "Re-synchronizing CVS revision timestamps...")
+
+  # We may have recorded some changes in revisions' timestamp. We need to
+  # scan for any other files which may have had the same log message and
+  # occurred at "the same time" and change their timestamps, too.
+
+  # read the resync data file
+  resync = read_resync(DATAFILE + RESYNC_SUFFIX)
+
+  output = open(DATAFILE + CLEAN_REVS_SUFFIX, 'w')
+  Cleanup().register(DATAFILE + CLEAN_REVS_SUFFIX, pass3)
+
+  # process the revisions file, looking for items to clean up
+  for line in fileinput.FileInput(DATAFILE + REVS_SUFFIX):
+    c_rev = CVSRevision(ctx, line[:-1])
+    if not resync.has_key(c_rev.digest):
+      output.write(line)
+      continue
+
+    # we have a hit. see if this is "near" any of the resync records we
+    # have recorded for this digest [of the log message].
+    for record in resync[c_rev.digest]:
+      if record[0] <= c_rev.timestamp <= record[1]:
+        # bingo! remap the time on this (record[2] is the new time).
+        msg = "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
+              % (relative_name(ctx.cvsroot, c_rev.fname),
+                 c_rev.rev, time.ctime(c_rev.timestamp), time.ctime(record[2]))
+        Log().write(LOG_VERBOSE, msg)
+
+        # adjust the time range. we want the COMMIT_THRESHOLD from the
+        # bounds of the earlier/latest commit in this group.
+        record[0] = min(record[0], c_rev.timestamp - COMMIT_THRESHOLD/2)
+        record[1] = max(record[1], c_rev.timestamp + COMMIT_THRESHOLD/2)
+
+        c_rev.timestamp = record[2]
+        output.write(str(c_rev) + "\n")
+
+        # stop looking for hits
+        break
+    else:
+      # the file/rev did not need to have its time changed.
+      output.write(line)
+  Log().write(LOG_QUIET, "Done")
+
+def pass3(ctx):
+  Log().write(LOG_QUIET, "Sorting CVS revisions...")
+  sort_file(DATAFILE + CLEAN_REVS_SUFFIX,
+            DATAFILE + SORTED_REVS_SUFFIX)
+  ### TODO pass8 is too late for this, but we may need it again after pass5
+  Cleanup().register(DATAFILE + SORTED_REVS_SUFFIX, pass8)
+  Log().write(LOG_QUIET, "Done")
+
+def pass4(ctx):
+  """If we're not doing a trunk-only conversion, iterate through sorted revs
+  and generate the LastSymbolicNameDatabase, which contains the last
+  CVSRevision that is a source for each tag or branch.
+  """
+  if ctx.trunk_only:
+    return
+
+  Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
+  last_sym_name_db = LastSymbolicNameDatabase('n')
+
+  for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
+    c_rev = CVSRevision(ctx, line[:-1])
+    last_sym_name_db.log_revision(c_rev)
+
+  last_sym_name_db.create_database()
+  Log().write(LOG_QUIET, "Done")
+
+def pass5(ctx):
+  """
+  Generate the SVNCommit <-> CVSRevision mapping
+  databases. CVSCommit._commit also calls SymbolingsLogger to register
+  CVSRevisions that represent an opening or closing for a path on a
+  branch or tag.  See SymbolingsLogger for more details.
+  """
+  Log().write(LOG_QUIET, "Mapping CVS revisions to Subversion commits...")
+  ###TODO we need to make sure that this file is deleted before
+  ###starting this pass.  Find a better way. :)
+  if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
+    os.unlink(SYMBOL_OPENINGS_CLOSINGS)
+
+  aggregator = CVSRevisionAggregator(ctx)
+  for line in fileinput.FileInput(DATAFILE + SORTED_REVS_SUFFIX):
+    c_rev = CVSRevision(ctx, line[:-1])
+    if not (ctx.trunk_only and c_rev.branch_name is not None):
+      aggregator.process_revision(c_rev)
+  aggregator.flush()
+
+  if not ctx.trunk_only:
+    SymbolingsLogger(ctx).close()
+  Log().write(LOG_QUIET, "Done")
+
+def pass6(ctx):
+  Log().write(LOG_QUIET, "Sorting symbolic name source revisions...")
+
+  if not ctx.trunk_only:
+    sort_file(SYMBOL_OPENINGS_CLOSINGS, SYMBOL_OPENINGS_CLOSINGS_SORTED)
+    Cleanup().register(SYMBOL_OPENINGS_CLOSINGS_SORTED, pass8)
+  Log().write(LOG_QUIET, "Done")
+
+def pass7(ctx):
+  Log().write(LOG_QUIET, "Determining offsets for all symbolic names...")
+  if not ctx.trunk_only:
+    generate_offsets_for_symbolings()
+  Log().write(LOG_QUIET, "Done.")
 
 def pass8(ctx):
   ### TODO: This should say repository/dumpfile, depending on
