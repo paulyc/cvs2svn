@@ -2982,9 +2982,14 @@ class SymbolingsLogger(Singleton):
   def check_revision(self, c_rev, svn_revnum):
     """Examine a CVS Revision to see if it either opens a symbolic name."""
     ## TODO check symbolic_names
-    if ((len(c_rev.tags) > 0)          # There is branch/tag OPENING activity
-        or (len(c_rev.branches) > 0)   # here, but it's not 'dead'--a file 
-        and (c_rev.op != OP_DELETE)):  # added on a branch
+
+    # We log this revision if:
+    # - There is branch/tag OPENING activity in this c_rev
+    #   AND
+    # - This c_rev is not 'dead'... that is, it's not a file added on a
+    # - branch.
+    if (((len(c_rev.tags) > 0) or (len(c_rev.branches) > 0))
+        and not (c_rev.op == OP_DELETE)): 
       self.log_names_for_rev(c_rev.symbolic_names(), c_rev, svn_revnum)
 
   def _log(self, name, svn_revnum, svn_path, type):
