@@ -140,6 +140,10 @@ SVN_REPOSITORY_HEAD_DB = 'cvs2svn-repository-head.db'
 CVS_REVS_TO_SVN_REVNUMS = 'cvs2svn-cvs-revs-to-svn-revnums.db'
 SVN_REVNUMS_TO_CVS_REVS = 'cvs2svn-svn-revnums-to-cvs-revs.db'
 
+# This database maps svn_revnums to the corresponding symbolic name
+# that is filled in the SVNCommit that corresponds to that svn_revnum.
+SVN_COMMIT_NAMES = 'cvs2svn-svn-commit-names.db'
+
 # os.popen() on Windows seems to require an access-mode string of 'rb'
 # in cases where the process will output binary information to stdout.
 # Without the 'b' we get IOErrors upon closing the pipe.  Unfortunately
@@ -2753,8 +2757,39 @@ def read_resync(fname):
 
 
 class SymbolingsLogger(Singleton):
-  """Manages the file and all related temporary data structures that
-  contains lines for symbol openings and closings."""
+  """Manage the file (and all related temporary data structures) that
+  contains lines for symbol openings and closings.
+
+  Determine valid SVNRevision ranges from which a file can be copied
+  when creating a branch or tag in Subversion.  Do this by finding
+  "Openings" and "Closings" for each file copied onto a branch or tag.
+
+  An "Opening" is the CVSRevision from which a given branch/tag
+  sprouts on a path.
+
+  The "Closing" for that branch/tag and path is the next CVSRevision
+  on the same line of development as the opening.
+
+  For example, on file 'foo.c', branch BEE has branch number 1.2.2 and
+  obviously sprouts from revision 1.2.  Therefore, 1.2 is the opening
+  for BEE on path 'foo.c', and 1.3 is the closing for BEE on path
+  'foo.c'.  Note that there may be many revisions chronologically
+  between 1.2 and 1.3, for example, revisions on branches of 'foo.c',
+  perhaps even including on branch BEE itself.  But 1.3 is the next
+  revision *on the same line* as 1.2, that is why it is the closing
+  revision for those symbolic names of which 1.2 is the opening.
+
+  The reason for doing all this hullabaloo is to make branch and tag
+  creation as efficient as possible by minimizing the number of copies
+  and deletes per creation.  For example, revisions 1.2 and 1.3 of
+  foo.c might correspond to revisions 17 and 30 in Subversion.  That
+  means that when creating branch BEE, there is some motivation to do
+  the copy from one of 17-30.  Now if there were another file,
+  'bar.c', whose opening and closing CVSRevisions for BEE corresponded
+  to revisions 24 and 39 in Subversion, we would know that the ideal
+  thing would be to copy the branch from somewhere between 24 and 29,
+  inclusive.
+  """
   def init(self):
     self.symbolings = open(SYMBOL_OPENINGS_CLOSINGS, 'a')
     Cleanup().register(SYMBOL_OPENINGS_CLOSINGS, pass8) ###TODO cleanup earlier?
@@ -2967,7 +3002,15 @@ def pass3(ctx):
   Cleanup().register(ctx.log_fname_base + SORTED_REVS_SUFFIX, pass8)
 
 def pass4(ctx):
-  """Iterate through sorted revs."""
+  """Iterate through sorted revs and generate:
+  1. The LastSymbolicNameDatabase, which contains the last CVSRevision
+     that is a source for each tag or branch.
+
+  2. A Database that maps CVSRevision.unique_key()s to CVSRevision
+     s-rev type strings.
+
+  3. A Database that contains all symbolic names that are tags.
+  """
   last_sym_name_db = LastSymbolicNameDatabase('n')
   cvs_rev_db = CVSRevisionDatabase('n')
   tags_db = TagsDatabase('n')
@@ -2982,6 +3025,12 @@ def pass4(ctx):
   last_sym_name_db.create_database()
 
 def pass5(ctx):
+  """
+  Generate the SVNCommit <-> CVSRevision mapping
+  databases. CVSCommit._commit also calls SymbolingsLogger to register
+  CVSRevisions that represent an opening or closing for a path on a
+  branch or tag.  See SymbolingsLogger for more details.
+  """
   ###TODO we need to make sure that this file is deleted before
   ###starting this pass.  Find a better way. :)
   if os.path.isfile(SYMBOL_OPENINGS_CLOSINGS):
@@ -3017,6 +3066,7 @@ def generate_offsets_for_symbolings():
   if os.path.isfile(SYMBOL_OFFSETS_DB):
     os.unlink(SYMBOL_OFFSETS_DB)
   offsets_db = Database(SYMBOL_OFFSETS_DB, 'c') 
+  Cleanup().register(SYMBOL_OFFSETS_DB, pass8)
   
   file = open(SYMBOL_OPENINGS_CLOSINGS_SORTED, 'r')
   old_sym = ""
@@ -3050,23 +3100,47 @@ class RepositoryHead(Singleton):
     del self.db[path]
 
 
+class SVNCommitInternalInconsistencyError(Exception):
+  """Exception raised if we encounter an impossible state in the
+  SVNCommit Databases."""
+  pass
+
 class CommitMapper(Singleton):
+  ###TODO Find a better docstring and/or name for this class.
   """Provide bidirectional mapping between CVSRevisions and SVNCommits."""
   def init(self):
     self.svn2cvs_db = Database(SVN_REVNUMS_TO_CVS_REVS, 'c')
     Cleanup().register(SVN_REVNUMS_TO_CVS_REVS, pass8)
     self.cvs2svn_db = Database(CVS_REVS_TO_SVN_REVNUMS, 'c')
     Cleanup().register(CVS_REVS_TO_SVN_REVNUMS, pass8)
+    self.svn_commit_names = Database(SVN_COMMIT_NAMES, 'c')
+    Cleanup().register(SVN_COMMIT_NAMES, pass8)
 
   def get_svn_revnum(self, cvs_rev_unique_key):
     """Return the Subversion revision number in which CVS_REV_UNIQUE_KEY
     was committed."""
     return int(self.cvs2svn_db[cvs_rev_unique_key])
 
-  def get_cvs_revisions(self, svn_revnum):
-    """Return the list of CVSRevision.unique_key()s committed in SVN_REVNUM."""
-    return self.svn2cvs_db[str(svn_revnum)]
+  def get_svn_commit(self, svn_revnum):
+    """Return an SVNCommit that corresponds to SVN_REVNUM.
 
+    If no SVNCommit exists for revnum SVN_REVNUM, then return None.
+
+    This method can throw SVNCommitInternalInconsistencyError.
+    """
+    svn_commit = SVNCommit("Retrieved from disk", svn_revnum)
+    c_rev_keys = self.svn2cvs_db.get(str(svn_revnum), None)
+    if c_rev_keys == None:
+      return None
+    svn_commit.cvs_rev_unique_keys = c_rev_keys
+    name = self.svn_commit_names.get(str(svn_revnum), None)
+    svn_commit.set_symbolic_name(name)
+    if len(svn_commit.cvs_rev_unique_keys) and name:
+      msg = """An SVNCommit cannot have cvs_revisions *and* a
+      corresponding symbolic name to fill."""
+      raise SVNCommitInternalInconsistencyError(msg)
+    return svn_commit
+    
   def map(self, svn_revnum, cvs_rev_unique_keys):
     """Record the bidirectional mapping between SVN_REVNUM and
     CVS_REV_UNIQUE_KEYS.""" 
@@ -3076,6 +3150,10 @@ class CommitMapper(Singleton):
     self.svn2cvs_db[str(svn_revnum)] = cvs_rev_unique_keys
     for cvs_rev_unique_key in cvs_rev_unique_keys:
       self.cvs2svn_db[cvs_rev_unique_key] = svn_revnum
+
+  def map_name(self, svn_revnum, name):
+    """Store NAME as the value of SVN_REVNUM"""
+    self.svn_commit_names[str(svn_revnum)] = name
 
 
 # Based on Commit
@@ -3250,7 +3328,11 @@ class CVSCommit:
           # but hey, we're all idealists here, aren't we?
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            SVNCommit("pre-commit branch '%s'" % c_rev.branch_name).flush()
+            svn_commit = SVNCommit("pre-commit branch CHANGE '%s'"
+                                   % c_rev.branch_name)
+            svn_commit.set_symbolic_name(c_rev.branch_name)
+            svn_commit.flush()
+
             accounted_for_sym_names.append(c_rev.branch_name)
           RepositoryHead().add_path(c_rev.svn_path)
 
@@ -3261,7 +3343,10 @@ class CVSCommit:
         if not RepositoryHead().has_path(c_rev.svn_path):
           if ((not c_rev.branch_name in accounted_for_sym_names)
               and (not c_rev.branch_name in self.done_symbols)):
-            SVNCommit("pre-commit branch '%s'" % c_rev.branch_name).flush()
+            svn_commit = SVNCommit("pre-commit branch DELETE '%s'"
+                                   % c_rev.branch_name)
+            svn_commit.set_symbolic_name(c_rev.branch_name)
+            svn_commit.flush()
             accounted_for_sym_names.append(c_rev.branch_name)
         else:
           RepositoryHead().remove_path(c_rev.svn_path)
@@ -3312,7 +3397,6 @@ class CVSCommit:
       SymbolingsLogger().check_revision(c_rev, svn_commit.revnum)
 
   def _post_commit(self):
-
     """Generates any SVNCommits that we can perform now that _commit
     has happened.  That is,
     ###TODO This actually needs to happen somewhere else in the code.
@@ -3324,12 +3408,13 @@ class CVSCommit:
        checkout.  Of course, in order to copy the path over, we may
        first need to delete the existing trunk there.
        """
-    
-    svn_commit = None
-    if self.default_branch_copies or self.default_branch_deletes:
-      svn_commit = SVNCommit("post-commit def_br_[copy|delete]")
-      svn_commit.flush()
-      print '    new revision:', svn_commit.revnum
+    seen_branches = { }
+    for c_rev in self.default_branch_copies + self.default_branch_deletes:
+      if not seen_branches.has_key(c_rev.branch_name):
+        svn_commit = SVNCommit("post-commit def_br_[copy|delete]")
+        svn_commit.set_symbolic_name(c_rev.branch_name)
+        svn_commit.flush()
+        seen_branches[c_rev.branch_name] = None
 
   def process_revisions(self, ctx, done_symbols):
     self.done_symbols = done_symbols
@@ -3346,10 +3431,21 @@ class CVSCommit:
 
 
 class SVNCommit:
-  def __init__(self, description=""):
+  def __init__(self, description="", revnum=None):
+    ###TODO Document this!
     self.cvs_rev_unique_keys = []
-    self.revnum = SVNRevNum().get_next_revnum()
+    if not revnum:
+      self.revnum = SVNRevNum().get_next_revnum()
+    else:
+      self.revnum = revnum
     self.description = description
+    self.symbolic_name = None
+
+  def set_symbolic_name(self, name):
+    """Set NAME to be the symbolic name that is filled in this
+    SVNCommit."""
+    self.symbolic_name = name
+    CommitMapper().map_name(self.revnum, name)
 
   def add_revision_key(self, cvs_rev_unique_key):
     self.cvs_rev_unique_keys.append(cvs_rev_unique_key)
@@ -3358,6 +3454,21 @@ class SVNCommit:
     print "KFF: svn_revnum %d  ('%s') ->" % (self.revnum, self.description)
     CommitMapper().map(self.revnum, self.cvs_rev_unique_keys)
 
+  def __str__(self):
+    """ Print a human-readable description of this SVNCommit.  This
+    description is not intended to be machine-parseable (although
+    we're not going to stop you if you try!)"""
+
+    ret = "SVNCommit #: " + str(self.revnum) + "\n"
+    if self.symbolic_name:
+      ret = ret + "   symbolic name: " +  self.symbolic_name + "\n"
+    else:
+      ret = ret + "   NO symbolic name\n"
+    ret = ret + "   debug description: " + self.description + "\n"
+    ret = ret + "   cvs_revision_unique_keys:\n"
+    for key in self.cvs_rev_unique_keys:
+      ret = ret + "     " + key + "\n"
+    return ret
 
 class SVNRevNum(Singleton):
   def init(self):
@@ -3455,13 +3566,14 @@ class CVSRevisionAggregator:
       self.attempt_to_commit_symbols([]) 
     
   def attempt_to_commit_symbols(self, queued_commits, c_rev=None):
-    """Iterating through self.changes and deletes, we check to see if
-    c_rev is in LastSymbolicNameDatabase.  If it is, then we add any
-    symbols found there to self.pending_symbols and generate 1
-    SVNCommit (which creates the tag if it's a tag, and fills the
-    remaining portion of the branch if it's a branch) for any symbols
-    left.  Note that we skip any symbols that still have source
-    CVSRevisions in self.cvs_commits."""
+    """
+    This function generates 1 SVNCommit for each symbol in
+    self.pending_symbols that doesn't have an opening CVSRevision in
+    either QUEUED_COMMITS or self.cvs_commits.values().
+
+    If C_REV is not None, then we first add to self.pending_symbols
+    any symbols from C_REV that C_REV is the last CVSRevision for.
+    """
     # Get the symbolic names that this c_rev is the last *source*
     # CVSRevision for and add them to those left over from previous
     # passes through the aggregator.
@@ -3487,13 +3599,49 @@ class CVSRevisionAggregator:
     for sym in sorted_pending_symbols_keys:
       if open_symbols.has_key(sym): # sym is still open--don't close it.
         continue
-      SVNCommit("closing tag/branch '%s'" % sym).flush()
+      svn_commit = SVNCommit("closing tag/branch '%s'" % sym)
+      svn_commit.set_symbolic_name(sym)
+      svn_commit.flush()
       self.done_symbols.append(sym)
       del self.pending_symbols[sym]
 
 
 
 def pass8(ctx):
+
+  svncounter = 1
+
+  while(1):
+    svn_commit = CommitMapper().get_svn_commit(svncounter)
+    if not svn_commit:
+      break
+    print "=" * 75
+    print svn_commit
+
+    #sue-dough code
+
+    # If our svn_commit has c_revs
+    #   do a standard commit. Whoop-de-fsckin' doo.
+
+    # else if it has a symbolic name
+    #   Read name tree
+    #   store new offset
+    #   score name tree
+    #   make copy
+    
+    # else ERROR
+    svncounter += 1
+
+#  sys.exit(239)
+
+
+
+
+
+
+
+
+
   if ctx.trunk_only:
     sym_tracker = DummySymbolicNameTracker()
   else:
