@@ -188,6 +188,43 @@ class Database:
   def __delitem__(self, key):
     del self.db[key]
 
+
+class CVSRevision:
+  def __init__(self, ctx, timestamp, digest, op, rev, deltatext_code,
+               fname, branch_name, tags, branches):
+    self.ctx = ctx
+    self.timestamp = timestamp
+    self.digest = digest
+    self.op = op
+    ###TODO change to rev_num
+    self.rev = rev
+    self.deltatext_code = deltatext_code
+    self.fname = fname
+    self.branch_name = branch_name
+    self.tags = tags
+    self.branches = branches
+
+  # The 'primary key' of a CVS Revision is the revision number + the
+  # filename.  To provide a unique key (say, for a dict), we just glom
+  # them together in a string
+  def unique_key(self):
+    return self.rev + "/" + self.fname
+
+  # Returns the path to self.fname minus the path to the CVS
+  # repository itself.
+  def relative_name(self):
+    path = self.fname[:-2]
+    l = len(self.ctx.cvsroot)
+    if path[:l] == self.ctx.cvsroot:
+      if path[l] == os.sep:
+        return string.replace(path[l+1:], os.sep, '/')
+      return string.replace(path[l:], os.sep, '/')
+    sys.stderr.write("%s: relative_path('%s', '%s'): fname is not a"
+                     " sub-path of cvsroot\n"
+                     % (error_prefix, self.ctx.cvsroot, path))
+    sys.exit(1)
+    
+
 class CollectData(rcsparse.Sink):
   def __init__(self, cvsroot, log_fname_base, default_branches_db):
     self.cvsroot = cvsroot
@@ -462,11 +499,12 @@ class CollectData(rcsparse.Sink):
     else:
       deltatext_code = DELTATEXT_EMPTY
 
-    write_revs_line(self.revs, timestamp, digest, op, revision,
-                    deltatext_code, self.fname,
-                    self.rev_to_branch_name(revision),
-                    self.get_tags(revision),
-                    self.get_branches(revision))
+    c_rev = CVSRevision(None, timestamp, digest, op, revision,
+                        deltatext_code, self.fname,
+                        self.rev_to_branch_name(revision),
+                        self.get_tags(revision),
+                        self.get_branches(revision))
+    write_revs_line(self.revs, timestamp, c_rev)
 
     if not self.metadata_db.has_key(digest):
       self.metadata_db[digest] = (author, log)
@@ -475,6 +513,7 @@ def run_command(command):
   if os.system(command):
     sys.exit('Command failed: "%s"' % command)
 
+### TODO Maybe put this in CVSRevision as svn_path?
 def make_path(ctx, path, branch_name = None, tag_name = None):
   """Return the trunk path, branch path, or tag path for PATH.
   CTX holds the name of the branches or tags directory, which is
@@ -543,7 +582,7 @@ def make_path(ctx, path, branch_name = None, tag_name = None):
     else:
       return ctx.trunk_base
 
-
+### TODO Get rid of this
 def relative_name(cvsroot, fname):
   l = len(cvsroot)
   if fname[:l] == cvsroot:
@@ -1952,6 +1991,8 @@ class SymbolicNameTracker:
         sys.stderr.write("%s: no origin records for tag '%s'.\n"
                          % (error_prefix, name))
       else:
+        import traceback
+        traceback.print_stack()
         sys.stderr.write("%s: no origin records for branch '%s'.\n"
                          % (error_prefix, name))
       sys.exit(1)
@@ -2095,6 +2136,7 @@ class Commit:
 
     self.files = { }
 
+    ### TODO zap this crap.
     # For consistency, the elements of both lists are of the form
     #
     #   (file, rev, deltatext_code, branch_name, tags, branches)
@@ -2402,7 +2444,7 @@ def read_resync(fname):
   return resync
 
 
-def parse_revs_line(line):
+def parse_revs_line(ctx, line):
   data = line.split(' ', 7)
   timestamp = int(data[0], 16)
   id = data[1]
@@ -2420,24 +2462,24 @@ def parse_revs_line(line):
   tags = tags[:ntags]
   branches = branches[:nbranches]
 
-  return timestamp, id, op, rev, deltatext_code, \
-         fname, branch_name, tags, branches
+  return CVSRevision(ctx, timestamp, id, op, rev, deltatext_code, \
+         fname, branch_name, tags, branches)
 
-
-def write_revs_line(output, timestamp, digest, op, revision,
-                    deltatext_code, fname, branch_name, tags, branches):
+### TODO Shouldn't this be in CVSRevision?
+def write_revs_line(output, timestamp, c_rev):
   output.write('%08lx %s %s %s %s ' % \
-               (timestamp, digest, op, revision, deltatext_code))
-  if not branch_name:
-    branch_name = "*"
-  output.write('%s ' % branch_name)
-  output.write('%d ' % (len(tags)))
-  for tag in tags:
+               (c_rev.timestamp, c_rev.digest, c_rev.op,
+                c_rev.rev, c_rev.deltatext_code))
+  if not c_rev.branch_name:
+    c_rev.branch_name = "*"
+  output.write('%s ' % c_rev.branch_name)
+  output.write('%d ' % (len(c_rev.tags)))
+  for tag in c_rev.tags:
     output.write('%s ' % (tag))
-  output.write('%d ' % (len(branches)))
-  for branch in branches:
+  output.write('%d ' % (len(c_rev.branches)))
+  for branch in c_rev.branches:
     output.write('%s ' % (branch))
-  output.write('%s\n' % fname)
+  output.write('%s\n' % c_rev.fname)
 
 
 def pass1(ctx):
@@ -2467,28 +2509,26 @@ def pass2(ctx):
 
   # process the revisions file, looking for items to clean up
   for line in fileinput.FileInput(ctx.log_fname_base + REVS_SUFFIX):
-    timestamp, digest, op, rev, deltatext_code, fname, \
-               branch_name, tags, branches = parse_revs_line(line)
-    if not resync.has_key(digest):
+    c_rev = parse_revs_line(ctx, line)
+    if not resync.has_key(c_rev.digest):
       output.write(line)
       continue
 
     # we have a hit. see if this is "near" any of the resync records we
     # have recorded for this digest [of the log message].
-    for record in resync[digest]:
-      if record[0] <= timestamp <= record[1]:
+    for record in resync[c_rev.digest]:
+      if record[0] <= c_rev.timestamp <= record[1]:
         # bingo! remap the time on this (record[2] is the new time).
-        write_revs_line(output, record[2], digest, op, rev,
-                        deltatext_code, fname, branch_name, tags, branches)
+        write_revs_line(output, record[2], c_rev)
 
         print "RESYNC: '%s' (%s) : old time='%s' new time='%s'" \
-              % (relative_name(ctx.cvsroot, fname),
-                 rev, time.ctime(timestamp), time.ctime(record[2]))
+              % (relative_name(ctx.cvsroot, c_rev.fname),
+                 c_rev.rev, time.ctime(c_rev.timestamp), time.ctime(record[2]))
 
         # adjust the time range. we want the COMMIT_THRESHOLD from the
         # bounds of the earlier/latest commit in this group.
-        record[0] = min(record[0], timestamp - COMMIT_THRESHOLD/2)
-        record[1] = max(record[1], timestamp + COMMIT_THRESHOLD/2)
+        record[0] = min(record[0], c_rev.timestamp - COMMIT_THRESHOLD/2)
+        record[1] = max(record[1], c_rev.timestamp + COMMIT_THRESHOLD/2)
 
         # stop looking for hits
         break
@@ -2537,10 +2577,8 @@ def pass4(ctx):
 
   # process the logfiles, creating the target
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
-    timestamp, id, op, rev, deltatext_code, fname, \
-               branch_name, tags, branches = parse_revs_line(line)
-
-    if ctx.trunk_only and not trunk_rev.match(rev):
+    c_rev = parse_revs_line(ctx, line)
+    if ctx.trunk_only and not trunk_rev.match(c_rev.rev):
       ### note this could/should have caused a flush, but the next item
       ### will take care of that for us
       continue
@@ -2549,7 +2587,7 @@ def pass4(ctx):
     # accumulated so far to see if any are ready for processing now.
     process = [ ]
     for scan_id, scan_c in commits.items():
-      if scan_c.t_max + COMMIT_THRESHOLD < timestamp:
+      if scan_c.t_max + COMMIT_THRESHOLD < c_rev.timestamp:
         process.append((scan_c.t_max, scan_c))
         del commits[scan_id]
         continue
@@ -2561,7 +2599,7 @@ def pass4(ctx):
       # if checked in too quickly, but it can also break apart the
       # commits. The correct fix would require tracking the dependencies
       # between change sets and committing them in proper order.
-      if scan_c.has_file(fname):
+      if scan_c.has_file(c_rev.fname):
         unused_id = scan_id + '-'
         while commits.has_key(unused_id):
           unused_id = unused_id + '-'
@@ -2577,13 +2615,14 @@ def pass4(ctx):
     count = count + len(process)
 
     # Add this item into the set of still-available commits.
-    if commits.has_key(id):
-      c = commits[id]
+    if commits.has_key(c_rev.digest):
+      c = commits[c_rev.digest]
     else:
-      author, log = metadata_db[id]
-      c = commits[id] = Commit(author, log)
-    c.add(timestamp, op, fname, rev, deltatext_code, branch_name,
-          tags, branches)
+      author, log = metadata_db[c_rev.digest]
+      c = commits[c_rev.digest] = Commit(author, log)
+    #c.add(c_rev)
+    c.add(c_rev.timestamp, c_rev.op, c_rev.fname, c_rev.rev, c_rev.deltatext_code, c_rev.branch_name,
+          c_rev.tags, c_rev.branches)
 
   # End of the sorted revs file.  Flush any remaining commits:
   if commits:
