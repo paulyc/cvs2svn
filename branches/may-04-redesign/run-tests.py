@@ -712,7 +712,7 @@ def mixed_time_branch_with_added_file():
   # A branch from the same place as T_MIXED in the previous test,
   # plus a file added directly to the branch
   check_rev(logs, 33, sym_log_msg('B_MIXED'), {
-    '/branches/B_MIXED (from /trunk:32)': 'A',
+    '/branches/B_MIXED (from /trunk:30)': 'A',
     '/branches/B_MIXED/partial-prune': 'D',
     '/branches/B_MIXED/single-files': 'D',
     '/branches/B_MIXED/proj/sub2/subsubA (from /trunk/proj/sub2/subsubA:22)':
