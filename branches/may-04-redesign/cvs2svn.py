@@ -510,6 +510,7 @@ class CollectData(rcsparse.Sink):
     self.forced_tag_branches = { }
 
     self.cvs_rev_db = CVSRevisionDatabase('n')
+    self.tags_db = TagsDatabase('n')
 
     # See set_fname() for initializations of other variables.
 
@@ -687,6 +688,7 @@ class CollectData(rcsparse.Sink):
       if not self.taglist.has_key(revision):
         self.taglist[revision] = []
       self.taglist[revision].append(name)
+      self.tags_db[name] = None
 
     try:
       # if label_types are different and at least one is a tag (We
@@ -1252,17 +1254,11 @@ class CVSRevisionDatabase:
 
 
 class TagsDatabase(Database):
-  """ Passing every CVSRevision in s-revs to this class will result in
-  a Database that contains all Symbolic Names that are tags.  The key
-  is the tag name, the value is None."""
-
+  """A Database to store which symbolic names are tags. Each key is a tag name.
+  The value has no meaning, and should be set to None."""
   def __init__(self, mode):
     Database.__init__(self, TAGS_DB, mode)
     Cleanup().register(TAGS_DB, pass8)
-  
-  def log_revision(self, c_rev):
-    for tag in c_rev.tags:
-      self.db[tag] = ""
 
 
 def sort_file(infile, outfile):
@@ -1367,35 +1363,21 @@ def pass3(ctx):
   Log().write(LOG_QUIET, "Done")
 
 def pass4(ctx):
-  """Iterate through sorted revs and generate:
-  1. A Database that maps CVSRevision.unique_key()s to CVSRevision
-     s-rev type strings.
-
-  And if we're not doing a trunk-only conversion, also generate:
-
-  2. The LastSymbolicNameDatabase, which contains the last CVSRevision
-     that is a source for each tag or branch.
-
-  3. A Database that contains all symbolic names that are tags.
+  """If we're not doing a trunk-only conversion, iterate through sorted revs
+  and generate the LastSymbolicNameDatabase, which contains the last
+  CVSRevision that is a source for each tag or branch.
   """
+  if ctx.trunk_only:
+    return
 
-  ### TODO: Can't building the TagsDatabase be done in
-  ### CollectData?  Also, we can skip this pass entirely when
-  ### doing --trunk-only
   Log().write(LOG_QUIET, "Finding last CVS revisions for all symbolic names...")
-  if not ctx.trunk_only:
-    tags_db = TagsDatabase('n')
-    last_sym_name_db = LastSymbolicNameDatabase('n')
+  last_sym_name_db = LastSymbolicNameDatabase('n')
 
   for line in fileinput.FileInput(ctx.log_fname_base + SORTED_REVS_SUFFIX):
     c_rev = CVSRevision(ctx, line[:-1])
+    last_sym_name_db.log_revision(c_rev)
 
-    if not ctx.trunk_only:
-      last_sym_name_db.log_revision(c_rev)
-      tags_db.log_revision(c_rev)
-
-  if not ctx.trunk_only:
-    last_sym_name_db.create_database()
+  last_sym_name_db.create_database()
   Log().write(LOG_QUIET, "Done")
 
 def pass5(ctx):
