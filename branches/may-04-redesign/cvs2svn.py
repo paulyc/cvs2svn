@@ -2678,7 +2678,7 @@ class SVNRepositoryMirror:
     root_key = self.revs_db[str(self.youngest)]
     self._stabilize_directory(root_key)
 
-  def delete_path(self, path):
+  def delete_path(self, path, should_prune=None):
     """Delete PATH from the tree.  PATH may not have a leading slash.
 
     Return the path actually deleted or None if PATH did not exist.
@@ -2686,28 +2686,13 @@ class SVNRepositoryMirror:
     invoked (exactly once), and the delegates will not be invoked at
     all if no path was deleted.
 
-    If self._ctx.prune is not None, then delete the highest possible
+    If should_prune is not None, then delete the highest possible
     directory, which means the returned path may differ from PATH.  In
     other words, if PATH was the last entry in its parent, then delete
     PATH's parent, unless it too is the last entry in *its* parent, in
     which case delete that parent, and so on up the chain, until a
     directory is encountered that has an entry which is not a member
     of the parent stack of the original target.
-
-    =======================================================================
-    TODO: WARNING.  There are two kinds of deletes that delete_path does:
-
-      1. A delete where a user actually deleted a path (i.e. the
-         delete corresponds to some CVSRevision in RCS state 'dead').
-
-      2. A delete generated purely by cvs2svn when filling a symbolic
-         name because a file not on that name was included in a copied
-         subtree in an earlier part of the fill.
-
-    We should *always* prune for the second kind, regardless of
-    self._ctx.prune--we currently use self._ctx.prune even for the
-    second kind of delete.
-    =======================================================================
 
     NOTE: This function does *not* allow you delete top-level entries
     (like /trunk, /branches, /tags), nor does it prune upwards beyond
@@ -2788,7 +2773,7 @@ class SVNRepositoryMirror:
       # If we're pruning at all, and we're looking at a prunable thing
       # (and that thing isn't one of our top-level directories --
       # trunk, tags, branches) ...
-      if self._ctx.prune and (new_key is None) and is_prunable(pval) \
+      if should_prune and (new_key is None) and is_prunable(pval) \
          and parent_item != parent_chain[-2]:
         # ... then up our count of pruned items, and do nothing more.
         # All the action takes place when we hit a non-prunable
@@ -3072,7 +3057,7 @@ class SVNRepositoryMirror:
         if not ((len(components) == 2)
                 and ((components[0] == self._ctx.branches_base)
                      or (components[0] == self._ctx.tags_base))):
-          self.delete_path(dest_path)
+          self.delete_path(dest_path, 1)
           path_exists = 0
 
       if not path_exists:
@@ -3093,7 +3078,7 @@ class SVNRepositoryMirror:
         ###here. -Fitz
         # for entry in bad_entries:
         #   del_path = dest_path + '/' + entry
-        #   self.delete_path(del_path)
+        #   self.delete_path(del_path, 1)
 
       self._fill(symbol_fill, key, name, src_path_so_far, src_revnum,
                  prune_ok, copied_paths)
@@ -3114,7 +3099,7 @@ class SVNRepositoryMirror:
         del_path = this_path + '/' + entry
         for path in copied_paths:
           if del_path.find(path) == 0: # del_path starts is child of PATH
-            self.delete_path(del_path)
+            self.delete_path(del_path, 1)
             break
 
   def _get_invalid_entries(self, valid_entries, all_entries):
@@ -3283,7 +3268,7 @@ class SVNRepositoryMirror:
             self.change_path(cvs_rev)
 
         if cvs_rev.op == OP_DELETE:
-          path = self.delete_path(cvs_rev.svn_path)
+          path = self.delete_path(cvs_rev.svn_path, self._ctx.prune)
 
   def cleanup(self):
     """Callback for the Cleanup.register in self.__init__."""
