@@ -2653,8 +2653,8 @@ class SVNRepositoryMirror:
 
     path_so_far = None
     components = string.split(path, '/')
-    ###TODO This is a problem if trunk/tags/branches is > 1 component long
-    ### See issue #7.
+    # This is a problem if trunk/tags/branches is > 1 component long
+    # See issue #7.
     # We never prune our top-level directories (/trunk, /tags, /branches)
     if len(components) < 2:
       return None
@@ -2898,8 +2898,8 @@ class SVNRepositoryMirror:
                % cvs_rev.op)
         raise SVNRepositoryMirrorUnexpectedOperationError, msg
 
-  ###TODO We need to fix our code to allow multiple component
-  ###trunk/branches/tags (wishlist)
+  # We need to fix our code to allow multiple component
+  # trunk/branches/tags (issue #7)
   def _dest_path_for_source_path(self, symbolic_name, path):
     """Given source path PATH, returns the copy destination path under
     SYMBOLIC_NAME.
