@@ -391,16 +391,6 @@ def run_command(command):
   if os.system(command):
     raise FatalError('Command failed: "%s"' % (command,))
 
-def relative_name(cvsroot, fname):
-  l = len(cvsroot)
-  if fname[:l] == cvsroot:
-    if fname[l] == os.sep:
-      return string.replace(fname[l+1:], os.sep, '/')
-    return string.replace(fname[l:], os.sep, '/')
-  raise FatalError(
-      "relative_path('%s', '%s'): fname is not a sub-path of cvsroot"
-      % (cvsroot, fname,))
-
 
 class CommandFailedException(Exception):
   """Exception raised if check_command_runs() fails."""
@@ -995,6 +985,16 @@ class Project:
     self.tags_path = tags_path
     verify_paths_disjoint(self.trunk_path, self.branches_path, self.tags_path)
 
+  def relative_name(self, fname):
+    l = len(self.cvs_root)
+    if fname[:l] == self.cvs_root:
+      if fname[l] == os.sep:
+        return string.replace(fname[l+1:], os.sep, '/')
+      return string.replace(fname[l:], os.sep, '/')
+    raise FatalError(
+        "relative_name: '%s' is not a sub-path of '%s'"
+        % (fname, self.cvs_root,))
+
   def make_path(self, path, branch_name = None):
     """Return the trunk path or branch path for PATH.
 
@@ -1102,7 +1102,7 @@ class CVSRevision:
       raise TypeError, 'CVSRevision() takes 2 or 18 arguments (%d given)' % \
           (len(args) + 1)
     if ctx is not None:
-      self.cvs_path = relative_name(self._ctx.cvsroot, self.fname[:-2])
+      self.cvs_path = ctx.project.relative_name(self.fname[:-2])
       self.svn_path = ctx.project.make_path(self.cvs_path, self.branch_name)
       self.svn_trunk_path = ctx.project.make_path(self.cvs_path)
 
@@ -1338,7 +1338,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
     # it only once per file, instead of waiting until later where we
     # would have to do the same calculations once per CVS *revision*.
 
-    self.rel_name = relative_name(Ctx().cvsroot, self.fname)[:-2]
+    self.rel_name = Ctx().project.relative_name(self.fname)[:-2]
 
     # If the paths are not the same, then that means that the
     # canonical_name has had the 'Attic' component stripped out.
