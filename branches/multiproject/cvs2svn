@@ -1022,14 +1022,22 @@ class Project:
     return svn_path in [self.trunk_path, self.branches_path, self.tags_path]
 
   def relative_name(self, fname):
+    """Return the path to FNAME relative to cvs_root, with ',v' removed.
+
+    FNAME is a filesystem name that has to begin (textually) with
+    self.cvs_root and end with ',v'."""
+
     if not fname.startswith(self.cvs_root):
       raise FatalError(
           "relative_name: '%s' is not a sub-path of '%s'"
           % (fname, self.cvs_root,))
+    if not fname.endswith(',v'):
+      raise FatalError("relative_name: '%s' does not end with ',v'"
+                       % (fname,))
     l = len(self.cvs_root)
     if fname[l] == os.sep:
       l += 1
-    return string.replace(fname[l:], os.sep, '/')
+    return string.replace(fname[l:-2], os.sep, '/')
 
   def get_branch_path(self, branch_name):
     """Return the svnpath for the branch named BRANCH_NAME.
@@ -1154,7 +1162,7 @@ class CVSRevision:
       raise TypeError, 'CVSRevision() takes 2 or 18 arguments (%d given)' % \
           (len(args) + 1)
     if ctx is not None:
-      self.cvs_path = ctx.project.relative_name(self.fname[:-2])
+      self.cvs_path = ctx.project.relative_name(self.fname)
       self.svn_path = ctx.project.make_path(self.cvs_path, self.branch_name)
       self.svn_trunk_path = ctx.project.make_path(self.cvs_path)
 
@@ -1390,7 +1398,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
     # it only once per file, instead of waiting until later where we
     # would have to do the same calculations once per CVS *revision*.
 
-    self.rel_name = Ctx().project.relative_name(self.fname)[:-2]
+    self.rel_name = Ctx().project.relative_name(self.fname)
 
     # If the paths are not the same, then that means that the
     # canonical_name has had the 'Attic' component stripped out.
