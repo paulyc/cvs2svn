@@ -1002,9 +1002,9 @@ class Project:
       return None
     elif branch_name:
       branch_name = _clean_symbolic_name(branch_name)
-      return self.branches_path + '/' + branch_name + '/' + path
+      return _path_join(self.branches_path, branch_name, path)
     else:
-      return self.trunk_path + '/' + path
+      return _path_join(self.trunk_path, path)
 
 
 class CVSRevision:
