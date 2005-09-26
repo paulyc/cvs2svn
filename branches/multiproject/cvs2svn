@@ -1055,14 +1055,14 @@ class Project:
 
     return _path_join(self.tags_path, tag_name)
 
-  def make_path(self, path, branch_name = None):
+  def make_path(self, path, branch_name=None):
     """Return the trunk path or branch path for PATH.
 
-    If PATH is None, return None."""
+    PATH is a filesystem path relative to cvs_root.  If BRANCH_NAME is
+    None, then return the svn path for this file on trunk; otherwise,
+    return the svn path for this file on the specified branch."""
 
-    if path is None:
-      return None
-    elif branch_name:
+    if branch_name:
       branch_name = _clean_symbolic_name(branch_name)
       return _path_join(self.get_branch_path(branch_name), path)
     else:
