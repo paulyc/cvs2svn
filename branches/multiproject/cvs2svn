@@ -986,14 +986,14 @@ class Project:
     verify_paths_disjoint(self.trunk_path, self.branches_path, self.tags_path)
 
   def relative_name(self, fname):
+    if not fname.startswith(self.cvs_root):
+      raise FatalError(
+          "relative_name: '%s' is not a sub-path of '%s'"
+          % (fname, self.cvs_root,))
     l = len(self.cvs_root)
-    if fname[:l] == self.cvs_root:
-      if fname[l] == os.sep:
-        return string.replace(fname[l+1:], os.sep, '/')
-      return string.replace(fname[l:], os.sep, '/')
-    raise FatalError(
-        "relative_name: '%s' is not a sub-path of '%s'"
-        % (fname, self.cvs_root,))
+    if fname[l] == os.sep:
+      l += 1
+    return string.replace(fname[l:], os.sep, '/')
 
   def make_path(self, path, branch_name = None):
     """Return the trunk path or branch path for PATH.
