@@ -1001,6 +1001,21 @@ class Project:
     self.tags_path = tags_path
     verify_paths_disjoint(self.trunk_path, self.branches_path, self.tags_path)
 
+  def is_source(self, svn_path):
+    """Return True iff SVN_PATH is a legitimate source for this project.
+
+    Legitimate paths are self.trunk_path or any directory directly
+    under self.branches_path."""
+
+    if svn_path == self.trunk_path:
+      return True
+
+    (head, tail,) = _path_split(svn_path)
+    if head == self.branches_path:
+      return True
+
+    return False
+
   def relative_name(self, fname):
     if not fname.startswith(self.cvs_root):
       raise FatalError(
@@ -3027,9 +3042,8 @@ class SymbolicNameFillingGuide:
   def get_sources(self):
     """Return the list of sources for this symbolic name.
 
-    A source is defined to be either Ctx().project.trunk_path, or any
-    directory directly under Ctx().project.branches_path.  Raise an
-    exception if a node outside of the source directories has an
+    The Project instance defines what are legitimate sources.  Raise
+    an exception if a node outside of the source directories has an
     option set (e.g., OPENING_KEY or CLOSING_KEY)."""
 
     return self._get_sub_sources('', self._root_key)
@@ -3039,26 +3053,17 @@ class SymbolicNameFillingGuide:
     search at path START_SVN_PATH, which has node key START_NODE_KEY.
     This is a helper method, called by get_sources() (see)."""
 
+    project = Ctx().project
     sources = []
     for entry, node_key in self.get_node(start_node_key).items():
-      svn_path = _path_join(start_svn_path, entry)
-      if svn_path == Ctx().project.trunk_path:
-        # Trunk is a legitimate source.  Add it to list.
-        sources.append(FillSource(svn_path, node_key))
-      elif svn_path == Ctx().project.branches_path:
-        # Any directories directly under branch_base are legitimate
-        # sources.  Add them to list.
-        for entry2, node_key2 in self.get_node(node_key).items():
-          if entry2[0] == '/':
-            # This implies a non-directory change directly under
-            # branch_base (not within one of the branches).  This
-            # should never happen.
-            raise
-          sources.append(FillSource(_path_join(svn_path, entry2), node_key2))
-      elif entry[0] == '/':
+      if entry[0] == '/':
         # This implies that a change was found outside of the
         # legitimate sources.  This should never happen.
         raise
+      svn_path = _path_join(start_svn_path, entry)
+      if project.is_source(svn_path):
+        # This is a legitimate source.  Add it to list.
+        sources.append(FillSource(svn_path, node_key))
       else:
         # This directory is not a legitimate source.  (That's OK
         # because it hasn't changed directly.)  But directories within
