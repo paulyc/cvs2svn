@@ -1031,6 +1031,22 @@ class Project:
       l += 1
     return string.replace(fname[l:], os.sep, '/')
 
+  def get_branch_path(self, branch_name):
+    """Return the svnpath for the branch named BRANCH_NAME.
+
+    BRANCH_NAME must already have been cleaned using
+    _clean_symbolic_name()."""
+
+    return _path_join(self.branches_path, branch_name)
+
+  def get_tag_path(self, tag_name):
+    """Return the svnpath for the tag named TAG_NAME.
+
+    TAG_NAME must already have been cleaned using
+    _clean_symbolic_name()."""
+
+    return _path_join(self.tags_path, tag_name)
+
   def make_path(self, path, branch_name = None):
     """Return the trunk path or branch path for PATH.
 
@@ -1040,7 +1056,7 @@ class Project:
       return None
     elif branch_name:
       branch_name = _clean_symbolic_name(branch_name)
-      return _path_join(self.branches_path, branch_name, path)
+      return _path_join(self.get_branch_path(branch_name), path)
     else:
       return _path_join(self.trunk_path, path)
 
@@ -3409,11 +3425,9 @@ class SVNRepositoryMirror:
     sources = symbol_fill.get_sources()
 
     if self.tags_db.has_key(svn_commit.symbolic_name):
-      dest_prefix = _path_join(Ctx().project.tags_path,
-                               svn_commit.symbolic_name)
+      dest_prefix = Ctx().project.get_tag_path(svn_commit.symbolic_name)
     else:
-      dest_prefix = _path_join(Ctx().project.branches_path,
-                               svn_commit.symbolic_name)
+      dest_prefix = Ctx().project.get_branch_path(svn_commit.symbolic_name)
 
     if sources:
       dest_key = self._open_writable_node(dest_prefix, False)[0]
@@ -3421,7 +3435,7 @@ class SVNRepositoryMirror:
     else:
       # We can only get here for a branch whose first commit is an add
       # (as opposed to a copy).
-      dest_path = Ctx().project.branches_path + '/' + symbol_fill.name
+      dest_path = Ctx().project.get_branch_path(symbol_fill.name)
       if not self._path_exists(dest_path):
         # If our symbol_fill was empty, that means that our first
         # commit on the branch was to a file added on the branch, and
