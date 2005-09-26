@@ -979,7 +979,7 @@ class Project:
     full, normalized directory names in svn for the corresponding part
     of the repository."""
 
-    self.cvs_root = cvs_root
+    self.cvs_root = os.path.normpath(cvs_root)
     self.trunk_path = trunk_path
     self.branches_path = branches_path
     self.tags_path = tags_path
