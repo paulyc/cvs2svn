@@ -981,13 +981,15 @@ class TagsDatabase(Database):
 class Project:
   """A project within a CVS repository."""
 
-  def __init__(self, trunk_path, branches_path, tags_path):
+  def __init__(self, cvs_root, trunk_path, branches_path, tags_path):
     """Create a new Project record.
 
-    TRUNK_PATH, BRANCHES_PATH, and TAGS_PATH are the full, normalized
-    directory names in svn for the corresponding part of the
-    repository."""
+    CVS_ROOT is the main CVS directory for this project (within the
+    filesystem).  TRUNK_PATH, BRANCHES_PATH, and TAGS_PATH are the
+    full, normalized directory names in svn for the corresponding part
+    of the repository."""
 
+    self.cvs_root = cvs_root
     self.trunk_path = trunk_path
     self.branches_path = branches_path
     self.tags_path = tags_path
@@ -5070,7 +5072,8 @@ def main():
                      % ctx.fs_type)
 
   # Create the default project (using ctx.trunk, ctx.branches, and ctx.tags):
-  ctx.project = Project(ctx.trunk_base, ctx.branches_base, ctx.tags_base)
+  ctx.project = Project(ctx.cvsroot,
+                        ctx.trunk_base, ctx.branches_base, ctx.tags_base)
 
   if ctx.existing_svnrepos and not os.path.isdir(ctx.target):
     raise FatalError("the svn-repos-path '%s' is not an "
