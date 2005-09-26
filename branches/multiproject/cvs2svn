@@ -3325,9 +3325,9 @@ class SVNRepositoryMirror:
     all ancestor directories that are made empty when SVN_PATH is deleted.
     In other words, SHOULD_PRUNE is like the -P option to 'cvs checkout'.
 
-    NOTE: This function ignores requests to delete Ctx().project.trunk_path,
-    Ctx().project.branches_path, Ctx().project.tags_path, or the root
-    directory, either directly or by pruning."""
+    NOTE: This function ignores requests to delete the root directory
+    or any directory for which Ctx().project.is_unremovable() returns
+    True, either directly or by pruning."""
 
     if svn_path == '' or Ctx().project.is_unremovable(svn_path):
       return
