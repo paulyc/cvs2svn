@@ -1016,6 +1016,11 @@ class Project:
 
     return False
 
+  def is_unremovable(self, svn_path):
+    """Return True iff the specified path must not be removed."""
+
+    return svn_path in [self.trunk_path, self.branches_path, self.tags_path]
+
   def relative_name(self, fname):
     if not fname.startswith(self.cvs_root):
       raise FatalError(
@@ -3324,10 +3329,7 @@ class SVNRepositoryMirror:
     Ctx().project.branches_path, Ctx().project.tags_path, or the root
     directory, either directly or by pruning."""
 
-    if svn_path in [
-        '', Ctx().project.trunk_path, Ctx().project.branches_path,
-        Ctx().project.tags_path
-        ]:
+    if svn_path == '' or Ctx().project.is_unremovable(svn_path):
       return
 
     (parent_path, entry,) = _path_split(svn_path)
