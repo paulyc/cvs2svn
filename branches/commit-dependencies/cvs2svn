@@ -2726,7 +2726,7 @@ class CVSRevisionAggregator:
   def commit_ready(self, timestamp, c_rev=None):
     # Make sure we _attempt_to_commit_symbols for this c_rev, even if no
     # commits are ready.
-    syms_committed = None
+    syms_committed = False
     # Sort them into time-order, then process 'em.
     self.ready_queue.sort()
     for cvs_commit in self.ready_queue[:]:
@@ -2739,8 +2739,8 @@ class CVSRevisionAggregator:
       if c_rev is not None:
         self._add_pending_symbols(c_rev)
       self._attempt_to_commit_symbols()
-      syms_committed = 1
-    if syms_committed is None:
+      syms_committed = True
+    if not syms_committed:
       if c_rev is not None:
         self._add_pending_symbols(c_rev)
       self._attempt_to_commit_symbols()
