@@ -2705,7 +2705,7 @@ class CVSRevisionAggregator:
     # We do this here instead of in commit_ready to avoid building deps
     # on revisions that will be flushed immediately afterwards.
     while len(self.expired_queue):
-      chg = None
+      chg = False
       for cvs_commit in self.expired_queue[:]:
         for dep in cvs_commit.deps.itervalues():
           if dep.pending:
@@ -2719,8 +2719,8 @@ class CVSRevisionAggregator:
           self.expired_queue.remove(cvs_commit)
           cvs_commit.pending = False
           self.ready_queue.append(cvs_commit)
-          chg = 1
-      if chg is None:
+          chg = True
+      if not chg:
         break
 
   def commit_ready(self, timestamp, c_rev=None):
