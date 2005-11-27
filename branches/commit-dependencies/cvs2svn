@@ -2140,9 +2140,9 @@ class CVSCommit:
     # duplicates, deps is a hash.
     self.deps = {}
 
-    # When we get commited this becomes None and we stop blocking
+    # When we get commited this becomes False and we stop blocking
     # other commits.
-    self.pending = 1
+    self.pending = True
 
     # Symbolic names for which the last source revision has already
     # been seen and for which the CVSRevisionAggregator has already
@@ -2708,7 +2708,7 @@ class CVSRevisionAggregator:
       chg = None
       for cvs_commit in self.expired_queue[:]:
         for dep in cvs_commit.deps.itervalues():
-          if dep.pending is not None:
+          if dep.pending:
             break
         else:
           for dep in cvs_commit.deps.itervalues():
@@ -2717,7 +2717,7 @@ class CVSRevisionAggregator:
             del self.pending_revs[r.unique_key()]
           del cvs_commit.deps
           self.expired_queue.remove(cvs_commit)
-          cvs_commit.pending = None
+          cvs_commit.pending = False
           self.ready_queue.append(cvs_commit)
           chg = 1
       if chg is None:
