@@ -2698,13 +2698,13 @@ class CVSRevisionAggregator:
         if cvs_commit.t_max + COMMIT_THRESHOLD < timestamp:
           self.expired_queue.append(cvs_commit)
           cvs_commits.remove(cvs_commit)
-      if not len(cvs_commits):
+      if not cvs_commits:
         del self.cvs_commits[digest_key]
 
     # Then queue all closed commits with resolved dependencies for commit.
     # We do this here instead of in commit_ready to avoid building deps
     # on revisions that will be flushed immediately afterwards.
-    while len(self.expired_queue):
+    while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
         for dep in cvs_commit.deps.itervalues():
