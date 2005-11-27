@@ -2669,7 +2669,7 @@ class CVSRevisionAggregator:
     # This variable holds the most recently created primary svn_commit
     # object.  CVSRevisionAggregator maintains this variable merely
     # for its date, so that it can set dates for the SVNCommits
-    # created in self.attempt_to_commit_symbols().
+    # created in self._attempt_to_commit_symbols().
     self.latest_primary_svn_commit = None
 
     Ctx()._symbolings_logger = SymbolingsLogger()
@@ -2724,7 +2724,7 @@ class CVSRevisionAggregator:
         break
 
   def commit_ready(self, timestamp, c_rev=None):
-    # Make sure we attempt_to_commit_symbols for this c_rev, even if no
+    # Make sure we _attempt_to_commit_symbols for this c_rev, even if no
     # commits are ready.
     syms_committed = None
     # Sort them into time-order, then process 'em.
@@ -2737,13 +2737,13 @@ class CVSRevisionAggregator:
           = cvs_commit.process_revisions(self.done_symbols)
       self.ready_queue.remove(cvs_commit)
       if c_rev is not None:
-        self.add_pending_symbols(c_rev)
-      self.attempt_to_commit_symbols()
+        self._add_pending_symbols(c_rev)
+      self._attempt_to_commit_symbols()
       syms_committed = 1
     if syms_committed is None:
       if c_rev is not None:
-        self.add_pending_symbols(c_rev)
-      self.attempt_to_commit_symbols()
+        self._add_pending_symbols(c_rev)
+      self._attempt_to_commit_symbols()
 
   def process_revision(self, c_rev):
     # Each time we read a new line, we scan the commits we've
@@ -2784,7 +2784,7 @@ class CVSRevisionAggregator:
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
 
-  def add_pending_symbols(self, c_rev):
+  def _add_pending_symbols(self, c_rev):
     """Add to self.pending_symbols any symbols from C_REV for which
     C_REV is the last CVSRevision.
 
@@ -2796,7 +2796,7 @@ class CVSRevisionAggregator:
       for sym in self.last_revs_db.get(c_rev.unique_key(), []):
         self.pending_symbols[sym] = None
 
-  def attempt_to_commit_symbols(self):
+  def _attempt_to_commit_symbols(self):
     """Generate one SVNCommit for each symbol in self.pending_symbols
     that doesn't have an opening CVSRevision in either
     self.cvs_commits, self.expired_queue or self.ready_queue."""
