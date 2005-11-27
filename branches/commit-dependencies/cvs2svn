@@ -2677,7 +2677,6 @@ class CVSRevisionAggregator:
     Ctx()._default_branches_db = SDatabase(temp(DEFAULT_BRANCHES_DB),
                                            DB_OPEN_READ)
 
-
   def get_deps(self, c_rev, deps):
     """Populate DEPS with a list of all pending commits this C_REV depends on
     directly or indirectly. Return the commit C_REV depends on directly."""
