@@ -2123,6 +2123,7 @@ class CVSCommit:
   generate a Subversion Commit (or Commits) for the set of CVS
   Revisions in the grouping."""
 
+  # The next serial number to be assigned:
   cur_serial = 0
 
   def __init__(self, digest, author, log):
@@ -2130,11 +2131,12 @@ class CVSCommit:
     self.author = author
     self.log = log
 
-    # To avoid duplicates, deps is a hash. This is the key for the hash.
+    # Assign a unique serial number to each CVSCommit:
     self.serial = CVSCommit.cur_serial
     CVSCommit.cur_serial += 1
 
-    # Serials of other CVSCommits we depend upon.
+    # serials of other CVSCommits we depend upon.  To avoid
+    # duplicates, deps is a hash.
     self.deps = {}
 
     # When we get commited this becomes None and we stop blocking
