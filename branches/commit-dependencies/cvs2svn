@@ -2124,20 +2124,13 @@ class CVSCommit:
   generate a Subversion Commit (or Commits) for the set of CVS
   Revisions in the grouping."""
 
-  # The next serial number to be assigned:
-  cur_serial = 0
-
   def __init__(self, digest, author, log):
     self.digest = digest
     self.author = author
     self.log = log
 
-    # Assign a unique serial number to each CVSCommit:
-    self.serial = CVSCommit.cur_serial
-    CVSCommit.cur_serial += 1
-
-    # serials of other CVSCommits we depend upon.  To avoid
-    # duplicates, deps is a hash.
+    # Map { CVSCommit : None } of other CVSCommits we depend upon.  To
+    # avoid duplicates, this is a hash.
     self.deps = {}
 
     # When we get commited this becomes False and we stop blocking
@@ -2205,9 +2198,14 @@ class CVSCommit:
 
   def __cmp__(self, other):
     # Commits should be sorted by t_max.  If both self and other have
-    # the same t_max, break the tie using t_min, and lastly, digest
+    # the same t_max, break the tie using t_min, and lastly, digest.
+    # If all those are equal, then compare based on ids, to ensure
+    # that no two instances compare equal.
     return (cmp(self.t_max, other.t_max) or cmp(self.t_min, other.t_min)
-            or cmp(self.digest, other.digest))
+            or cmp(self.digest, other.digest) or cmp(id(self), id(other)))
+
+  def __hash__(self):
+    return id(self)
 
   def revisions(self):
     return self.changes + self.deletes
@@ -2686,7 +2684,7 @@ class CVSRevisionAggregator:
     dep = self.pending_revs.get(p_id, None)
     if dep is None:
       return None
-    deps[dep.serial] = dep
+    deps[dep] = None
     for r in dep.revisions():
       self.get_deps(r, deps)
     return dep
@@ -2707,15 +2705,15 @@ class CVSRevisionAggregator:
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
-        for dep in cvs_commit.deps.itervalues():
+        for dep in cvs_commit.deps.iterkeys():
           if dep.pending:
             break
         else:
-          for dep in cvs_commit.deps.itervalues():
+          for dep in cvs_commit.deps.iterkeys():
             cvs_commit.max_t = max(cvs_commit.t_max, dep.t_max + 1)
           for r in cvs_commit.revisions():
             del self.pending_revs[r.unique_key()]
-          del cvs_commit.deps
+          cvs_commit.deps.clear()
           self.expired_queue.remove(cvs_commit)
           cvs_commit.pending = False
           self.ready_queue.append(cvs_commit)
@@ -2758,14 +2756,14 @@ class CVSRevisionAggregator:
     # commit. It might be wiser to do time range matching to avoid stretching
     # commits more than necessary.
     for cvs_commit in cvs_commits:
-      if not deps.has_key(cvs_commit.serial):
+      if not deps.has_key(cvs_commit):
         break
     else:
       author, log = self.metadata_db[c_rev.digest]
       cvs_commit = CVSCommit(c_rev.digest, author, log)
       cvs_commits.append(cvs_commit)
     if dep is not None:
-      cvs_commit.deps[dep.serial] = dep
+      cvs_commit.deps[dep] = None
     cvs_commit.add_revision(c_rev)
     self.pending_revs[c_rev.unique_key()] = cvs_commit
 
