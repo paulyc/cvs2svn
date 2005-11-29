@@ -2705,11 +2705,11 @@ class CVSRevisionAggregator:
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
-        for dep in cvs_commit.deps.iterkeys():
+        for dep in cvs_commit.deps:
           if dep.pending:
             break
         else:
-          for dep in cvs_commit.deps.iterkeys():
+          for dep in cvs_commit.deps:
             cvs_commit.max_t = max(cvs_commit.t_max, dep.t_max + 1)
           for r in cvs_commit.revisions():
             del self.pending_revs[r.unique_key()]
