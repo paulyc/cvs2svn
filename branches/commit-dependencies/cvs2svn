@@ -2692,7 +2692,9 @@ class CVSRevisionAggregator:
       self.get_deps(r, deps)
     return dep
 
-  def close_expired(self, timestamp):
+  def _extract_ready_commits(self, timestamp):
+    """Extract any active commits that expire by TIMESTAMP."""
+
     # First take all expired commits out of the pool of available commits.
     for digest_key, cvs_commits in self.cvs_commits.items():
       for cvs_commit in cvs_commits[:]:
@@ -2747,9 +2749,9 @@ class CVSRevisionAggregator:
       self._attempt_to_commit_symbols()
 
   def process_revision(self, c_rev):
-    # Each time we read a new line, we scan the commits we've
-    # accumulated so far to see if any are ready for processing now.
-    self.close_expired(c_rev.timestamp)
+    # Each time we read a new line, scan the accumulating commits to
+    # see if any are ready for processing.
+    self._extract_ready_commits(c_rev.timestamp)
 
     # Add this item into the set of still-available commits.
     deps = {}
@@ -2779,7 +2781,7 @@ class CVSRevisionAggregator:
     """Commit anything left in self.cvs_commits.  Then inform the
     SymbolingsLogger that all commits are done."""
 
-    self.close_expired(1L<<32)
+    self._extract_ready_commits(1L<<32)
     self.commit_ready(1L<<32)
 
     if not Ctx().trunk_only:
