@@ -1,0 +1,13 @@
+* cvs2svn (CVSCommit.__init__): Add 'deps', 'pending' members, remove 'files'.
+  (CVSCommit.__cmp__): Ensure no two separate instances are considered equal.
+  (CVSCommit.has_file): Remove.
+  (CVSCommit.__hash__): New.
+  (CVSCommit.add_revision): Don't store info in 'files'.
+  (CVSRevisionAggregator.__init__): Redefine contents of member 'cvs_commits'.
+    New members 'pending_revs', 'expired_queue', 'ready_queue'.
+  (CVSRevisionAggregator._get_deps): New.
+  (CVSRevisionAggregator._extract_ready_commits): Rewrite.
+  (CVSRevisionAggregator._commit_ready_commits): New.
+  (CVSRevisionAggregator.process_revision): Rewrite.
+  (CVSRevisionAggregator.flush): Rewrite.
+  (CVSRevisionAggregator._attempt_to_commit_symbols): Rewrite.
