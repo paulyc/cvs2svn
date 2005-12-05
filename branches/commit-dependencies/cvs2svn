@@ -2732,13 +2732,14 @@ class CVSRevisionAggregator:
     syms_committed = False
     # Sort them into time-order, then process 'em.
     self.ready_queue.sort()
-    for cvs_commit in self.ready_queue[:]:
+    while self.ready_queue:
+      cvs_commit = self.ready_queue[0]
       if cvs_commit.t_max > timestamp:
         # Re-stamping according to a commit's dependencies can cause this.
         break
-      self.latest_primary_svn_commit \
-          = cvs_commit.process_revisions(self.done_symbols)
-      self.ready_queue.remove(cvs_commit)
+      del self.ready_queue[0]
+      self.latest_primary_svn_commit = \
+          cvs_commit.process_revisions(self.done_symbols)
       if c_rev is not None:
         self._add_pending_symbols(c_rev)
       self._attempt_to_commit_symbols()
