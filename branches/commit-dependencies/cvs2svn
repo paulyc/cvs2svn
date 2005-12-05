@@ -2745,6 +2745,8 @@ class CVSRevisionAggregator:
       self._attempt_to_commit_symbols()
       syms_committed = True
     if not syms_committed:
+      # Make sure we _add_pending_symbols() for this c_rev and
+      # _attempt_to_commit_symbols(), even if no commits are ready.
       if c_rev is not None:
         self._add_pending_symbols(c_rev)
       self._attempt_to_commit_symbols()
