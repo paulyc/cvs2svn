@@ -2678,7 +2678,7 @@ class CVSRevisionAggregator:
     Ctx()._default_branches_db = SDatabase(temp(DEFAULT_BRANCHES_DB),
                                            DB_OPEN_READ)
 
-  def get_deps(self, c_rev, deps):
+  def _get_deps(self, c_rev, deps):
     """Populate DEPS with a list of all pending commits this C_REV depends on
     directly or indirectly. Return the commit C_REV depends on directly."""
     if not c_rev.prev_rev:
@@ -2689,7 +2689,7 @@ class CVSRevisionAggregator:
       return None
     deps[dep] = None
     for r in dep.revisions():
-      self.get_deps(r, deps)
+      self._get_deps(r, deps)
     return dep
 
   def _extract_ready_commits(self, timestamp):
@@ -2726,7 +2726,7 @@ class CVSRevisionAggregator:
       if not chg:
         break
 
-  def commit_ready(self, timestamp, c_rev=None):
+  def _commit_ready_commits(self, timestamp, c_rev=None):
     # Make sure we _attempt_to_commit_symbols for this c_rev, even if no
     # commits are ready.
     syms_committed = False
@@ -2755,7 +2755,7 @@ class CVSRevisionAggregator:
 
     # Add this item into the set of still-available commits.
     deps = {}
-    dep = self.get_deps(c_rev, deps)
+    dep = self._get_deps(c_rev, deps)
     cvs_commits = self.cvs_commits.setdefault(c_rev.digest, [])
     # This is pretty silly; it will add the revision to the oldest pending
     # commit. It might be wiser to do time range matching to avoid stretching
@@ -2775,14 +2775,14 @@ class CVSRevisionAggregator:
     # If there are any elements in the ready_queue at this point, they
     # need to be processed, because this latest rev couldn't possibly
     # be part of any of them.
-    self.commit_ready(c_rev.timestamp, c_rev)
+    self._commit_ready_commits(c_rev.timestamp, c_rev)
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
     SymbolingsLogger that all commits are done."""
 
     self._extract_ready_commits(1L<<32)
-    self.commit_ready(1L<<32)
+    self._commit_ready_commits(1L<<32)
 
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
