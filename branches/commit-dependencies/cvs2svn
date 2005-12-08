@@ -2720,7 +2720,7 @@ class CVSRevisionAggregator:
             break
         else:
           for dep in cvs_commit.deps:
-            cvs_commit.max_t = max(cvs_commit.t_max, dep.t_max + 1)
+            cvs_commit.t_max = max(cvs_commit.t_max, dep.t_max + 1)
           for r in cvs_commit.revisions():
             del self.pending_revs[r.unique_key()]
           cvs_commit.deps.clear()
