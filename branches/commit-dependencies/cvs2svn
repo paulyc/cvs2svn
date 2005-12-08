@@ -2733,8 +2733,6 @@ class CVSRevisionAggregator:
         break
 
   def _commit_ready_commits(self, timestamp, c_rev=None):
-    # Make sure we _attempt_to_commit_symbols for this c_rev, even if no
-    # commits are ready.
     syms_committed = False
     # Sort them into time-order, then process 'em.
     self.ready_queue.sort()
