@@ -2689,8 +2689,7 @@ class CVSRevisionAggregator:
     directly or indirectly. Return the commit C_REV depends on directly."""
     if not c_rev.prev_rev:
       return None
-    p_id = c_rev.unique_key(c_rev.prev_rev)
-    dep = self.pending_revs.get(p_id, None)
+    dep = self.pending_revs.get(c_rev.unique_key(c_rev.prev_rev), None)
     if dep is None:
       return None
     deps[dep] = None
