@@ -2720,8 +2720,7 @@ class CVSRevisionAggregator:
       if not chg:
         break
 
-  def _commit_ready_commits(self, timestamp, c_rev=None):
-    syms_committed = False
+  def _commit_ready_commits(self, timestamp):
     # Sort them into time-order, then process 'em.
     self.ready_queue.sort()
     while self.ready_queue:
@@ -2732,15 +2731,6 @@ class CVSRevisionAggregator:
       del self.ready_queue[0]
       self.latest_primary_svn_commit = \
           cvs_commit.process_revisions(self.done_symbols)
-      if c_rev is not None:
-        self._add_pending_symbols(c_rev)
-      self._attempt_to_commit_symbols()
-      syms_committed = True
-    if not syms_committed:
-      # Make sure we _add_pending_symbols() for this c_rev and
-      # _attempt_to_commit_symbols(), even if no commits are ready.
-      if c_rev is not None:
-        self._add_pending_symbols(c_rev)
       self._attempt_to_commit_symbols()
 
   def process_revision(self, c_rev):
@@ -2770,7 +2760,9 @@ class CVSRevisionAggregator:
     # If there are any elements in the ready_queue at this point, they
     # need to be processed, because this latest rev couldn't possibly
     # be part of any of them.
-    self._commit_ready_commits(c_rev.timestamp, c_rev)
+    self._commit_ready_commits(c_rev.timestamp)
+
+    self._add_pending_symbols(c_rev)
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
