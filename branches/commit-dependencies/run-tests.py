@@ -2057,11 +2057,8 @@ test_list = [ None,
               empty_trunk_variants,
               peer_path_pruning_variants,
               auto_props_ignore_case,
+              auto_props,
               ]
-if sys.hexversion < 0x02010000:
-  test_list.append(XFail(auto_props))
-else:
-  test_list.append(auto_props)
 
 if __name__ == '__main__':
 
