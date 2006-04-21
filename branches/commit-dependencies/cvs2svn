@@ -19,6 +19,8 @@
 
 VERSION = 'r' + "$LastChangedRevision$"[22:-2]
 
+from __future__ import generators
+
 import cvs2svn_rcsparse
 import os
 import sys
@@ -27,7 +29,6 @@ import re
 import time
 import fileinput
 import fnmatch
-import string
 import getopt
 import stat
 import md5
@@ -36,7 +37,6 @@ import errno
 import popen2
 import types
 import ConfigParser
-import UserDict
 try:
   # Try to get access to a bunch of encodings for use with --encoding.
   # See http://cjkpython.i18n.org/ for details.
@@ -368,7 +368,7 @@ def _clean_symbolic_name(name):
 def _path_join(*components):
   """Join two or more pathname COMPONENTS, inserting '/' as needed.
   Empty component are skipped."""
-  return string.join(filter(None, components), '/')
+  return '/'.join(filter(None, components))
 
 def _path_split(path):
   """Split the svn pathname PATH into a pair, (HEAD, TAIL).
@@ -399,6 +399,18 @@ def to_utf8(value, mode='replace'):
       Log().write(LOG_VERBOSE, "Encoding '%s' failed for string '%s'"
                   % (encoding, value))
   raise UnicodeError
+
+ctrl_characters_regexp = re.compile('[\\\x00-\\\x1f\\\x7f]')
+
+def verify_filename_legal(filename):
+  """Verify that FILENAME does not include any control characters.  If
+  it does, raise a FatalError."""
+
+  m = ctrl_characters_regexp.search(filename)
+  if m:
+    raise FatalError(
+        "Character %r in filename %r is not supported by subversion."
+        % (m.group(), filename,))
 
 def run_command(command):
   if os.system(command):
@@ -469,7 +481,7 @@ class CVSRepository:
           % (fname, self.cvs_repos_path,))
     if tail.endswith(',v'):
       tail = tail[:-2]
-    return string.replace(tail, os.sep, '/')
+    return tail.replace(os.sep, '/')
 
   def get_co_pipe(self, c_rev, suppress_keyword_substitution=False):
     """Return a command string, and the pipe created using that
@@ -567,7 +579,7 @@ def generate_ignores(c_rev):
   buf = pipe.stdout.read(PIPE_READ_SIZE)
   raw_ignore_val = ""
   while buf:
-    raw_ignore_val = raw_ignore_val + buf
+    raw_ignore_val += buf
     buf = pipe.stdout.read(PIPE_READ_SIZE)
   pipe.stdout.close()
   error_output = pipe.stderr.read()
@@ -598,7 +610,7 @@ gen_key_base = 0L
 def gen_key():
   global gen_key_base
   key = '%x' % gen_key_base
-  gen_key_base = gen_key_base + 1
+  gen_key_base += 1
   return key
 
 # ============================================================================
@@ -617,7 +629,7 @@ if sys.platform == "win32":
     arg = re.sub(_escape_shell_arg_re, r'\1\1\2', arg)
 
     # surround by quotes and escape quotes inside
-    arg = '"' + string.replace(arg, '"', '"^""') + '"'
+    arg = '"' + arg.replace('"', '"^""') + '"'
     return arg
 
 
@@ -633,11 +645,11 @@ if sys.platform == "win32":
     # the leading character and removing the last quote character."
     # So to prevent the argument string from being changed we add an extra set
     # of quotes around it here.
-    return '"' + string.join(map(escape_shell_arg, argv), " ") + '"'
+    return '"' + ' '.join(map(escape_shell_arg, argv)) + '"'
 
 else:
-  def escape_shell_arg(str):
-    return "'" + string.replace(str, "'", "'\\''") + "'"
+  def escape_shell_arg(arg):
+    return "'" + arg.replace("'", "'\\''") + "'"
 
   def argv_to_command_string(argv):
     """Flatten a list of command line arguments into a command string.
@@ -646,7 +658,7 @@ else:
     shell which os functions like popen() and system() invoke internally.
     """
 
-    return string.join(map(escape_shell_arg, argv), " ")
+    return ' '.join(map(escape_shell_arg, argv))
 # ============================================================================
 
 def format_date(date):
@@ -672,11 +684,11 @@ def sort_file(infile, outfile):
   else:
     os.environ['LC_ALL'] = lc_all_tmp
 
-def match_regexp_list(regexp_list, string):
-  """Test whether STRING matches any of the compiled regexps in
+def match_regexp_list(regexp_list, s):
+  """Test whether string S matches any of the compiled regexps in
   REGEXP_LIST."""
   for regexp in regexp_list:
-    if regexp.match(string):
+    if regexp.match(s):
       return True
   return False
 
@@ -698,8 +710,8 @@ class LF_EOL_Filter:
       if not self.eof and buf[-1] == '\r':
         self.carry_cr = True
         buf = buf[:-1]
-      buf = string.replace(buf, '\r\n', '\n')
-      buf = string.replace(buf, '\r', '\n')
+      buf = buf.replace('\r\n', '\n')
+      buf = buf.replace('\r', '\n')
       if len(buf) > 0 or self.eof:
         return buf
 
@@ -787,7 +799,7 @@ DB_OPEN_READ = 'r'
 DB_OPEN_NEW = 'n'
 
 
-class AbstractDatabase(UserDict.DictMixin):
+class AbstractDatabase:
   """An abstract base class for anydbm-based databases."""
 
   def __init__(self, filename, mode):
@@ -809,11 +821,11 @@ class AbstractDatabase(UserDict.DictMixin):
 
     self.db = anydbm.open(filename, mode)
 
-    # Import implementations for many mapping interface methods.
-    # Note that we specifically do not do this for any method which handles
-    # *values*, because our derived classes may define __getitem__ and
-    # __setitem__ to override the storage of values, and grabbing methods
-    # directly from the dbm object would bypass this.
+    # Import implementations for many mapping interface methods.  Note
+    # that we specifically do not do this for any method which handles
+    # *values*, because our derived classes define __getitem__ and
+    # __setitem__ to override the storage of values, and grabbing
+    # methods directly from the dbm object would bypass this.
     for meth_name in ('__delitem__', 'keys',
         '__iter__', 'has_key', '__contains__', 'iterkeys', 'clear'):
       meth_ref = getattr(self.db, meth_name, None)
@@ -821,8 +833,42 @@ class AbstractDatabase(UserDict.DictMixin):
         setattr(self, meth_name, meth_ref)
 
   def __delitem__(self, key):
-    "gdbm does not define a __delitem__ we can assign."
+    # gdbm defines a __delitem__ method, but it cannot be assigned.  So
+    # this method provides a fallback definition via explicit delegation:
     del self.db[key]
+
+  def __iter__(self):
+    for key in self.keys():
+      yield key
+
+  def has_key(self, key):
+    try:
+      self.db[key]
+      return True
+    except KeyError:
+      return False
+
+  def __contains__(self, key):
+    return self.has_key(key)
+
+  def iterkeys(self):
+    return self.__iter__()
+
+  def clear(self):
+    for key in self.keys():
+      del self[key]
+
+  def items(self):
+    return [(key, self[key],) for key in self.keys()]
+
+  def values(self):
+    return [self[key] for key in self.keys()]
+
+  def get(self, key, default=None):
+    try:
+      return self[key]
+    except KeyError:
+      return default
 
 
 class SDatabase(AbstractDatabase):
@@ -882,7 +928,7 @@ class StatsKeeper:
     self.data['end_time'] = end
 
   def _bump_item(self, key, amount=1):
-    self.data[key] = self.data[key] + amount
+    self.data[key] += amount
 
   def reset_c_rev_info(self):
     self.data['cvs_revs_count'] = 0
@@ -953,7 +999,7 @@ class StatsKeeper:
   def timings(self):
     passes = self.data['pass_timings'].keys()
     passes.sort()
-    str = 'Timings:\n------------------\n'
+    output = 'Timings:\n------------------\n'
 
     def desc(val):
       if val == 1: return "second"
@@ -963,11 +1009,11 @@ class StatsKeeper:
       duration = int(self.data['pass_timings'][pass_num])
       p_str = ('pass %d:%6d %s\n'
                % (pass_num, duration, desc(duration)))
-      str = str + p_str
+      output += p_str
 
     total = int(self.data['end_time'] - self.data['start_time'])
-    str = str + ('total: %6d %s' % (total, desc(total)))
-    return str
+    output += ('total: %6d %s' % (total, desc(total)))
+    return output
 
 
 class LastSymbolicNameDatabase:
@@ -1021,13 +1067,25 @@ class CVSRevisionDatabase:
     return CVSRevision(Ctx(), self.cvs_revs_db[unique_key])
 
 
-def TagsDatabase(mode):
-  """A Database to store which symbolic names are tags.
-  Each key is a tag name.
-  The value has no meaning, and should be set to None."""
-  db = SDatabase(temp(TAGS_DB), mode)
-  Cleanup().register(temp(TAGS_DB), pass8)
-  return db
+class TagsDatabase:
+  """A Database to record symbolic names that are tags.
+
+  Each key is a tag name.  The value has no meaning, and is set to the
+  empty string.  (Since an SDatabase is used, the key cannot be set to
+  None.)"""
+
+  def __init__(self, mode):
+    self.db = SDatabase(temp(TAGS_DB), mode)
+    Cleanup().register(temp(TAGS_DB), pass8)
+
+  def add(self, item):
+    self.db[item] = ''
+
+  def remove(self, item):
+    del self.db[item]
+
+  def __contains__(self, item):
+    return self.db.has_key(item)
 
 
 class Project:
@@ -1413,31 +1471,22 @@ class SymbolDatabase:
         f.write(" ".join(info[2].keys()))
       f.write("\n")
 
-class CollectData(cvs2svn_rcsparse.Sink):
-  def __init__(self):
-    self.revs = open(temp(DATAFILE + REVS_SUFFIX), 'w')
-    Cleanup().register(temp(DATAFILE + REVS_SUFFIX), pass2)
-    self.resync = open(temp(DATAFILE + RESYNC_SUFFIX), 'w')
-    Cleanup().register(temp(DATAFILE + RESYNC_SUFFIX), pass2)
-    self.default_branches_db = SDatabase(temp(DEFAULT_BRANCHES_DB),
-                                         DB_OPEN_NEW)
-    Cleanup().register(temp(DEFAULT_BRANCHES_DB), pass5)
-    self.metadata_db = Database(temp(METADATA_DB), DB_OPEN_NEW)
-    Cleanup().register(temp(METADATA_DB), pass8)
-    self.fatal_errors = []
-    self.num_files = 0
-    self.symbol_db = SymbolDatabase()
 
-    # 1 if we've collected data for at least one file, None otherwise.
-    self.found_valid_file = None
+class FileDataCollector(cvs2svn_rcsparse.Sink):
+  """Class responsible for collecting RCS data for a particular file.
 
-    # See set_fname() for initializations of other variables.
+  Any collected data that need to be remembered are stored into the
+  referenced CollectData instance."""
 
-  def set_fname(self, canonical_name, filename):
-    """Prepare to receive data for FILENAME.  FILENAME is the absolute
-    filesystem path to the file in question, and CANONICAL_NAME is
-    FILENAME with the 'Attic' component removed (if the file is indeed
-    in the Attic) ."""
+  def __init__(self, collect_data, canonical_name, filename):
+    """Create an object that is prepared to receive data for FILENAME.
+    FILENAME is the absolute filesystem path to the file in question,
+    and CANONICAL_NAME is FILENAME with the 'Attic' component removed
+    (if the file is indeed in the Attic).  COLLECT_DATA is used to
+    store the information collected about the file."""
+
+    self.collect_data = collect_data
+
     self.fname = canonical_name
 
     # We calculate and save some file metadata here, where we can do
@@ -1545,7 +1594,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
       # branch sprouts, so strip off the odd final component.
       sprout_rev = branch_number[:branch_number.rfind(".")]
       self.branchlist.setdefault(sprout_rev, []).append(name)
-      self.symbol_db.register_branch_creation(name)
+      self.collect_data.symbol_db.register_branch_creation(name)
     else:
       sys.stderr.write("%s: in '%s':\n"
                        "   branch '%s' already has name '%s',\n"
@@ -1579,7 +1628,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
       err = "%s: Multiple definitions of the symbol '%s' in '%s'" \
                 % (error_prefix, name, self.fname)
       sys.stderr.write(err + "\n")
-      self.fatal_errors.append(err)
+      self.collect_data.fatal_errors.append(err)
     self.defined_symbols[name] = None
     m = cvs_branch_tag.match(revision)
     if m:
@@ -1588,7 +1637,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
       self.set_branch_name(revision, name)
     else:
       self.taglist.setdefault(revision, []).append(name)
-      self.symbol_db.register_tag_creation(name)
+      self.collect_data.symbol_db.register_tag_creation(name)
 
   def define_revision(self, revision, timestamp, author, state,
                       branches, next):
@@ -1644,7 +1693,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
           and (default_branch_root.count('.') == revision.count('.'))):
         # This revision is on the default branch, so record that it is
         # the new highest default branch head revision.
-        self.default_branches_db[self.cvs_path] = revision
+        self.collect_data.default_branches_db[self.cvs_path] = revision
     else:
       # No default branch, so make an educated guess.
       if revision == '1.2':
@@ -1658,7 +1707,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
           # We're looking at a vendor revision, and it wasn't
           # committed after this file lost its default branch, so bump
           # the maximum trunk vendor revision in the permanent record.
-          self.default_branches_db[self.cvs_path] = revision
+          self.collect_data.default_branches_db[self.cvs_path] = revision
 
     if not trunk_rev.match(revision):
       # Check for unlabeled branches, record them.  We tried to collect
@@ -1673,7 +1722,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
 
       # Register the commit on this non-trunk branch
       branch_name = self.branch_names[branch_number]
-      self.symbol_db.register_branch_commit(branch_name)
+      self.collect_data.symbol_db.register_branch_commit(branch_name)
 
   def tree_completed(self):
     "The revision tree has been parsed.  Analyze it for consistency."
@@ -1720,14 +1769,15 @@ class CollectData(cvs2svn_rcsparse.Sink):
             Log().write(LOG_VERBOSE, msg)
             if (delta > COMMIT_THRESHOLD
                 or delta < (COMMIT_THRESHOLD * -1)):
-              str = "%s: Significant timestamp change for '%s' (%d seconds)"
               Log().write(LOG_WARN,
-                          str % (warning_prefix, self.cvs_path, delta))
+                          "%s: Significant timestamp change for '%s' "
+                          "(%d seconds)"
+                          % (warning_prefix, self.cvs_path, delta))
             current = prev
             prev = self.prev_rev[current]
             if not prev:
               break
-            t_c = t_c - 1		# self.rev_data[current][0]
+            t_c -= 1		# self.rev_data[current][0]
             t_p = self.rev_data[prev][0]
 
           # break from the for-loop
@@ -1743,7 +1793,8 @@ class CollectData(cvs2svn_rcsparse.Sink):
       # the timestamp on this revision was changed. log it for later
       # resynchronization of other files's revisions that occurred
       # for this time and log message.
-      self.resync.write('%08lx %s %08lx\n' % (old_ts, digest, timestamp))
+      self.collect_data.resync.write('%08lx %s %08lx\n'
+                                     % (old_ts, digest, timestamp))
 
     # "...Give back one kadam to honor the Hebrew God whose Ark this is."
     #       -- Imam to Indy and Sallah, in 'Raiders of the Lost Ark'
@@ -1755,7 +1806,7 @@ class CollectData(cvs2svn_rcsparse.Sink):
     # for 1.1 in imports is "Initial revision\n" with no period.
     if revision == '1.1' and log != 'Initial revision\n':
       try:
-        del self.default_branches_db[self.cvs_path]
+        del self.collect_data.default_branches_db[self.cvs_path]
       except KeyError:
         pass
 
@@ -1843,11 +1894,11 @@ class CollectData(cvs2svn_rcsparse.Sink):
                         self.mode, self.rev_to_branch_name(revision),
                         self.taglist.get(revision, []),
                         self.branchlist.get(revision, []))
-    self.revs.write(str(c_rev) + "\n")
+    self.collect_data.revs.write(str(c_rev) + "\n")
     StatsKeeper().record_c_rev(c_rev)
 
-    if not self.metadata_db.has_key(digest):
-      self.metadata_db[digest] = (author, log)
+    if not self.collect_data.metadata_db.has_key(digest):
+      self.collect_data.metadata_db[digest] = (author, log)
 
   def parse_completed(self):
     # Walk through all branches and tags and register them with
@@ -1856,12 +1907,39 @@ class CollectData(cvs2svn_rcsparse.Sink):
       for symbol in symbols:
         name = self.rev_to_branch_name(revision)
         if name is not None:
-          self.symbol_db.register_branch_blocker(name, symbol)
+          self.collect_data.symbol_db.register_branch_blocker(name, symbol)
 
-    self.num_files = self.num_files + 1
+    self.collect_data.num_files += 1
+
+
+class CollectData:
+  """Repository for data collected by parsing the CVS repository files.
+
+  This class manages the databases into which information collected
+  from the CVS repository is stored.  The data are stored into this
+  class by FileDataCollector instances, one of which is created for
+  each file to be parsed."""
+
+  def __init__(self):
+    self.revs = open(temp(DATAFILE + REVS_SUFFIX), 'w')
+    Cleanup().register(temp(DATAFILE + REVS_SUFFIX), pass2)
+    self.resync = open(temp(DATAFILE + RESYNC_SUFFIX), 'w')
+    Cleanup().register(temp(DATAFILE + RESYNC_SUFFIX), pass2)
+    self.default_branches_db = SDatabase(temp(DEFAULT_BRANCHES_DB),
+                                         DB_OPEN_NEW)
+    Cleanup().register(temp(DEFAULT_BRANCHES_DB), pass5)
+    self.metadata_db = Database(temp(METADATA_DB), DB_OPEN_NEW)
+    Cleanup().register(temp(METADATA_DB), pass8)
+    self.fatal_errors = []
+    self.num_files = 0
+    self.symbol_db = SymbolDatabase()
+
+    # 1 if we've collected data for at least one file, None otherwise.
+    self.found_valid_file = None
 
   def write_symbol_db(self):
     self.symbol_db.write()
+
 
 class SymbolingsLogger:
   """Manage the file that contains lines for symbol openings and
@@ -2055,7 +2133,7 @@ class PersistenceManager:
             "symbolic name ('%s') to fill."
             % (_clean_symbolic_name(name),))
       svn_commit.set_symbolic_name(name)
-      if self.tags_db.has_key(name):
+      if name in self.tags_db:
         svn_commit.is_tag = 1
 
     if motivating_revnum is not None:
@@ -2333,7 +2411,7 @@ class CVSCommit:
     else:
       # We will not be flushing this SVNCommit, so rollback the
       # SVNCommit revision counter.
-      SVNCommit.revnum = SVNCommit.revnum - 1
+      SVNCommit.revnum -= 1
 
     if not Ctx().trunk_only:
       for c_rev in self.revisions():
@@ -2451,7 +2529,7 @@ class SVNCommit:
       self.revnum = revnum
     else:
       self.revnum = SVNCommit.revnum
-      SVNCommit.revnum = SVNCommit.revnum + 1
+      SVNCommit.revnum += 1
 
     # The (uncleaned) symbolic name that is filled in this SVNCommit, if any.
     self.symbolic_name = None
@@ -3418,7 +3496,7 @@ class SVNRepositoryMirror:
 
     if dest_parent_contents.has_key(dest_basename):
       msg = "Attempt to add path '%s' to repository mirror " % dest_path
-      msg = msg + "when it already exists in the mirror."
+      msg += "when it already exists in the mirror."
       raise self.SVNRepositoryMirrorPathExistsError, msg
 
     dest_parent_contents[dest_basename] = src_key
@@ -3442,7 +3520,7 @@ class SVNRepositoryMirror:
     sources = symbol_fill.get_sources()
 
     if sources:
-      if self.tags_db.has_key(svn_commit.symbolic_name):
+      if svn_commit.symbolic_name in self.tags_db:
         dest_prefix = Ctx().project.get_tag_path(svn_commit.symbolic_name)
       else:
         dest_prefix = Ctx().project.get_branch_path(svn_commit.symbolic_name)
@@ -3475,8 +3553,8 @@ class SVNRepositoryMirror:
       else:
         msg = "Error filling branch '" \
               + _clean_symbolic_name(symbol_fill.name) + "'.\n"
-        msg = msg + "Received an empty SymbolicNameFillingGuide and\n"
-        msg = msg + "attempted to create a branch that already exists."
+        msg += "Received an empty SymbolicNameFillingGuide and\n"
+        msg += "attempted to create a branch that already exists."
         raise self.SVNRepositoryMirrorInvalidFillOperationError, msg
 
   def _fill(self, symbol_fill, dest_prefix, dest_key, sources,
@@ -3792,7 +3870,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
 
   def _utf8_path(self, path):
     """Return a copy of PATH encoded in UTF-8."""
-    pieces = string.split(path, '/')
+    pieces = path.split('/')
     # Convert each path component separately (as they may each use
     # different encodings).
     for i in range(len(pieces)):
@@ -3805,7 +3883,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
             "Unable to convert a path '%s' to internal encoding.\n"
             "Consider rerunning with one or more '--encoding' parameters."
             % (path,))
-    return string.join(pieces, '/')
+    return '/'.join(pieces)
 
   def _string_for_prop(self, name, value):
     """Return a property in the form needed for the dumpfile."""
@@ -3946,7 +4024,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
       ignore_contents = '\n'.join(ignore_vals)
       ignore_contents = ('K 10\nsvn:ignore\nV %d\n%s\n' % \
                          (len(ignore_contents), ignore_contents))
-      ignore_contents = ignore_contents + 'PROPS-END\n'
+      ignore_contents += 'PROPS-END\n'
       ignore_len = len(ignore_contents)
 
       # write headers, then props
@@ -3998,7 +4076,7 @@ class DumpfileDelegate(SVNRepositoryMirrorDelegate):
       if buf == '':
         break
       checksum.update(buf)
-      length = length + len(buf)
+      length += len(buf)
       self.dumpfile.write(buf)
 
     pipe.stdout.close()
@@ -4226,13 +4304,15 @@ def pass1():
   def visit_file(baton, dirname, files):
     cd = baton
     for fname in files:
-      if fname[-2:] != ',v':
+      verify_filename_legal(fname)
+      if not fname.endswith(',v'):
         continue
       cd.found_valid_file = 1
       pathname = os.path.join(dirname, fname)
-      if dirname[-6:] == OS_SEP_PLUS_ATTIC:
+      if dirname.endswith(OS_SEP_PLUS_ATTIC):
         # drop the 'Attic' portion from the pathname for the canonical name.
-        cd.set_fname(os.path.join(dirname[:-6], fname), pathname)
+        fdc = FileDataCollector(cd, os.path.join(dirname[:-6], fname),
+                                pathname)
       else:
         # If this file also exists in the attic, it's a fatal error
         attic_path = os.path.join(dirname, 'Attic', fname)
@@ -4241,10 +4321,10 @@ def pass1():
                 % (error_prefix, pathname, attic_path)
           sys.stderr.write(err + '\n')
           cd.fatal_errors.append(err)
-        cd.set_fname(pathname, pathname)
+        fdc = FileDataCollector(cd, pathname, pathname)
       Log().write(LOG_NORMAL, pathname)
       try:
-        cvs2svn_rcsparse.parse(open(pathname, 'rb'), cd)
+        cvs2svn_rcsparse.parse(open(pathname, 'rb'), fdc)
       except (cvs2svn_rcsparse.common.RCSParseError, ValueError,
               RuntimeError):
         err = "%s: '%s' is not a valid ,v file" \
@@ -4344,9 +4424,9 @@ def pass2():
   tags_db = TagsDatabase(DB_OPEN_NEW)
   for tag in symbol_db.tags:
     if tag not in Ctx().forced_branches:
-      tags_db[tag] = None
+      tags_db.add(tag)
   for tag in Ctx().forced_tags:
-    tags_db[tag] = None
+    tags_db.add(tag)
 
   Log().write(LOG_QUIET, "Re-synchronizing CVS revision timestamps...")
 
@@ -4817,7 +4897,8 @@ class AutoPropsPropertySetter(SVNPropertySetter):
     self.patterns = []
     for section in config.sections():
       if self.transform_case(section) == 'auto-props':
-        for (pattern, value) in config.items(section):
+        for pattern in config.options(section):
+          value = config.get(section, pattern)
           if value:
             self._add_pattern(pattern, value)
 
