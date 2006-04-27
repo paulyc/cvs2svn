@@ -21,22 +21,19 @@ VERSION = 'r' + "$LastChangedRevision$"[22:-2]
 
 from __future__ import generators
 
-import cvs2svn_rcsparse
 import os
 import sys
 import sha
 import re
 import time
 import fileinput
-import fnmatch
 import getopt
 import stat
 import md5
 import marshal
 import errno
-import popen2
 import types
-import ConfigParser
+
 try:
   # Try to get access to a bunch of encodings for use with --encoding.
   # See http://cjkpython.i18n.org/ for details.
@@ -44,10 +41,34 @@ try:
 except ImportError:
   pass
 
-# Warnings and errors start with these strings.  They are typically
-# followed by a colon and a space, as in "%s: " ==> "WARNING: ".
-warning_prefix = "WARNING"
-error_prefix = "ERROR"
+import cvs2svn_rcsparse
+
+from cvs2svnlib.boolean import *
+
+from cvs2svnlib.common import \
+        warning_prefix, \
+        error_prefix, \
+        FatalException, \
+        FatalError
+
+from cvs2svnlib.log import Log
+
+from cvs2svnlib.process import \
+        SimplePopen, \
+        run_command, \
+        CommandFailedException, \
+        check_command_runs
+
+from cvs2svnlib.database import \
+        DB_OPEN_READ, \
+        DB_OPEN_NEW, \
+        SDatabase, \
+        Database
+
+from cvs2svnlib import cvs_repository
+
+from cvs2svnlib import property_setters
+
 
 # Make sure this Python is recent enough.
 if sys.hexversion < 0x02020000:
@@ -55,105 +76,6 @@ if sys.hexversion < 0x02020000:
                    "see www.python.org.\n" % error_prefix)
   sys.exit(1)
 
-# Pretend we have true booleans on older python versions:
-try:
-  True
-except:
-  True = 1
-  False = 0
-
-try:
-  bool
-except:
-  def bool(x):
-    return not not x
-
-
-# Opening pipes was a mess before Python 2.4, because some methods did
-# not exist on some platforms, and some behaved differenly on other.
-# Python 2.4 solved this by adding the subprocess module, but since we
-# cannot require such a new version, we cannot use it directly, but
-# must implement a simplified Popen using the best means neccessary.
-#
-# The SimplePopen class only has the following members and methods, all
-# behaving as documented in the subprocess.Popen class:
-#     - stdin
-#     - stdout
-#     - stderr
-#     - wait
-try:
-  # First try subprocess.Popen...
-  import subprocess
-  class SimplePopen:
-    def __init__(self, cmd, capture_stderr):
-      if capture_stderr:
-        stderr = subprocess.PIPE
-      else:
-        stderr = None
-      self._popen = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE, stderr=stderr)
-      self.stdin = self._popen.stdin
-      self.stdout = self._popen.stdout
-      if capture_stderr:
-        self.stderr = self._popen.stderr
-      self.wait = self._popen.wait
-except ImportError:
-  if hasattr(popen2, 'Popen3'):
-    # ...then try popen2.Popen3...
-    class SimplePopen:
-      def __init__(self, cmd, capture_stderr):
-        self._popen3 = popen2.Popen3(cmd, capture_stderr)
-        self.stdin = self._popen3.tochild
-        self.stdout = self._popen3.fromchild
-        if capture_stderr:
-          self.stderr = self._popen3.childerr
-        self.wait = self._popen3.wait
-  else:
-    # ...and if all fails, use popen2.popen3...
-    class SimplePopen:
-      def __init__(self, cmd, capture_stderr):
-        if type(cmd) != types.StringType:
-          cmd = argv_to_command_string(cmd)
-        self.stdout, self.stdin, self.stderr = popen2.popen3(cmd, mode='b')
-      def wait(self):
-        return self.stdout.close() or self.stdin.close() or \
-               self.stderr.close()
-
-# DBM module selection
-
-# 1. If we have bsddb3, it is probably newer than bsddb.  Fake bsddb = bsddb3,
-#    so that the dbhash module used by anydbm will use bsddb3.
-try:
-  import bsddb3
-  sys.modules['bsddb'] = sys.modules['bsddb3']
-except ImportError:
-  pass
-
-# 2. These DBM modules are not good for cvs2svn.
-import anydbm
-if (anydbm._defaultmod.__name__ == 'dumbdbm'
-    or anydbm._defaultmod.__name__ == 'dbm'):
-  sys.stderr.write(
-    error_prefix
-    + ': your installation of Python does not contain a suitable\n'
-    + 'DBM module -- cvs2svn cannot continue.\n'
-    + 'See http://python.org/doc/current/lib/module-anydbm.html to solve.\n')
-  sys.exit(1)
-
-# 3. If we are using the old bsddb185 module, then try prefer gdbm instead.
-#    Unfortunately, gdbm appears not to be trouble free, either.
-if hasattr(anydbm._defaultmod, 'bsddb') \
-    and not hasattr(anydbm._defaultmod.bsddb, '__version__'):
-  try:
-    gdbm = __import__('gdbm')
-  except ImportError:
-    sys.stderr.write(warning_prefix +
-        ': The version of the bsddb module found '
-        'on your computer has been reported to malfunction on some datasets, '
-        'causing KeyError exceptions. You may wish to upgrade your Python to '
-        'version 2.3 or later.\n')
-  else:
-    anydbm._defaultmod = gdbm
 
 trunk_rev = re.compile('^[0-9]+\\.[0-9]+$')
 cvs_branch_tag = re.compile('^((?:[0-9]+\\.[0-9]+\\.)+)0\\.([0-9]+)$')
@@ -340,25 +262,6 @@ OPENING = 'O'
 CLOSING = 'C'
 
 
-class FatalException(Exception):
-  """Exception thrown on a non-recoverable error.
-
-  If this exception is thrown by main(), it is caught by the global
-  layer of the program, its string representation is printed, and the
-  program is ended with an exit code of 1."""
-
-  pass
-
-
-class FatalError(FatalException):
-  """A FatalException that prepends error_prefix to the message."""
-
-  def __init__(self, msg):
-    """Use (error_prefix + ': ' + MSG + '\n') as the error message."""
-
-    FatalException.__init__(self, '%s: %s\n' % (error_prefix, msg,))
-
-
 def temp(basename):
   """Return a path to BASENAME in Ctx().tmpdir.
   This is a convenience function to save horizontal space in source."""
@@ -412,7 +315,7 @@ def to_utf8(value, mode='replace'):
     try:
       return unicode(value, encoding, mode).encode('utf8')
     except UnicodeError:
-      Log().write(LOG_VERBOSE, "Encoding '%s' failed for string '%s'"
+      Log().write(Log.VERBOSE, "Encoding '%s' failed for string '%s'"
                   % (encoding, value))
   raise UnicodeError
 
@@ -428,173 +331,6 @@ def verify_filename_legal(filename):
     raise FatalError(
         "Character %r in filename %r is not supported by subversion."
         % (m.group(), filename,))
-
-
-def run_command(command):
-  if os.system(command):
-    raise FatalError('Command failed: "%s"' % (command,))
-
-
-class CommandFailedException(Exception):
-  """Exception raised if check_command_runs() fails."""
-
-  pass
-
-
-def check_command_runs(cmd, cmdname):
-  """Check whether the command CMD can be executed without errors.
-
-  CMD is a list or string, as accepted by SimplePopen.  CMDNAME is the
-  name of the command as it should be included in exception error
-  messages.
-
-  This function checks three things: (1) the command can be run
-  without throwing an OSError; (2) it exits with status=0; (3) it
-  doesn't output anything to stderr.  If any of these conditions is
-  not met, raise a CommandFailedException describing the problem."""
-
-  try:
-    pipe = SimplePopen(cmd, True)
-  except OSError, e:
-    raise CommandFailedException('error executing %s: %s' % (cmdname, e,))
-  pipe.stdin.close()
-  pipe.stdout.read()
-  errmsg = pipe.stderr.read()
-  status = pipe.wait()
-  if status or errmsg:
-    msg = 'error executing %s: status %s' % (cmdname, status,)
-    if errmsg:
-      msg += ', error output:\n%s' % (errmsg,)
-    raise CommandFailedException(msg)
-
-
-class CVSRepository:
-  """A CVS repository from which data can be extracted."""
-
-  def __init__(self, cvs_repos_path):
-    """CVS_REPOS_PATH is the top of the CVS repository (at least as
-    far as this run is concerned)."""
-
-    if not os.path.isdir(cvs_repos_path):
-      raise FatalError("The specified CVS repository path '%s' is not an "
-                       "existing directory." % cvs_repos_path)
-
-    self.cvs_repos_path = os.path.normpath(cvs_repos_path)
-    self.cvs_prefix_re = re.compile(
-        r'^' + re.escape(self.cvs_repos_path)
-        + r'(' + re.escape(os.sep) + r'|$)')
-
-  def get_cvs_path(self, fname):
-    """Return the path to FNAME relative to cvs_repos_path, with ',v' removed.
-
-    FNAME is a filesystem name that has to be within
-    self.cvs_repos_path.  Return the filename relative to
-    self.cvs_repos_path, with ',v' striped off if present, and with
-    os.sep converted to '/'."""
-
-    (tail, n) = self.cvs_prefix_re.subn('', fname, 1)
-    if n != 1:
-      raise FatalError(
-          "get_cvs_path: '%s' is not a sub-path of '%s'"
-          % (fname, self.cvs_repos_path,))
-    if tail.endswith(',v'):
-      tail = tail[:-2]
-    return tail.replace(os.sep, '/')
-
-  def get_co_pipe(self, c_rev, suppress_keyword_substitution=False):
-    """Return a command string, and a pipe from which the file
-    contents of C_REV can be read.  C_REV is a CVSRevision.  If
-    SUPPRESS_KEYWORD_SUBSTITUTION is True, then suppress the
-    substitution of RCS/CVS keywords in the output.  Standard output
-    of the pipe returns the text of that CVS Revision.
-
-    The command string that is returned is provided for use in error
-    messages; it is not escaped in such a way that it could
-    necessarily be executed."""
-
-    raise NotImplementedError
-
-
-class CVSRepositoryViaRCS(CVSRepository):
-  """A CVSRepository accessed via RCS."""
-
-  def __init__(self, cvs_repos_path):
-    CVSRepository.__init__(self, cvs_repos_path)
-    try:
-      check_command_runs([ 'co', '-V' ], 'co')
-    except CommandFailedException, e:
-      raise FatalError('%s\n'
-                       'Please check that co is installed and in your PATH\n'
-                       '(it is a part of the RCS software).' % (e,))
-
-  def get_co_pipe(self, c_rev, suppress_keyword_substitution=False):
-    pipe_cmd = [ 'co', '-q', '-x,v', '-p' + c_rev.rev ]
-    if suppress_keyword_substitution:
-      pipe_cmd.append('-kk')
-    pipe_cmd.append(c_rev.rcs_path())
-    pipe = SimplePopen(pipe_cmd, True)
-    pipe.stdin.close()
-    return ' '.join(pipe_cmd), pipe
-
-
-class CVSRepositoryViaCVS(CVSRepository):
-  """A CVSRepository accessed via CVS."""
-
-  def __init__(self, cvs_repos_path):
-    CVSRepository.__init__(self, cvs_repos_path)
-    # Ascend above the specified root if necessary, to find the
-    # cvs_repository_root (a directory containing a CVSROOT directory)
-    # and the cvs_module (the path of the conversion root within the
-    # cvs repository) NB: cvs_module must be seperated by '/' *not* by
-    # os.sep .
-    def is_cvs_repository_root(path):
-      return os.path.isdir(os.path.join(path, 'CVSROOT'))
-
-    self.cvs_repository_root = os.path.abspath(self.cvs_repos_path)
-    self.cvs_module = ""
-    while not is_cvs_repository_root(self.cvs_repository_root):
-      # Step up one directory:
-      prev_cvs_repository_root = self.cvs_repository_root
-      self.cvs_repository_root, module_component = \
-          os.path.split(self.cvs_repository_root)
-      if self.cvs_repository_root == prev_cvs_repository_root:
-        # Hit the root (of the drive, on Windows) without finding a
-        # CVSROOT dir.
-        raise FatalError(
-            "the path '%s' is not a CVS repository, nor a path "
-            "within a CVS repository.  A CVS repository contains "
-            "a CVSROOT directory within its root directory."
-            % (self.cvs_repos_path,))
-
-      self.cvs_module = module_component + "/" + self.cvs_module
-
-    os.environ['CVSROOT'] = self.cvs_repository_root
-
-    def cvs_ok(global_arguments):
-      check_command_runs(
-          [ 'cvs' ] + global_arguments + [ '--version' ], 'cvs')
-
-    self.global_arguments = [ "-q", "-R" ]
-    try:
-      cvs_ok(self.global_arguments)
-    except CommandFailedException, e:
-      self.global_arguments = [ "-q" ]
-      try:
-        cvs_ok(self.global_arguments)
-      except CommandFailedException, e:
-        raise FatalError(
-            '%s\n'
-            'Please check that cvs is installed and in your PATH.' % (e,))
-
-  def get_co_pipe(self, c_rev, suppress_keyword_substitution=False):
-    pipe_cmd = [ 'cvs' ] + self.global_arguments + \
-               [ 'co', '-r' + c_rev.rev, '-p' ]
-    if suppress_keyword_substitution:
-      pipe_cmd.append('-kk')
-    pipe_cmd.append(self.cvs_module + c_rev.cvs_path)
-    pipe = SimplePopen(pipe_cmd, True)
-    pipe.stdin.close()
-    return ' '.join(pipe_cmd), pipe
 
 
 def generate_ignores(c_rev):
@@ -644,56 +380,6 @@ class KeyGenerator:
 
     return key
 
-
-# ============================================================================
-# This code is copied with a few modifications from:
-#   subversion/subversion/bindings/swig/python/svn/core.py
-
-if sys.platform == "win32":
-  _escape_shell_arg_re = re.compile(r'(\\+)(\"|$)')
-
-  def escape_shell_arg(arg):
-    # The (very strange) parsing rules used by the C runtime library are
-    # described at:
-    # http://msdn.microsoft.com/library/en-us/vclang/html/_pluslang_Parsing_C.2b2b_.Command.2d.Line_Arguments.asp
-
-    # double up slashes, but only if they are followed by a quote character
-    arg = re.sub(_escape_shell_arg_re, r'\1\1\2', arg)
-
-    # surround by quotes and escape quotes inside
-    arg = '"' + arg.replace('"', '"^""') + '"'
-    return arg
-
-
-  def argv_to_command_string(argv):
-    """Flatten a list of command line arguments into a command string.
-
-    The resulting command string is expected to be passed to the system
-    shell which os functions like popen() and system() invoke internally.
-    """
-
-    # According cmd's usage notes (cmd /?), it parses the command line by
-    # "seeing if the first character is a quote character and if so, stripping
-    # the leading character and removing the last quote character."
-    # So to prevent the argument string from being changed we add an extra set
-    # of quotes around it here.
-    return '"' + ' '.join(map(escape_shell_arg, argv)) + '"'
-
-else:
-  def escape_shell_arg(arg):
-    return "'" + arg.replace("'", "'\\''") + "'"
-
-  def argv_to_command_string(argv):
-    """Flatten a list of command line arguments into a command string.
-
-    The resulting command string is expected to be passed to the system
-    shell which os functions like popen() and system() invoke internally.
-    """
-
-    return ' '.join(map(escape_shell_arg, argv))
-
-
-# ============================================================================
 
 def format_date(date):
   """Return an svn-compatible date string for DATE (seconds since epoch).
@@ -760,48 +446,6 @@ class LF_EOL_Filter:
         return buf
 
 
-# These constants represent the log levels that this script supports
-LOG_WARN = -1
-LOG_QUIET = 0
-LOG_NORMAL = 1
-LOG_VERBOSE = 2
-
-class Log:
-  """A Simple logging facility.  Each line will be timestamped is
-  self.use_timestamps is TRUE.  This class is a Borg, see
-  http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/66531."""
-
-  __shared_state = {}
-
-  def __init__(self):
-    self.__dict__ = self.__shared_state
-    if self.__dict__:
-      return
-    self.log_level = LOG_NORMAL
-    # Set this to true if you want to see timestamps on each line output.
-    self.use_timestamps = None
-    self.logger = sys.stdout
-
-  def _timestamp(self):
-    """Output a detailed timestamp at the beginning of each line output."""
-
-    self.logger.write(time.strftime('[%Y-%m-%d %I:%m:%S %Z] - '))
-
-  def write(self, log_level, *args):
-    """This is the public method to use for writing to a file.  Only
-    messages whose LOG_LEVEL is <= self.log_level will be printed.  If
-    there are multiple ARGS, they will be separated by a space."""
-
-    if log_level > self.log_level:
-      return
-    if self.use_timestamps:
-      self._timestamp()
-    self.logger.write(' '.join(map(str,args)) + "\n")
-    # Ensure that log output doesn't get out-of-order with respect to
-    # stderr output.
-    self.logger.flush()
-
-
 class Cleanup:
   """This singleton class manages any files created by cvs2svn.  When
   you first create a file, call Cleanup.register, passing the
@@ -840,108 +484,10 @@ class Cleanup:
     if not self._log.has_key(which_pass):
       return
     for file in self._log[which_pass]:
-      Log().write(LOG_VERBOSE, "Deleting", file)
+      Log().write(Log.VERBOSE, "Deleting", file)
       if self._callbacks.has_key(file):
         self._callbacks[file]()
       os.unlink(file)
-
-
-# Always use these constants for opening databases.
-DB_OPEN_READ = 'r'
-DB_OPEN_NEW = 'n'
-
-
-class AbstractDatabase:
-  """An abstract base class for anydbm-based databases."""
-
-  def __init__(self, filename, mode):
-    """A convenience function for opening an anydbm database."""
-
-    # pybsddb3 has a bug which prevents it from working with
-    # Berkeley DB 4.2 if you open the db with 'n' ("new").  This
-    # causes the DB_TRUNCATE flag to be passed, which is disallowed
-    # for databases protected by lock and transaction support
-    # (bsddb databases use locking from bsddb version 4.2.4 onwards).
-    #
-    # Therefore, manually perform the removal (we can do this, because
-    # we know that for bsddb - but *not* anydbm in general - the database
-    # consists of one file with the name we specify, rather than several
-    # based on that name).
-    if mode == 'n' and anydbm._defaultmod.__name__ == 'dbhash':
-      if os.path.isfile(filename):
-        os.unlink(filename)
-      mode = 'c'
-
-    self.db = anydbm.open(filename, mode)
-
-    # Import implementations for many mapping interface methods.  Note
-    # that we specifically do not do this for any method which handles
-    # *values*, because our derived classes define __getitem__ and
-    # __setitem__ to override the storage of values, and grabbing
-    # methods directly from the dbm object would bypass this.
-    for meth_name in ('__delitem__', 'keys',
-        '__iter__', 'has_key', '__contains__', 'iterkeys', 'clear'):
-      meth_ref = getattr(self.db, meth_name, None)
-      if meth_ref:
-        setattr(self, meth_name, meth_ref)
-
-  def __delitem__(self, key):
-    # gdbm defines a __delitem__ method, but it cannot be assigned.  So
-    # this method provides a fallback definition via explicit delegation:
-    del self.db[key]
-
-  def __iter__(self):
-    for key in self.keys():
-      yield key
-
-  def has_key(self, key):
-    try:
-      self.db[key]
-      return True
-    except KeyError:
-      return False
-
-  def __contains__(self, key):
-    return self.has_key(key)
-
-  def iterkeys(self):
-    return self.__iter__()
-
-  def clear(self):
-    for key in self.keys():
-      del self[key]
-
-  def items(self):
-    return [(key, self[key],) for key in self.keys()]
-
-  def values(self):
-    return [self[key] for key in self.keys()]
-
-  def get(self, key, default=None):
-    try:
-      return self[key]
-    except KeyError:
-      return default
-
-
-class SDatabase(AbstractDatabase):
-  """A database that can only store strings."""
-
-  def __getitem__(self, key):
-    return self.db[key]
-
-  def __setitem__(self, key, value):
-    self.db[key] = value
-
-
-class Database(AbstractDatabase):
-  """A database that uses the marshal module to store built-in types."""
-
-  def __getitem__(self, key):
-    return marshal.loads(self.db[key])
-
-  def __setitem__(self, key, value):
-    self.db[key] = marshal.dumps(value)
 
 
 class StatsKeeper:
@@ -1769,7 +1315,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     for (pattern, replacement) in Ctx().symbol_transforms:
       newname = pattern.sub(replacement, name)
       if newname != name:
-        Log().write(LOG_WARN, "   symbol '%s' transformed to '%s'"
+        Log().write(Log.WARN, "   symbol '%s' transformed to '%s'"
                     % (name, newname))
         name = newname
     if self.defined_symbols.has_key(name):
@@ -1913,10 +1459,10 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
             delta = t_c - 1 - t_p
             msg =  "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
                   % (self.cvs_path, prev, time.ctime(t_p), delta)
-            Log().write(LOG_VERBOSE, msg)
+            Log().write(Log.VERBOSE, msg)
             if (delta > COMMIT_THRESHOLD
                 or delta < (COMMIT_THRESHOLD * -1)):
-              Log().write(LOG_WARN,
+              Log().write(Log.WARN,
                           "%s: Significant timestamp change for '%s' "
                           "(%d seconds)"
                           % (warning_prefix, self.cvs_path, delta))
@@ -2307,7 +1853,7 @@ class PersistenceManager:
           'Write operation attempted on read-only PersistenceManager'
 
     for c_rev in cvs_revs:
-      Log().write(LOG_VERBOSE, " ", c_rev.unique_key())
+      Log().write(Log.VERBOSE, " ", c_rev.unique_key())
 
     self.svn2cvs_db[str(svn_revnum)] = ([x.unique_key() for x in cvs_revs],
                                         motivating_revnum, name, date)
@@ -2608,18 +2154,18 @@ class CVSCommit:
     self.done_symbols = done_symbols
     seconds = self.t_max - self.t_min + 1
 
-    Log().write(LOG_VERBOSE, '-' * 60)
-    Log().write(LOG_VERBOSE, 'CVS Revision grouping:')
+    Log().write(Log.VERBOSE, '-' * 60)
+    Log().write(Log.VERBOSE, 'CVS Revision grouping:')
     if seconds == 1:
-      Log().write(LOG_VERBOSE, '  Start time: %s (duration: 1 second)'
+      Log().write(Log.VERBOSE, '  Start time: %s (duration: 1 second)'
                   % time.ctime(self.t_max))
     else:
-      Log().write(LOG_VERBOSE, '  Start time: %s' % time.ctime(self.t_min))
-      Log().write(LOG_VERBOSE, '  End time:   %s (duration: %d seconds)'
+      Log().write(Log.VERBOSE, '  Start time: %s' % time.ctime(self.t_min))
+      Log().write(Log.VERBOSE, '  End time:   %s (duration: %d seconds)'
                   % (time.ctime(self.t_max), seconds))
 
     if seconds > COMMIT_THRESHOLD + 1:
-      Log().write(LOG_WARN, '%s: grouping spans more than %d seconds'
+      Log().write(Log.WARN, '%s: grouping spans more than %d seconds'
                   % (warning_prefix, COMMIT_THRESHOLD))
 
     if Ctx().trunk_only: # Only do the primary commit if we're trunk-only
@@ -2758,17 +2304,17 @@ class SVNCommit:
                'svn:log'    : utf8_log,
                'svn:date'   : date }
     except UnicodeError:
-      Log().write(LOG_WARN, '%s: problem encoding author or log message:'
+      Log().write(Log.WARN, '%s: problem encoding author or log message:'
                   % warning_prefix)
-      Log().write(LOG_WARN, "  author: '%s'" % self._author)
-      Log().write(LOG_WARN, "  log:    '%s'" % self.get_log_msg().rstrip())
-      Log().write(LOG_WARN, "  date:   '%s'" % date)
-      Log().write(LOG_WARN,
+      Log().write(Log.WARN, "  author: '%s'" % self._author)
+      Log().write(Log.WARN, "  log:    '%s'" % self.get_log_msg().rstrip())
+      Log().write(Log.WARN, "  date:   '%s'" % date)
+      Log().write(Log.WARN,
                   "(subversion rev %s)  Related files:" % self.revnum)
       for c_rev in self.cvs_revs:
-        Log().write(LOG_WARN, " ", c_rev.fname)
+        Log().write(Log.WARN, " ", c_rev.fname)
 
-      Log().write(LOG_WARN, "Consider rerunning with one or more ",
+      Log().write(Log.WARN, "Consider rerunning with one or more ",
                   "'--encoding' parameters.\n")
       # It's better to fall back to the original (unknown encoding) data
       # than to either 1) quit or 2) record nothing at all.
@@ -2780,7 +2326,7 @@ class SVNCommit:
     self.cvs_revs.append(cvs_rev)
 
   def flush(self):
-    Log().write(LOG_NORMAL, "Creating Subversion r%d (%s)"
+    Log().write(Log.NORMAL, "Creating Subversion r%d (%s)"
                 % (self.revnum, self._description))
     Ctx()._persistence_manager.put_svn_commit(self.revnum,
                                               self.cvs_revs,
@@ -3890,17 +3436,17 @@ class SVNRepositoryMirror:
     self._start_commit(svn_commit)
 
     if svn_commit.symbolic_name:
-      Log().write(LOG_VERBOSE, "Filling symbolic name:",
+      Log().write(Log.VERBOSE, "Filling symbolic name:",
                   _clean_symbolic_name(svn_commit.symbolic_name))
       self._fill_symbolic_name(svn_commit)
     elif svn_commit.motivating_revnum:
-      Log().write(LOG_VERBOSE, "Synchronizing default_branch motivated by %d"
+      Log().write(Log.VERBOSE, "Synchronizing default_branch motivated by %d"
                   % svn_commit.motivating_revnum)
       self._synchronize_default_branch(svn_commit)
     else: # This actually commits CVSRevisions
       if len(svn_commit.cvs_revs) > 1: plural = "s"
       else: plural = ""
-      Log().write(LOG_VERBOSE, "Committing %d CVSRevision%s"
+      Log().write(Log.VERBOSE, "Committing %d CVSRevision%s"
                   % (len(svn_commit.cvs_revs), plural))
       for cvs_rev in svn_commit.cvs_revs:
         # See comment in CVSCommit._commit() for what this is all
@@ -4373,7 +3919,7 @@ class RepositoryDelegate(DumpfileDelegate):
     self.svnadmin = Ctx().svnadmin
     self.target = Ctx().target
     if not Ctx().existing_svnrepos:
-      Log().write(LOG_NORMAL,"Creating new repository '%s'" % (self.target))
+      Log().write(Log.NORMAL,"Creating new repository '%s'" % (self.target))
       if not Ctx().fs_type:
         # User didn't say what kind repository (bdb, fsfs, etc).
         # We still pass --bdb-txn-nosync.  It's a no-op if the default
@@ -4495,47 +4041,47 @@ class StdoutDelegate(SVNRepositoryMirrorDelegate):
     """Prints out the Subversion revision number of the commit that is
     being started."""
 
-    Log().write(LOG_VERBOSE, "=" * 60)
-    Log().write(LOG_NORMAL, "Starting Subversion r%d / %d" %
+    Log().write(Log.VERBOSE, "=" * 60)
+    Log().write(Log.NORMAL, "Starting Subversion r%d / %d" %
                 (svn_commit.revnum, self.total_revs))
 
   def mkdir(self, path):
     """Print a line stating that we are creating directory PATH."""
 
-    Log().write(LOG_VERBOSE, "  New Directory", path)
+    Log().write(Log.VERBOSE, "  New Directory", path)
 
   def add_path(self, s_item):
     """Print a line stating that we are 'adding' s_item.c_rev.svn_path."""
 
-    Log().write(LOG_VERBOSE, "  Adding", s_item.c_rev.svn_path)
+    Log().write(Log.VERBOSE, "  Adding", s_item.c_rev.svn_path)
 
   def change_path(self, s_item):
     """Print a line stating that we are 'changing' s_item.c_rev.svn_path."""
 
-    Log().write(LOG_VERBOSE, "  Changing", s_item.c_rev.svn_path)
+    Log().write(Log.VERBOSE, "  Changing", s_item.c_rev.svn_path)
 
   def delete_path(self, path):
     """Print a line stating that we are 'deleting' PATH."""
 
-    Log().write(LOG_VERBOSE, "  Deleting", path)
+    Log().write(Log.VERBOSE, "  Deleting", path)
 
   def copy_path(self, src_path, dest_path, src_revnum):
     """Print a line stating that we are 'copying' revision SRC_REVNUM
     of SRC_PATH to DEST_PATH."""
 
-    Log().write(LOG_VERBOSE, "  Copying revision", src_revnum, "of", src_path)
-    Log().write(LOG_VERBOSE, "                to", dest_path)
+    Log().write(Log.VERBOSE, "  Copying revision", src_revnum, "of", src_path)
+    Log().write(Log.VERBOSE, "                to", dest_path)
 
   def finish(self):
     """State that we are done creating our repository."""
 
-    Log().write(LOG_VERBOSE, "Finished creating Subversion repository.")
-    Log().write(LOG_QUIET, "Done.")
+    Log().write(Log.VERBOSE, "Finished creating Subversion repository.")
+    Log().write(Log.QUIET, "Done.")
 
 
 def pass1():
   OS_SEP_PLUS_ATTIC = os.sep + 'Attic'
-  Log().write(LOG_QUIET, "Examining all CVS ',v' files...")
+  Log().write(Log.QUIET, "Examining all CVS ',v' files...")
   cd = CollectData()
 
   def visit_file(baton, dirname, files):
@@ -4559,7 +4105,7 @@ def pass1():
           sys.stderr.write(err + '\n')
           cd.fatal_errors.append(err)
         fdc = FileDataCollector(cd, pathname, pathname)
-      Log().write(LOG_NORMAL, pathname)
+      Log().write(Log.NORMAL, pathname)
       try:
         cvs2svn_rcsparse.parse(open(pathname, 'rb'), fdc)
       except (cvs2svn_rcsparse.common.RCSParseError, ValueError,
@@ -4569,12 +4115,12 @@ def pass1():
         sys.stderr.write(err + '\n')
         cd.fatal_errors.append(err)
       except:
-        Log().write(LOG_WARN,
+        Log().write(Log.WARN,
                     "Exception occurred while parsing %s" % pathname)
         raise
 
   os.path.walk(Ctx().project.project_cvs_repos_path, visit_file, cd)
-  Log().write(LOG_VERBOSE, 'Processed', cd.num_files, 'files')
+  Log().write(Log.VERBOSE, 'Processed', cd.num_files, 'files')
 
   cd.write_symbol_db()
 
@@ -4596,7 +4142,7 @@ def pass1():
 
   StatsKeeper().reset_c_rev_info()
   StatsKeeper().archive()
-  Log().write(LOG_QUIET, "Done")
+  Log().write(Log.QUIET, "Done")
 
 
 def pass2():
@@ -4610,7 +4156,7 @@ def pass2():
 
   error_detected = 0
 
-  Log().write(LOG_QUIET, "Checking for blocked exclusions...")
+  Log().write(Log.QUIET, "Checking for blocked exclusions...")
   blocked_excludes = symbol_db.find_blocked_excludes(excludes)
   if blocked_excludes:
     for branch, blockers in blocked_excludes.items():
@@ -4622,7 +4168,7 @@ def pass2():
     sys.stderr.write("\n")
     error_detected = 1
 
-  Log().write(LOG_QUIET, "Checking for forced tags with commits...")
+  Log().write(Log.QUIET, "Checking for forced tags with commits...")
   invalid_forced_tags = [ ]
   for forced_tag in Ctx().forced_tags:
     if excludes.has_key(forced_tag):
@@ -4637,7 +4183,7 @@ def pass2():
     sys.stderr.write("\n")
     error_detected = 1
 
-  Log().write(LOG_QUIET, "Checking for tag/branch mismatches...")
+  Log().write(Log.QUIET, "Checking for tag/branch mismatches...")
   mismatches = symbol_db.find_mismatches(excludes)
   def is_not_forced(mismatch):
     name = mismatch[0]
@@ -4666,7 +4212,7 @@ def pass2():
   for tag in Ctx().forced_tags:
     tags_db.add(tag)
 
-  Log().write(LOG_QUIET, "Re-synchronizing CVS revision timestamps...")
+  Log().write(Log.QUIET, "Re-synchronizing CVS revision timestamps...")
 
   # We may have recorded some changes in revisions' timestamp.  We need to
   # scan for any other files which may have had the same log message and
@@ -4778,7 +4324,7 @@ def pass2():
           desc = ("%s: Attempt to set timestamp of revision %s on file %s"
                   + " to time %s, which is before previous the time of"
                   + " revision %s (%s):")
-          Log().write(LOG_WARN, desc % (warning_prefix, c_rev.rev,
+          Log().write(Log.WARN, desc % (warning_prefix, c_rev.rev,
                                         c_rev.cvs_path, new_timestamp,
                                         c_rev.prev_rev.rev,
                                         c_rev.prev_timestamp))
@@ -4788,10 +4334,10 @@ def pass2():
           # + 1...
           if ((c_rev.prev_timestamp + 1) - new_timestamp) < COMMIT_THRESHOLD:
             new_timestamp = c_rev.prev_timestamp + 1
-            Log().write(LOG_WARN, "%s: Time set to %s" % (warning_prefix,
+            Log().write(Log.WARN, "%s: Time set to %s" % (warning_prefix,
                                                           new_timestamp))
           else:
-            Log().write(LOG_WARN, "%s: Timestamp left untouched" %
+            Log().write(Log.WARN, "%s: Timestamp left untouched" %
                         warning_prefix)
             continue
 
@@ -4800,7 +4346,7 @@ def pass2():
           desc = ("%s: Attempt to set timestamp of revision %s on file %s"
                   + " to time %s, which is after time of next"
                   + " revision %s (%s):")
-          Log().write(LOG_WARN, desc % (warning_prefix, c_rev.rev,
+          Log().write(Log.WARN, desc % (warning_prefix, c_rev.rev,
                                         c_rev.cvs_path, new_timestamp,
                                         c_rev.next_rev.rev,
                                         c_rev.next_timestamp))
@@ -4810,10 +4356,10 @@ def pass2():
           # - 1...
           if (new_timestamp - (c_rev.next_timestamp - 1)) < COMMIT_THRESHOLD:
             new_timestamp = c_rev.next_timestamp - 1
-            Log().write(LOG_WARN, "%s: Time set to %s" % (warning_prefix,
+            Log().write(Log.WARN, "%s: Time set to %s" % (warning_prefix,
                                                           new_timestamp))
           else:
-            Log().write(LOG_WARN, "%s: Timestamp left untouched" %
+            Log().write(Log.WARN, "%s: Timestamp left untouched" %
                         warning_prefix)
             continue
 
@@ -4831,7 +4377,7 @@ def pass2():
         msg = "PASS2 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
               % (c_rev.cvs_path, c_rev.rev, time.ctime(c_rev.timestamp),
                  new_timestamp - c_rev.timestamp)
-        Log().write(LOG_VERBOSE, msg)
+        Log().write(Log.VERBOSE, msg)
 
         c_rev.timestamp = new_timestamp
         tweaked_timestamps_db[c_rev.unique_key()] = new_timestamp
@@ -4840,15 +4386,15 @@ def pass2():
         break
 
     output.write(str(c_rev) + "\n")
-  Log().write(LOG_QUIET, "Done")
+  Log().write(Log.QUIET, "Done")
 
 
 def pass3():
-  Log().write(LOG_QUIET, "Sorting CVS revisions...")
+  Log().write(Log.QUIET, "Sorting CVS revisions...")
   sort_file(temp(DATAFILE + CLEAN_REVS_SUFFIX),
             temp(DATAFILE + SORTED_REVS_SUFFIX))
   Cleanup().register(temp(DATAFILE + SORTED_REVS_SUFFIX), pass5)
-  Log().write(LOG_QUIET, "Done")
+  Log().write(Log.QUIET, "Done")
 
 
 def pass4():
@@ -4857,11 +4403,11 @@ def pass4():
   LastSymbolicNameDatabase, which contains the last CVSRevision
   that is a source for each tag or branch."""
 
-  Log().write(LOG_QUIET,
+  Log().write(Log.QUIET,
       "Copying CVS revision data from flat file to database...")
   cvs_revs_db = CVSRevisionDatabase(DB_OPEN_NEW)
   if not Ctx().trunk_only:
-    Log().write(LOG_QUIET,
+    Log().write(Log.QUIET,
         "Finding last CVS revisions for all symbolic names...")
     last_sym_name_db = LastSymbolicNameDatabase()
   else:
@@ -4880,7 +4426,7 @@ def pass4():
 
   last_sym_name_db.create_database()
   StatsKeeper().archive()
-  Log().write(LOG_QUIET, "Done")
+  Log().write(Log.QUIET, "Done")
 
 
 def pass5():
@@ -4889,7 +4435,7 @@ def pass5():
   CVSRevisions that represent an opening or closing for a path on a
   branch or tag.  See SymbolingsLogger for more details."""
 
-  Log().write(LOG_QUIET, "Mapping CVS revisions to Subversion commits...")
+  Log().write(Log.QUIET, "Mapping CVS revisions to Subversion commits...")
 
   aggregator = CVSRevisionAggregator()
   for line in fileinput.FileInput(temp(DATAFILE + SORTED_REVS_SUFFIX)):
@@ -4900,21 +4446,21 @@ def pass5():
 
   StatsKeeper().set_svn_rev_count(SVNCommit.revnum - 1)
   StatsKeeper().archive()
-  Log().write(LOG_QUIET, "Done")
+  Log().write(Log.QUIET, "Done")
 
 
 def pass6():
-  Log().write(LOG_QUIET, "Sorting symbolic name source revisions...")
+  Log().write(Log.QUIET, "Sorting symbolic name source revisions...")
 
   if not Ctx().trunk_only:
     sort_file(temp(SYMBOL_OPENINGS_CLOSINGS),
               temp(SYMBOL_OPENINGS_CLOSINGS_SORTED))
     Cleanup().register(temp(SYMBOL_OPENINGS_CLOSINGS_SORTED), pass8)
-  Log().write(LOG_QUIET, "Done")
+  Log().write(Log.QUIET, "Done")
 
 
 def pass7():
-  Log().write(LOG_QUIET, "Determining offsets for all symbolic names...")
+  Log().write(Log.QUIET, "Determining offsets for all symbolic names...")
 
   def generate_offsets_for_symbolings():
     """This function iterates through all the lines in
@@ -4939,13 +4485,13 @@ def pass7():
         break
       sym, svn_revnum, cvs_rev_key = line.split(" ", 2)
       if sym != old_sym:
-        Log().write(LOG_VERBOSE, " ", sym)
+        Log().write(Log.VERBOSE, " ", sym)
         old_sym = sym
         offsets_db[sym] = fpos
 
   if not Ctx().trunk_only:
     generate_offsets_for_symbolings()
-  Log().write(LOG_QUIET, "Done.")
+  Log().write(Log.QUIET, "Done.")
 
 
 def pass8():
@@ -4956,11 +4502,11 @@ def pass8():
   if Ctx().target:
     if not Ctx().dry_run:
       repos.add_delegate(RepositoryDelegate())
-    Log().write(LOG_QUIET, "Starting Subversion Repository.")
+    Log().write(Log.QUIET, "Starting Subversion Repository.")
   else:
     if not Ctx().dry_run:
       repos.add_delegate(DumpfileDelegate())
-    Log().write(LOG_QUIET, "Starting Subversion Dumpfile.")
+    Log().write(Log.QUIET, "Starting Subversion Dumpfile.")
 
   repos.add_delegate(StdoutDelegate(StatsKeeper().svn_rev_count()))
 
@@ -5031,230 +4577,6 @@ class Ctx:
     self.svn_property_setters = []
 
 
-class SVNPropertySetter:
-  """Abstract class for objects that can set properties on a SVNCommitItem."""
-
-  def set_properties(self, s_item):
-    """Set any properties that can be determined for S_ITEM."""
-
-    raise NotImplementedError
-
-
-class CVSRevisionNumberSetter(SVNPropertySetter):
-  """Set the cvs2svn:cvs-rev property to the CVS revision number."""
-
-  def set_properties(self, s_item):
-    s_item.svn_props['cvs2svn:cvs-rev'] = s_item.c_rev.rev
-    s_item.svn_props_changed = True
-
-
-class ExecutablePropertySetter(SVNPropertySetter):
-  """Set the svn:executable property based on c_rev.file_executable."""
-
-  def set_properties(self, s_item):
-    if s_item.c_rev.file_executable:
-      s_item.svn_props['svn:executable'] = '*'
-
-
-class BinaryFileEOLStyleSetter(SVNPropertySetter):
-  """Set the eol-style for binary files to None."""
-
-  def set_properties(self, s_item):
-    if s_item.c_rev.mode == 'b':
-      s_item.svn_props['svn:eol-style'] = None
-
-
-class MimeMapper(SVNPropertySetter):
-  """A class that provides mappings from file names to MIME types."""
-
-  def __init__(self, mime_types_file):
-    self.mappings = { }
-
-    for line in fileinput.input(mime_types_file):
-      if line.startswith("#"):
-        continue
-
-      # format of a line is something like
-      # text/plain c h cpp
-      extensions = line.split()
-      if len(extensions) < 2:
-        continue
-      type = extensions.pop(0)
-      for ext in extensions:
-        if self.mappings.has_key(ext) and self.mappings[ext] != type:
-          sys.stderr.write("%s: ambiguous MIME mapping for *.%s (%s or %s)\n"
-                           % (warning_prefix, ext, self.mappings[ext], type))
-        self.mappings[ext] = type
-
-  def set_properties(self, s_item):
-    basename, extension = os.path.splitext(
-        os.path.basename(s_item.c_rev.cvs_path)
-        )
-
-    # Extension includes the dot, so strip it (will leave extension
-    # empty if filename ends with a dot, which is ok):
-    extension = extension[1:]
-
-    # If there is no extension (or the file ends with a period), use
-    # the base name for mapping.  This allows us to set mappings for
-    # files such as README or Makefile:
-    if not extension:
-      extension = basename
-
-    mime_type = self.mappings.get(extension, None)
-    if mime_type is not None:
-      s_item.svn_props['svn:mime-type'] = mime_type
-
-
-class AutoPropsPropertySetter(SVNPropertySetter):
-  """Set arbitrary svn properties based on an auto-props configuration.
-
-  This class supports case-sensitive or case-insensitive pattern
-  matching.  The 'correct' behavior is not quite clear, because
-  subversion itself does an inconsistent job of handling case in
-  auto-props patterns; see
-  http://subversion.tigris.org/issues/show_bug.cgi?id=2036.
-
-  If a property specified in auto-props has already been set to a
-  different value, print a warning and leave the old property value
-  unchanged."""
-
-  class Pattern:
-    """Describes the properties to be set for files matching a pattern."""
-
-    def __init__(self, pattern, propdict):
-      # A glob-like pattern:
-      self.pattern = pattern
-      # A dictionary of properties that should be set:
-      self.propdict = propdict
-
-    def match(self, basename):
-      """Does the file with the specified basename match pattern?"""
-
-      return fnmatch.fnmatch(basename, self.pattern)
-
-  def __init__(self, configfilename, ignore_case):
-    config = ConfigParser.ConfigParser()
-    if ignore_case:
-      self.transform_case = self.squash_case
-    else:
-      config.optionxform = self.preserve_case
-      self.transform_case = self.preserve_case
-
-    config.readfp(file(configfilename))
-    self.patterns = []
-    for section in config.sections():
-      if self.transform_case(section) == 'auto-props':
-        for pattern in config.options(section):
-          value = config.get(section, pattern)
-          if value:
-            self._add_pattern(pattern, value)
-
-  def squash_case(self, s):
-    return s.lower()
-
-  def preserve_case(self, s):
-    return s
-
-  def _add_pattern(self, pattern, value):
-    props = value.split(';')
-    propdict = {}
-    for prop in props:
-      s = prop.split('=', 1)
-      if len(s) == 1:
-        propdict[s[0]] = None
-      else:
-        propdict[s[0]] = s[1]
-    self.patterns.append(
-        self.Pattern(self.transform_case(pattern), propdict))
-
-  def get_propdict(self, path):
-    basename = self.transform_case(os.path.basename(path))
-    propdict = {}
-    for pattern in self.patterns:
-      if pattern.match(basename):
-        for (key,value) in pattern.propdict.items():
-          if propdict.has_key(key):
-            if propdict[key] != value:
-              Log().write(
-                  LOG_WARN,
-                  "Contradictory values set for property '%s' for file %s."
-                  % (k, path,))
-          else:
-            propdict[key] = value
-
-    return propdict
-
-  def set_properties(self, s_item):
-    propdict = self.get_propdict(s_item.c_rev.cvs_path)
-    for (k,v) in propdict.items():
-      if s_item.svn_props.has_key(k):
-        if s_item.svn_props[k] != v:
-          Log().write(
-              LOG_WARN,
-              "Property '%s' already set to %r for file %s; "
-              "auto-props value (%r) ignored."
-              % (k, s_item.svn_props[k], s_item.c_rev.cvs_path, v,))
-      else:
-        s_item.svn_props[k] = v
-
-
-class BinaryFileDefaultMimeTypeSetter(SVNPropertySetter):
-  """If the file is binary and its svn:mime-type property is not yet
-  set, set it to 'application/octet-stream'."""
-
-  def set_properties(self, s_item):
-    if not s_item.svn_props.has_key('svn:mime-type') \
-           and s_item.c_rev.mode == 'b':
-      s_item.svn_props['svn:mime-type'] = 'application/octet-stream'
-
-
-class EOLStyleFromMimeTypeSetter(SVNPropertySetter):
-  """Set svn:eol-style based on svn:mime-type.
-
-  If svn:mime-type is known but svn:eol-style is not, then set
-  svn:eol-style based on svn:mime-type as follows: if svn:mime-type
-  starts with 'text/', then set svn:eol-style to native; otherwise,
-  force it to remain unset.  See also issue #39."""
-
-  def set_properties(self, s_item):
-    if not s_item.svn_props.has_key('svn:eol-style') \
-       and s_item.svn_props.get('svn:mime-type', None) is not None:
-      if s_item.svn_props['svn:mime-type'].startswith("text/"):
-        s_item.svn_props['svn:eol-style'] = 'native'
-      else:
-        s_item.svn_props['svn:eol-style'] = None
-
-
-class DefaultEOLStyleSetter(SVNPropertySetter):
-  """Set the eol-style if one has not already been set."""
-
-  def __init__(self, value):
-    """Initialize with the specified default VALUE."""
-
-    self.value = value
-
-  def set_properties(self, s_item):
-    if not s_item.svn_props.has_key('svn:eol-style'):
-      s_item.svn_props['svn:eol-style'] = self.value
-
-
-class KeywordsPropertySetter(SVNPropertySetter):
-  """If the svn:keywords property is not yet set, set it based on the
-  file's mode.  See issue #2."""
-
-  def __init__(self, value):
-    """Use VALUE for the value of the svn:keywords property if it is
-    to be set."""
-
-    self.value = value
-
-  def set_properties(self, s_item):
-    if not s_item.svn_props.has_key('svn:keywords') \
-           and s_item.c_rev.mode in [None, 'kv', 'kvl']:
-      s_item.svn_props['svn:keywords'] = self.value
-
-
 def convert(start_pass, end_pass):
   """Convert a CVS repository to an SVN repository."""
 
@@ -5263,7 +4585,7 @@ def convert(start_pass, end_pass):
   times[start_pass - 1] = time.time()
   StatsKeeper().set_start_time(time.time())
   for i in range(start_pass - 1, end_pass):
-    Log().write(LOG_QUIET, '----- pass %d -----' % (i + 1))
+    Log().write(Log.QUIET, '----- pass %d -----' % (i + 1))
     _passes[i]()
     times[i + 1] = time.time()
     StatsKeeper().log_duration_for_pass(times[i + 1] - times[i], i + 1)
@@ -5277,12 +4599,12 @@ def convert(start_pass, end_pass):
       cleanup.cleanup(_passes[i])
     StatsKeeper().set_end_time(time.time())
 
-  Log().write(LOG_QUIET, StatsKeeper())
+  Log().write(Log.QUIET, StatsKeeper())
   if end_pass < 4:
-    Log().write(LOG_QUIET,
+    Log().write(Log.QUIET,
                 '(These are unaltered CVS repository stats and do not\n'
                 ' reflect tags or branches excluded via --exclude)\n')
-  Log().write(LOG_NORMAL, StatsKeeper().timings())
+  Log().write(Log.NORMAL, StatsKeeper().timings())
 
 
 def normalize_ttb_path(opt, path):
@@ -5429,10 +4751,10 @@ def main():
     elif (opt == '--help') or (opt == '-h'):
       ctx.print_help = 1
     elif opt == '-v':
-      Log().log_level = LOG_VERBOSE
+      Log().log_level = Log.VERBOSE
       ctx.verbose = 1
     elif opt == '-q':
-      Log().log_level = LOG_QUIET
+      Log().log_level = Log.QUIET
       ctx.quiet = 1
     elif opt == '-s':
       ctx.target = value
@@ -5488,7 +4810,8 @@ def main():
     elif opt == '--skip-cleanup':
       ctx.skip_cleanup = 1
     elif opt == '--cvs-revnums':
-      ctx.svn_property_setters.append(CVSRevisionNumberSetter())
+      ctx.svn_property_setters.append(
+          property_setters.CVSRevisionNumberSetter())
     elif opt == '--bdb-txn-nosync':
       ctx.bdb_txn_nosync = 1
     elif opt == '--fs-type':
@@ -5525,9 +4848,9 @@ def main():
   cvsroot = args[0]
 
   if ctx.use_cvs:
-    ctx.cvs_repository = CVSRepositoryViaCVS(cvsroot)
+    ctx.cvs_repository = cvs_repository.CVSRepositoryViaCVS(cvsroot)
   else:
-    ctx.cvs_repository = CVSRepositoryViaRCS(cvsroot)
+    ctx.cvs_repository = cvs_repository.CVSRepositoryViaRCS(cvsroot)
 
   if (not ctx.target) and (not ctx.dump_only) and (not ctx.dry_run):
     raise FatalError("must pass one of '-s' or '--dump-only'.")
@@ -5584,30 +4907,38 @@ def main():
           'svnadmin could not be executed.  Please ensure that it is\n'
           'installed and/or use the --svnadmin option.' % (e,))
 
-  ctx.svn_property_setters.append(ExecutablePropertySetter())
+  ctx.svn_property_setters.append(
+      property_setters.ExecutablePropertySetter())
 
-  ctx.svn_property_setters.append(BinaryFileEOLStyleSetter())
+  ctx.svn_property_setters.append(
+      property_setters.BinaryFileEOLStyleSetter())
 
   if ctx.mime_types_file:
-    ctx.svn_property_setters.append(MimeMapper(ctx.mime_types_file))
+    ctx.svn_property_setters.append(
+        property_setters.MimeMapper(ctx.mime_types_file))
 
   if ctx.auto_props_file:
-    ctx.svn_property_setters.append(AutoPropsPropertySetter(
-        ctx.auto_props_file, ctx.auto_props_ignore_case))
+    ctx.svn_property_setters.append(
+        property_setters.AutoPropsPropertySetter(
+            ctx.auto_props_file, ctx.auto_props_ignore_case))
 
-  ctx.svn_property_setters.append(BinaryFileDefaultMimeTypeSetter())
+  ctx.svn_property_setters.append(
+      property_setters.BinaryFileDefaultMimeTypeSetter())
 
   if ctx.eol_from_mime_type:
-    ctx.svn_property_setters.append(EOLStyleFromMimeTypeSetter())
+    ctx.svn_property_setters.append(
+        property_setters.EOLStyleFromMimeTypeSetter())
 
   if ctx.no_default_eol:
-    ctx.svn_property_setters.append(DefaultEOLStyleSetter(None))
+    ctx.svn_property_setters.append(
+        property_setters.DefaultEOLStyleSetter(None))
   else:
-    ctx.svn_property_setters.append(DefaultEOLStyleSetter('native'))
+    ctx.svn_property_setters.append(
+        property_setters.DefaultEOLStyleSetter('native'))
 
   if not ctx.keywords_off:
     ctx.svn_property_setters.append(
-        KeywordsPropertySetter(SVN_KEYWORDS_VALUE))
+        property_setters.KeywordsPropertySetter(SVN_KEYWORDS_VALUE))
 
   # Make sure the tmp directory exists.  Note that we don't check if
   # it's empty -- we want to be able to use, for example, "." to hold
