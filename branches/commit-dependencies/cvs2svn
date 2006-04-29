@@ -1406,11 +1406,12 @@ class CVSCommit:
     self.author = author
     self.log = log
 
-    # Map { CVSCommit : None } of other CVSCommits we depend upon.  To
-    # avoid duplicates, this is a hash.
+    # Map { CVSCommit : None } of other CVSCommits we depend directly
+    # upon.  To avoid duplicates, this is a hash.
     self.deps = {}
 
-    # When we get commited this becomes False and we stop blocking
+    # This field remains True until this CVSCommit is moved from the
+    # expired queue to the ready queue.  At that point we stop blocking
     # other commits.
     self.pending = True
 
@@ -1636,6 +1637,8 @@ class CVSCommit:
     # above), so if we have no CVSRevisions, we don't flush the
     # svn_commit to disk and roll back our revnum.
     if len(svn_commit.cvs_revs) > 0:
+      # We could have been restamped due to dependencies, and we have
+      # to propagate this timestamp to the svn commit:
       svn_commit.set_date(self.t_max)
       svn_commit.flush()
     else:
@@ -1931,11 +1934,18 @@ class CVSRevisionAggregator:
 
     # Map of CVSRevision digests to arrays of open CVSCommits.
     self.cvs_commits = {}
+
     # Map of CVSRevision unique keys to CVSCommits they are part of.
     self.pending_revs = {}
-    # List of closed commits which might still have uncommitted dependencies.
+
+    # List of closed CVSCommits which might still have uncommitted
+    # dependencies.
     self.expired_queue = []
-    # List of ready commits.
+
+    # List of CVSCommits that are ready to be committed, but
+    # might need to be delayed until a CVSRevision with a later timestamp
+    # is read.  (This can happen if the timestamp of the ready CVSCommit
+    # had to be adjusted to make it later than its dependencies.)
     self.ready_queue = [ ]
 
     # A map { symbol : None } of symbolic names for which the last
@@ -1961,8 +1971,12 @@ class CVSRevisionAggregator:
         Cleanup().temp(config.DEFAULT_BRANCHES_DB), DB_OPEN_READ)
 
   def _get_deps(self, c_rev, deps):
-    """Populate DEPS with a list of all pending commits this C_REV depends on
-    directly or indirectly. Return the commit C_REV depends on directly."""
+    """Add the CVSCommits that this C_REV depends on to DEPS, which is a
+    map { CVSCommit : None }.  The result includes both direct and indirect
+    dependencies, because it is used to determine what CVSCommit we can
+    be added to.  Return the commit C_REV depends on directly, if any;
+    otherwise return None."""
+
     if not c_rev.prev_rev:
       return None
     dep = self.pending_revs.get(c_rev.prev_rev.unique_key(), None)
