@@ -17,6 +17,8 @@
 """Store the context (options, etc) for a cvs2svn run."""
 
 
+import os
+
 from boolean import *
 import config
 
