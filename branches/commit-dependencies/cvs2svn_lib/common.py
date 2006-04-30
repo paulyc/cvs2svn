@@ -17,7 +17,12 @@
 """This module contains common facilities used by cvs2svn."""
 
 
+import time
+
 from boolean import *
+
+
+SVN_INVALID_REVNUM = -1
 
 
 # Things that can happen to a file.
@@ -25,6 +30,11 @@ OP_NOOP   = '-'
 OP_ADD    = 'A'
 OP_DELETE = 'D'
 OP_CHANGE = 'C'
+
+
+# A deltatext either does or doesn't represent some change.
+DELTATEXT_NONEMPTY = 'N'
+DELTATEXT_EMPTY    = 'E'
 
 
 # Warnings and errors start with these strings.  They are typically
@@ -50,5 +60,48 @@ class FatalError(FatalException):
     """Use (error_prefix + ': ' + MSG + '\n') as the error message."""
 
     FatalException.__init__(self, '%s: %s\n' % (error_prefix, msg,))
+
+
+def path_join(*components):
+  """Join two or more pathname COMPONENTS, inserting '/' as needed.
+  Empty component are skipped."""
+
+  return '/'.join(filter(None, components))
+
+
+def path_split(path):
+  """Split the svn pathname PATH into a pair, (HEAD, TAIL).
+
+  This is similar to os.path.split(), but always uses '/' as path
+  separator.  PATH is an svn path, which should not start with a '/'.
+  HEAD is everything before the last slash, and TAIL is everything
+  after.  If PATH ends in a slash, TAIL will be empty.  If there is no
+  slash in PATH, HEAD will be empty.  If PATH is empty, both HEAD and
+  TAIL are empty."""
+
+  pos = path.rfind('/')
+  if pos == -1:
+    return ('', path,)
+  else:
+    return (path[:pos], path[pos+1:],)
+
+
+# Since the unofficial set also includes [/\] we need to translate those
+# into ones that don't conflict with Subversion limitations.
+def clean_symbolic_name(name):
+  """Return symbolic name NAME, translating characters that Subversion
+  does not allow in a pathname."""
+
+  name = name.replace('/','++')
+  name = name.replace('\\','--')
+  return name
+
+
+def format_date(date):
+  """Return an svn-compatible date string for DATE (seconds since epoch).
+
+  A Subversion date looks like '2002-09-29T14:44:59.000000Z'."""
+
+  return time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime(date))
 
 
