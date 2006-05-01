@@ -380,8 +380,6 @@ class CVSCommit:
     # above), so if we have no CVSRevisions, we don't flush the
     # svn_commit to disk and roll back our revnum.
     if len(svn_commit.cvs_revs) > 0:
-      # We could have been restamped due to dependencies, and we have
-      # to propagate this timestamp to the svn commit:
       svn_commit.set_date(self.t_max)
       svn_commit.flush()
     else:
@@ -469,14 +467,15 @@ class CVSRevisionAggregator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CVS_REVS_DB),
           database.DB_OPEN_READ)
 
-    # Map of CVSRevision digests to arrays of open CVSCommits.
+    # Map of CVSRevision digests to arrays of open CVSCommits.  In each such
+    # array, every element has direct or indirect dependencies on all the
+    # preceding elements in the same array.
     self.cvs_commits = {}
 
     # Map of CVSRevision unique keys to CVSCommits they are part of.
     self.pending_revs = {}
 
-    # List of closed CVSCommits which might still have uncommitted
-    # dependencies.
+    # List of closed CVSCommits which might still have pending dependencies.
     self.expired_queue = []
 
     # List of CVSCommits that are ready to be committed, but
@@ -538,8 +537,8 @@ class CVSRevisionAggregator:
         del self.cvs_commits[digest_key]
 
     # Then queue all closed commits with resolved dependencies for commit.
-    # We do this here instead of in commit_ready to avoid building deps
-    # on revisions that will be flushed immediately afterwards.
+    # We do this here instead of in _commit_ready_commits to avoid building
+    # deps on revisions that will be flushed immediately afterwards.
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
@@ -560,7 +559,7 @@ class CVSRevisionAggregator:
         break
 
   def _commit_ready_commits(self, timestamp):
-    # Sort them into time-order, then process 'em.
+    """Sort the commits from self.ready_queue by time, then process them."""
 
     self.ready_queue.sort()
     while self.ready_queue:
