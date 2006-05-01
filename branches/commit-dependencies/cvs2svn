@@ -524,13 +524,16 @@ class CVSRevisionAggregator:
       self._get_deps(r, deps)
     return dep
 
-  def _extract_ready_commits(self, timestamp):
-    """Extract any active commits that expire by TIMESTAMP."""
+  def _extract_ready_commits(self, timestamp=None):
+    """Extract any active commits that expire by TIMESTAMP from
+    self.cvs_commits and append them to self.ready_queue.  If
+    TIMESTAMP is not specified, then extract all commits."""
 
     # First take all expired commits out of the pool of available commits.
     for digest_key, cvs_commits in self.cvs_commits.items():
       for cvs_commit in cvs_commits[:]:
-        if cvs_commit.t_max + config.COMMIT_THRESHOLD < timestamp:
+        if timestamp is None \
+               or cvs_commit.t_max + config.COMMIT_THRESHOLD < timestamp:
           self.expired_queue.append(cvs_commit)
           cvs_commits.remove(cvs_commit)
       if not cvs_commits:
@@ -608,7 +611,7 @@ class CVSRevisionAggregator:
     """Commit anything left in self.cvs_commits.  Then inform the
     SymbolingsLogger that all commits are done."""
 
-    self._extract_ready_commits(1L<<32)
+    self._extract_ready_commits()
     self._commit_ready_commits()
 
     if not Ctx().trunk_only:
