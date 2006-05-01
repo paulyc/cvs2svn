@@ -558,16 +558,15 @@ class CVSRevisionAggregator:
       if not chg:
         break
 
-  def _commit_ready_commits(self, timestamp):
-    """Sort the commits from self.ready_queue by time, then process them."""
+  def _commit_ready_commits(self, timestamp=None):
+    """Sort the commits from self.ready_queue by time, then process
+    them in order.  If TIMESTAMP is specified, only process commits
+    that have timestamp previous to TIMESTAMP."""
 
     self.ready_queue.sort()
-    while self.ready_queue:
-      cvs_commit = self.ready_queue[0]
-      if cvs_commit.t_max > timestamp:
-        # Re-stamping according to a commit's dependencies can cause this.
-        break
-      del self.ready_queue[0]
+    while self.ready_queue and \
+              (timestamp is None or self.ready_queue[0].t_max < timestamp):
+      cvs_commit = self.ready_queue.pop(0)
       self.latest_primary_svn_commit = \
           cvs_commit.process_revisions(self.done_symbols)
       self._attempt_to_commit_symbols()
@@ -598,7 +597,9 @@ class CVSRevisionAggregator:
 
     # If there are any elements in the ready_queue at this point, they
     # need to be processed, because this latest rev couldn't possibly
-    # be part of any of them.
+    # be part of any of them.  Limit the timestamp of commits to be
+    # processed, because re-stamping according to a commit's
+    # dependencies can alter the commit's timestamp.
     self._commit_ready_commits(c_rev.timestamp)
 
     self._add_pending_symbols(c_rev)
@@ -608,7 +609,7 @@ class CVSRevisionAggregator:
     SymbolingsLogger that all commits are done."""
 
     self._extract_ready_commits(1L<<32)
-    self._commit_ready_commits(1L<<32)
+    self._commit_ready_commits()
 
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
