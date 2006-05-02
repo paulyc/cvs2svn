@@ -258,6 +258,25 @@ class CVSCommit:
       # OP_CHANGE or OP_ADD
       self.changes.append(c_rev)
 
+  def add_dependency(self, dep):
+    self.deps[dep] = None
+
+  def dependencies_resolved(self):
+    """Return True iff all dependencies of this commit have been resolved."""
+    for dep in self.deps:
+      if dep.pending:
+        return False
+
+    return True
+
+  def clear_dependencies(self):
+    """Update self.t_max to be later than all dependencies, then clear
+    the dependency list."""
+
+    for dep in self.deps:
+      self.t_max = max(self.t_max, dep.t_max + 1)
+    self.deps.clear()
+
   def _pre_commit(self):
     """Generates any SVNCommits that must exist before the main commit."""
 
@@ -545,15 +564,10 @@ class CVSRevisionAggregator:
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
-        for dep in cvs_commit.deps:
-          if dep.pending:
-            break
-        else:
-          for dep in cvs_commit.deps:
-            cvs_commit.t_max = max(cvs_commit.t_max, dep.t_max + 1)
+        if cvs_commit.dependencies_resolved():
+          cvs_commit.clear_dependencies()
           for r in cvs_commit.revisions():
             del self.pending_revs[r.unique_key()]
-          cvs_commit.deps.clear()
           self.expired_queue.remove(cvs_commit)
           cvs_commit.pending = False
           self.ready_queue.append(cvs_commit)
@@ -594,7 +608,7 @@ class CVSRevisionAggregator:
       cvs_commit = CVSCommit(c_rev.digest, author, log)
       cvs_commits.append(cvs_commit)
     if dep is not None:
-      cvs_commit.deps[dep] = None
+      cvs_commit.add_dependency(dep)
     cvs_commit.add_revision(c_rev)
     self.pending_revs[c_rev.unique_key()] = cvs_commit
 
