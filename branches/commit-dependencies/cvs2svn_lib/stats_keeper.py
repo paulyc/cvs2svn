@@ -53,6 +53,7 @@ class StatsKeeper:
                     'pass_timings' : { },
                     'start_time' : 0,
                     'end_time' : 0,
+                    'stats_reflect_exclude' : False,
                     }
 
   def log_duration_for_pass(self, duration, pass_num):
@@ -64,8 +65,8 @@ class StatsKeeper:
   def set_end_time(self, end):
     self.data['end_time'] = end
 
-  def _bump_item(self, key, amount=1):
-    self.data[key] += amount
+  def set_stats_reflect_exclude(self, value):
+    self.data['stats_reflect_exclude'] = value
 
   def reset_c_rev_info(self):
     self.data['cvs_revs_count'] = 0
@@ -73,7 +74,7 @@ class StatsKeeper:
     self.data['branches'] = { }
 
   def record_c_rev(self, c_rev):
-    self._bump_item('cvs_revs_count')
+    self.data['cvs_revs_count'] += 1
 
     for tag in c_rev.tags:
       self.data['tags'][tag] = None
@@ -88,7 +89,7 @@ class StatsKeeper:
 
     # Only add the size if this is the first time we see the file.
     if not self.repos_files.has_key(c_rev.fname):
-      self._bump_item('repos_size', c_rev.file_size)
+      self.data['repos_size'] += c_rev.file_size
     self.repos_files[c_rev.fname] = None
 
     self.data['repos_file_count'] = len(self.repos_files)
@@ -111,6 +112,12 @@ class StatsKeeper:
       svn_revs_str = ('Total SVN Commits:      %10s\n'
                       % self.data['svn_rev_count'])
 
+    caveat_str = ''
+    if not self.data['stats_reflect_exclude']:
+      caveat_str = (
+          '\n'
+          '(These are unaltered CVS repository stats and do not\n'
+          ' reflect tags or branches excluded via --exclude)\n')
     return ('\n'                                \
             'cvs2svn Statistics:\n'             \
             '------------------\n'              \
@@ -123,6 +130,7 @@ class StatsKeeper:
             'First Revision Date:    %s\n'      \
             'Last Revision Date:     %s\n'      \
             '------------------'                \
+            '%s'
             % (self.data['repos_file_count'],
                self.data['cvs_revs_count'],
                len(self.data['tags']),
@@ -131,6 +139,7 @@ class StatsKeeper:
                svn_revs_str,
                time.ctime(self.data['first_rev_date']),
                time.ctime(self.data['last_rev_date']),
+               caveat_str,
                ))
 
   def timings(self):

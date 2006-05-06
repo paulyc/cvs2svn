@@ -88,6 +88,9 @@ from cvs2svn_lib.dumpfile_delegate import DumpfileDelegate
 from cvs2svn_lib.repository_delegate import RepositoryDelegate
 from cvs2svn_lib.stdout_delegate import StdoutDelegate
 from cvs2svn_lib.persistence_manager import PersistenceManager
+from cvs2svn_lib.pass_manager import \
+        PassManager, \
+        InvalidPassError
 
 
 # Make sure this Python is recent enough.
@@ -679,6 +682,10 @@ class CVSRevisionAggregator:
 class Pass:
   """Base class for one step of the conversion."""
 
+  def __init__(self):
+    # By default, use the pass object's class name as the pass name:
+    self.name = self.__class__.__name__
+
   def register_artifacts(self):
     """Register artifacts (created and needed) in artifact_manager."""
 
@@ -700,7 +707,9 @@ class Pass:
     raise NotImplementedError
 
 
-class Pass1(Pass):
+class CollectRevsPass(Pass):
+  """This pass was formerly known as pass1."""
+
   def register_artifacts(self):
     self._register_temp_file(config.TAGS_LIST)
     self._register_temp_file(config.BRANCHES_LIST)
@@ -775,8 +784,10 @@ class Pass1(Pass):
     Log().write(Log.QUIET, "Done")
 
 
-class Pass2(Pass):
-  """Pass 2: clean up the revision information."""
+class ResyncRevsPass(Pass):
+  """Clean up the revision information.
+
+  This pass was formerly known as pass2."""
 
   def register_artifacts(self):
     self._register_temp_file(config.TAGS_DB)
@@ -1036,7 +1047,9 @@ class Pass2(Pass):
     Log().write(Log.QUIET, "Done")
 
 
-class Pass3(Pass):
+class SortRevsPass(Pass):
+  """This pass was formerly known as pass3."""
+
   def register_artifacts(self):
     self._register_temp_file(config.SORTED_REVS_DATAFILE)
     self._register_temp_file_needed(config.CLEAN_REVS_DATAFILE)
@@ -1048,7 +1061,9 @@ class Pass3(Pass):
     Log().write(Log.QUIET, "Done")
 
 
-class Pass4(Pass):
+class CreateDatabasesPass(Pass):
+  """This pass was formerly known as pass4."""
+
   def register_artifacts(self):
     if not Ctx().trunk_only:
       self._register_temp_file(config.SYMBOL_LAST_CVS_REVS_DB)
@@ -1083,16 +1098,20 @@ class Pass4(Pass):
       last_sym_name_db.log_revision(c_rev)
       StatsKeeper().record_c_rev(c_rev)
 
+    StatsKeeper().set_stats_reflect_exclude(True)
+
     last_sym_name_db.create_database()
     StatsKeeper().archive()
     Log().write(Log.QUIET, "Done")
 
 
-class Pass5(Pass):
+class AggregateRevsPass(Pass):
   """Generate the SVNCommit <-> CVSRevision mapping databases.
   CVSCommit._commit also calls SymbolingsLogger to register
   CVSRevisions that represent an opening or closing for a path on a
-  branch or tag.  See SymbolingsLogger for more details."""
+  branch or tag.  See SymbolingsLogger for more details.
+
+  This pass was formerly known as pass5."""
 
   def register_artifacts(self):
     self._register_temp_file(config.SYMBOL_OPENINGS_CLOSINGS)
@@ -1123,7 +1142,9 @@ class Pass5(Pass):
     Log().write(Log.QUIET, "Done")
 
 
-class Pass6(Pass):
+class SortSymbolsPass(Pass):
+  """This pass was formerly known as pass6."""
+
   def register_artifacts(self):
     if not Ctx().trunk_only:
       self._register_temp_file(config.SYMBOL_OPENINGS_CLOSINGS_SORTED)
@@ -1140,7 +1161,9 @@ class Pass6(Pass):
     Log().write(Log.QUIET, "Done")
 
 
-class Pass7(Pass):
+class IndexSymbolsPass(Pass):
+  """This pass was formerly known as pass7."""
+
   def register_artifacts(self):
     if not Ctx().trunk_only:
       self._register_temp_file(config.SYMBOL_OFFSETS_DB)
@@ -1185,7 +1208,9 @@ class Pass7(Pass):
     Log().write(Log.QUIET, "Done.")
 
 
-class Pass8(Pass):
+class OutputPass(Pass):
+  """This pass was formerly known as pass8."""
+
   def register_artifacts(self):
     self._register_temp_file(config.SVN_MIRROR_REVISIONS_DB)
     self._register_temp_file(config.SVN_MIRROR_NODES_DB)
@@ -1224,71 +1249,16 @@ class Pass8(Pass):
     repos.finish()
 
 
-_passes = [
-  Pass1(),
-  Pass2(),
-  Pass3(),
-  Pass4(),
-  Pass5(),
-  Pass6(),
-  Pass7(),
-  Pass8(),
-  ]
-
-
-def convert(start_pass, end_pass):
-  """Convert a CVS repository to an SVN repository."""
-
-  artifact_manager.register_temp_file(config.STATISTICS_FILE, convert)
-
-  StatsKeeper().set_start_time(time.time())
-
-  # Inform the artifact manager when artifacts are created and used:
-  for the_pass in _passes:
-    # The statistics object is needed for every pass:
-    artifact_manager.register_temp_file_needed(
-        config.STATISTICS_FILE, the_pass)
-    the_pass.register_artifacts()
-
-  # Tell the artifact manager about passes that are being skipped this run:
-  for the_pass in _passes[0:start_pass - 1]:
-    artifact_manager.pass_skipped(the_pass)
-
-  times = [ None ] * (end_pass + 1)
-  times[start_pass - 1] = time.time()
-  for i in range(start_pass - 1, end_pass):
-    the_pass = _passes[i]
-    Log().write(Log.QUIET, '----- pass %d -----' % (i + 1))
-    the_pass.run()
-    times[i + 1] = time.time()
-    StatsKeeper().log_duration_for_pass(times[i + 1] - times[i], i + 1)
-    # Dispose of items in Ctx() not intended to live past the end of the pass
-    # (Identified by exactly one leading underscore)
-    for attr in dir(Ctx()):
-      if (len(attr) > 2 and attr[0] == '_' and attr[1] != '_'
-          and attr[:6] != "_Ctx__"):
-        delattr(Ctx(), attr)
-    StatsKeeper().set_end_time(time.time())
-    # Allow the artifact manager to clean up artifacts that are no
-    # longer needed:
-    artifact_manager.pass_done(the_pass)
-
-  # Tell the artifact manager about passes that are being deferred:
-  for the_pass in _passes[end_pass:]:
-    artifact_manager.pass_deferred(the_pass)
-
-  Log().write(Log.QUIET, StatsKeeper())
-  if end_pass < 4:
-    Log().write(Log.QUIET,
-                '(These are unaltered CVS repository stats and do not\n'
-                ' reflect tags or branches excluded via --exclude)\n')
-  Log().write(Log.NORMAL, StatsKeeper().timings())
-
-  # The overall conversion is done:
-  artifact_manager.pass_done(convert)
-
-  # Consistency check:
-  artifact_manager.check_clean()
+pass_manager = PassManager([
+  CollectRevsPass(),
+  ResyncRevsPass(),
+  SortRevsPass(),
+  CreateDatabasesPass(),
+  AggregateRevsPass(),
+  SortSymbolsPass(),
+  IndexSymbolsPass(),
+  OutputPass(),
+  ])
 
 
 def normalize_ttb_path(opt, path):
@@ -1311,14 +1281,14 @@ def usage():
   print 'USAGE: %s [-v] [-s svn-repos-path] [-p pass] cvs-repos-path' \
         % os.path.basename(sys.argv[0])
   print '  --help, -h           print this usage message and exit with success'
+  print '  --help-passes        list the available passes and their numbers'
   print '  --version            print the version number'
   print '  -q                   quiet'
   print '  -v                   verbose'
   print '  -s PATH              path for SVN repos'
-  print '  -p START[:END]       start at pass START, end at pass END of %d' \
-        % len(_passes)
-  print '                       If only START is given, run only pass START'
-  print '                       (implicitly enables --skip-cleanup)'
+  print '  -p PASS              execute only specified PASS'
+  print '  -p [START]:[END]     execute passes START through END, inclusive'
+  print '                       (PASS, START, and END can be pass names or numbers)'
   print '  --existing-svnrepos  load into existing SVN repository'
   print '  --dumpfile=PATH      name of intermediate svn dumpfile'
   print '  --tmpdir=PATH        directory to use for tmp data (default to cwd)'
@@ -1370,11 +1340,11 @@ def main():
 
   profiling = None
   start_pass = 1
-  end_pass = len(_passes)
+  end_pass = pass_manager.num_passes
 
   try:
     opts, args = getopt.getopt(sys.argv[1:], 'p:s:qvh',
-                               [ "help", "create", "trunk=",
+                               [ "help", "help-passes", "create", "trunk=",
                                  "username=", "existing-svnrepos",
                                  "branches=", "tags=", "encoding=",
                                  "force-branch=", "force-tag=", "exclude=",
@@ -1397,22 +1367,22 @@ def main():
         print '%s version %s' % (os.path.basename(sys.argv[0]), VERSION)
         sys.exit(0)
     elif opt == '-p':
-      # Don't cleanup if we're doing incrementals.
-      ctx.skip_cleanup = 1
-      if value.find(':') > 0:
-        start_pass, end_pass = map(int, value.split(':'))
+      if value.find(':') >= 0:
+        start_pass, end_pass = value.split(':')
+        start_pass = pass_manager.get_pass_number(start_pass, 1)
+        end_pass = pass_manager.get_pass_number(end_pass,
+                                                pass_manager.num_passes)
       else:
-        end_pass = start_pass = int(value)
-      if start_pass > len(_passes) or start_pass < 1:
-        raise FatalError(
-            'illegal value (%d) for starting pass.  Must be 1 through %d.'
-            % (int(start_pass), len(_passes),))
-      if end_pass < start_pass or end_pass > len(_passes):
-        raise FatalError(
-            'illegal value (%d) for ending pass.  Must be %d through %d.'
-            % (int(end_pass), int(start_pass), len(_passes),))
+        end_pass = start_pass = pass_manager.get_pass_number(value)
+
+      if not start_pass <= end_pass:
+        raise InvalidPassError(
+            'Ending pass must not come before starting pass.')
     elif (opt == '--help') or (opt == '-h'):
       ctx.print_help = 1
+    elif opt == '--help-passes':
+      pass_manager.help_passes()
+      sys.exit(0)
     elif opt == '-v':
       Log().log_level = Log.VERBOSE
       ctx.verbose = 1
@@ -1636,10 +1606,10 @@ def main():
     if profiling:
       import hotshot
       prof = hotshot.Profile('cvs2svn.hotshot')
-      prof.runcall(convert, start_pass, end_pass)
+      prof.runcall(pass_manager.run, start_pass, end_pass)
       prof.close()
     else:
-      convert(start_pass, end_pass)
+      pass_manager.run(start_pass, end_pass)
   finally:
     try: os.rmdir(os.path.join(ctx.tmpdir, 'cvs2svn.lock'))
     except: pass
