@@ -46,4 +46,10 @@ class CVSRevisionDatabase:
 
     return self.cvs_revs_db[unique_key]
 
+  def keys(self):
+    ###PERF: This could be a very big list.  It could be avoided if we
+    ###stored the highest index in the database.
+
+    return self.cvs_revs_db.keys()
+
 
