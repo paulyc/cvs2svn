@@ -24,6 +24,7 @@ SVN_KEYWORDS_VALUE = 'Author Date Id Revision'
 # grouping.  See design-notes.txt for details.
 DATAFILE = 'cvs2svn-data'
 
+ALL_REVS_DATAFILE = DATAFILE + '.a-revs'
 CLEAN_REVS_DATAFILE = DATAFILE + '.c-revs'
 SORTED_REVS_DATAFILE = DATAFILE + '.s-revs'
 RESYNC_DATAFILE = DATAFILE + '.resync'

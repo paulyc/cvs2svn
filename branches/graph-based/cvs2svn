@@ -656,6 +656,7 @@ class CollectRevsPass(Pass):
     self._register_temp_file(config.DEFAULT_BRANCHES_DB)
     self._register_temp_file(config.METADATA_DB)
     self._register_temp_file(config.CVS_REVS_DB)
+    self._register_temp_file(config.ALL_REVS_DATAFILE)
 
   def run(self):
     OS_SEP_PLUS_ATTIC = os.sep + 'Attic'
@@ -736,6 +737,7 @@ class ResyncRevsPass(Pass):
     self._register_temp_file_needed(config.BRANCHES_LIST)
     self._register_temp_file_needed(config.RESYNC_DATAFILE)
     self._register_temp_file_needed(config.CVS_REVS_DB)
+    self._register_temp_file_needed(config.ALL_REVS_DATAFILE)
 
   def run(self):
     cvs_revs_db = CVSRevisionDatabase(
@@ -859,7 +861,9 @@ class ResyncRevsPass(Pass):
         database.DB_OPEN_NEW)
 
     # process the revisions file, looking for items to clean up
-    for c_rev_key in cvs_revs_db.keys():
+    for line in open(
+            artifact_manager.get_temp_file(config.ALL_REVS_DATAFILE)):
+      c_rev_key = line.strip()
       c_rev = cvs_revs_db.get_revision(c_rev_key)
 
       # Skip this entire revision if it's on an excluded branch

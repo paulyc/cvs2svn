@@ -522,6 +522,8 @@ class CollectData:
     self._cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_NEW)
+    self._all_revs = open(
+        artifact_manager.get_temp_file(config.ALL_REVS_DATAFILE), 'w')
     self.resync = open(
         artifact_manager.get_temp_file(config.RESYNC_DATAFILE), 'w')
     self.default_branches_db = database.SDatabase(
@@ -542,6 +544,7 @@ class CollectData:
 
   def add_cvs_revision(self, c_rev):
     self._cvs_revs_db.log_revision(c_rev)
+    self._all_revs.write('%s\n' % (c_rev.unique_key(),))
     StatsKeeper().record_c_rev(c_rev)
 
   def write_symbol_db(self):
