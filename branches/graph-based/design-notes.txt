@@ -8,10 +8,10 @@ state in memory, and b) the conversion process is resumable.
 CollectRevsPass (formerly called pass1)
 ===============
 
-The goal of this pass is to write to 'cvs2svn-data.revs' a summary of
-all the revisions for each RCS file.  Each revision will be
-represented by one line.  At the end of this stage, the revisions
-(i.e., the lines) will be grouped by RCS file, not by logical commits.
+The goal of this pass is to write to 'cvs2svn-cvs-revs.db' a summary of
+all the revisions for each RCS file.  Each revision will be assigned
+an arbitrary key and stored in the database as one record, which is a
+pickled instance of CVSRevision.
 
 We walk over the repository, collecting data about the RCS files into
 an instance of CollectData.  Each RCS file is processed with
@@ -60,9 +60,56 @@ similarly, more details below).
 
 Next, the parser encounters the *real* revision data, which has the
 log messages and file contents.  For each revision, it invokes
-FileDataCollector.set_revision_info(), which writes a new line to
-cvs2svn-data.revs.  The line is constructed by the CVSRevision class -
-one of its many roles. Here is an example:
+FileDataCollector.set_revision_info(), which writes a record to
+cvs2svn-cvs-revs.db.
+
+Also, for resync'd revisions, a line like this is written out to
+'cvs2svn-data.resync':
+
+   3d6c1329 18a215a05abea1c6c155dcc7283b88ae7ce23502 3d6c1328
+
+The fields are:
+
+   NEW_TIMESTAMP   DIGEST   OLD_TIMESTAMP
+
+(The resync file will be explained later.)
+
+That's it -- the RCS file is done.
+
+When every RCS file is done, CollectRevsPass is complete, and:
+
+   - cvs2svn-cvs-revs.db contains a summary of every RCS file's
+     revisions.  The order of the revisions is arbitrary.  In other
+     words, a multi-file commit will be scattered all over the place.
+
+   - cvs2svn-data.resync contains a small amount of resync data, in
+     no particular order.
+
+
+ResyncRevsPass (formerly called pass2)
+==============
+
+This is where the resync file is used.  The goal of this pass is to
+output the information from cvs2svn-cvs-revs.db to a new file,
+'cvs2svn-data.c-revs' (clean revs).  It has the same content as the
+original file, except for some resync'd timestamps.
+
+First, read the whole resync file into a hash table that maps each
+author+log digest to a list of lists.  Each sublist represents one of
+the timestamp adjustments from CollectRevsPass, and looks like this:
+
+   [old_time_lower, old_time_upper, new_time]
+
+The reason to map each digest to a list of sublists, instead of to one
+list, is that sometimes you'll get the same digest for unrelated
+commits (for example, the same author commits many times using the
+empty log message, or a log message that just says "Doc tweaks.").  So
+each digest may need to "fan out" to cover multiple commits, but
+without accidentally unifying those commits.
+
+Now we loop over cvs2svn-cvs-revs.db, and for each record write a
+line to 'cvs2svn-data.c-revs'.  Each line of this file is in the
+format returned by CVSRevision.__getstate__().  Here is an example:
 
    3dc32955 5afe9b4ba41843d8eb52ae7db47a43eaa9573254 12ab 12aa 12af 3dc32954 3dc32956 C 1.1 1.2 1.3 T F 1024 N * 0 0 foo/bar,v
 
@@ -105,55 +152,7 @@ The fields are:
 (Of course, in the above example, fields 15 and 16 are "0", so they have
 no additional data.)
 
-Also, for resync'd revisions, a line like this is written out to
-'cvs2svn-data.resync':
-
-   3d6c1329 18a215a05abea1c6c155dcc7283b88ae7ce23502 3d6c1328
-
-The fields are:
-
-   NEW_TIMESTAMP   DIGEST   OLD_TIMESTAMP
-
-(The resync file will be explained later.)
-
-That's it -- the RCS file is done.
-
-When every RCS file is done, CollectRevsPass is complete, and:
-
-   - cvs2svn-data.revs contains a summary of every RCS file's
-     revisions.  All the revisions for a given RCS file are grouped
-     together, but note that the groups are in no particular order.
-     In other words, you can't yet identify the commits from looking
-     at these lines; a multi-file commit will be scattered all over
-     the place.
-
-   - cvs2svn-data.resync contains a small amount of resync data, in
-     no particular order.
-
-
-ResyncRevsPass (formerly called pass2)
-==============
-
-This is where the resync file is used.  The goal of this pass is to
-convert cvs2svn-data.revs to a new file, 'cvs2svn-data.c-revs' (clean
-revs).  It's the same as the original file, except for some resync'd
-timestamps.
-
-First, read the whole resync file into a hash table that maps each
-author+log digest to a list of lists.  Each sublist represents one of
-the timestamp adjustments from CollectRevsPass, and looks like this:
-
-   [old_time_lower, old_time_upper, new_time]
-
-The reason to map each digest to a list of sublists, instead of to one
-list, is that sometimes you'll get the same digest for unrelated
-commits (for example, the same author commits many times using the
-empty log message, or a log message that just says "Doc tweaks.").  So
-each digest may need to "fan out" to cover multiple commits, but
-without accidentally unifying those commits.
-
-Now we loop over cvs2svn-data.revs, writing each line out to
-'cvs2svn-data.c-revs'.  Most lines are written out unchanged, but
+  Most lines are written out unchanged, but
 those whose digest matches some resync entry, and appear to be part of
 the same commit as one of the sublists in that entry, get tweaked.
 The tweak is to adjust the commit time of the line to the new_time,

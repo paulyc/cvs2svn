@@ -519,8 +519,6 @@ class CollectData:
   each file to be parsed."""
 
   def __init__(self):
-    self._revs = open(
-        artifact_manager.get_temp_file(config.REVS_DATAFILE), 'w')
     self._cvs_revs_db = CVSRevisionDatabase(database.DB_OPEN_NEW)
     self.resync = open(
         artifact_manager.get_temp_file(config.RESYNC_DATAFILE), 'w')
@@ -541,7 +539,6 @@ class CollectData:
     self.key_generator = KeyGenerator()
 
   def add_cvs_revision(self, c_rev):
-    self._revs.write(c_rev.__getstate__() + '\n')
     self._cvs_revs_db.log_revision(c_rev)
     StatsKeeper().record_c_rev(c_rev)
 
