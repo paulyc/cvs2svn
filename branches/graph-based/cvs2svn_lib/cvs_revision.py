@@ -32,13 +32,9 @@ class CVSRevisionID(object):
     self.rev = rev
 
   def unique_key(self):
-    """Return a string that can be used as a unique key for this revision.
+    """Return a string that can be used as a unique key for this revision."""
 
-    The 'primary key' of a CVS Revision is (revision number,
-    filename).  To make a key (say, for a dict), we just glom them
-    together into a string."""
-
-    return self.rev + '/' + self.fname
+    return '%x' % (self.id,)
 
 
 class CVSRevision(CVSRevisionID):
