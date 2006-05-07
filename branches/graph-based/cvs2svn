@@ -656,6 +656,7 @@ class CollectRevsPass(Pass):
     self._register_temp_file(config.RESYNC_DATAFILE)
     self._register_temp_file(config.DEFAULT_BRANCHES_DB)
     self._register_temp_file(config.METADATA_DB)
+    self._register_temp_file(config.CVS_REVS_DB)
 
   def run(self):
     OS_SEP_PLUS_ATTIC = os.sep + 'Attic'
@@ -1006,7 +1007,7 @@ class CreateDatabasesPass(Pass):
   def register_artifacts(self):
     if not Ctx().trunk_only:
       self._register_temp_file(config.SYMBOL_LAST_CVS_REVS_DB)
-    self._register_temp_file(config.CVS_REVS_DB)
+    self._register_temp_file_needed(config.CVS_REVS_DB)
     self._register_temp_file_needed(config.SORTED_REVS_DATAFILE)
 
   def run(self):
@@ -1017,7 +1018,7 @@ class CreateDatabasesPass(Pass):
 
     Log().write(Log.QUIET,
         "Copying CVS revision data from flat file to database...")
-    cvs_revs_db = CVSRevisionDatabase(database.DB_OPEN_NEW)
+    cvs_revs_db = CVSRevisionDatabase(database.DB_OPEN_WRITE)
     if not Ctx().trunk_only:
       Log().write(Log.QUIET,
           "Finding last CVS revisions for all symbolic names...")
