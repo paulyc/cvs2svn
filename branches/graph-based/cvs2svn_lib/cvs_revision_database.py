@@ -33,17 +33,17 @@ class CVSRevisionDatabase:
     """Initialize an instance, opening database in MODE (like the MODE
     argument to Database or anydbm.open())."""
 
-    self.cvs_revs_db = database.SDatabase(
+    self.cvs_revs_db = database.PDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB), mode)
 
   def log_revision(self, c_rev):
     """Add C_REV, a CVSRevision, to the database."""
 
-    self.cvs_revs_db[c_rev.unique_key()] = c_rev.__getstate__()
+    self.cvs_revs_db[c_rev.unique_key()] = c_rev
 
   def get_revision(self, unique_key):
     """Return the CVSRevision stored under UNIQUE_KEY."""
 
-    return cvs_revision.parse_cvs_revision(self.cvs_revs_db[unique_key])
+    return self.cvs_revs_db[unique_key]
 
 
