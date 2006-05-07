@@ -25,17 +25,22 @@ from boolean import *
 
 
 class KeyGenerator:
-  """Generate a series of unique strings."""
+  """Generate a series of unique keys."""
 
   def __init__(self):
     self.key_base = 0L
 
-  def gen_key(self):
-    """Generate and return a previously-unused key."""
+  def gen_id(self):
+    """Generate and return a previously-unused key, as an integer."""
 
-    key = '%x' % self.key_base
+    id = self.key_base
     self.key_base += 1
 
-    return key
+    return id
+
+  def gen_key(self):
+    """Generate and return a previously-unused key, as a string."""
+
+    return '%x' % self.gen_id()
 
 
