@@ -29,12 +29,11 @@ class CVSRevisionDatabase:
   """A Database to store CVSRevision objects and retrieve them by their
   unique_key()."""
 
-  def __init__(self, mode):
+  def __init__(self, filename, mode):
     """Initialize an instance, opening database in MODE (like the MODE
     argument to Database or anydbm.open())."""
 
-    self.cvs_revs_db = database.PDatabase(
-        artifact_manager.get_temp_file(config.CVS_REVS_DB), mode)
+    self.cvs_revs_db = database.PDatabase(filename, mode)
 
   def log_revision(self, c_rev):
     """Add C_REV, a CVSRevision, to the database."""

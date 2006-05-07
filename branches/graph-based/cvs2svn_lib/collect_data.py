@@ -519,7 +519,9 @@ class CollectData:
   each file to be parsed."""
 
   def __init__(self):
-    self._cvs_revs_db = CVSRevisionDatabase(database.DB_OPEN_NEW)
+    self._cvs_revs_db = CVSRevisionDatabase(
+        artifact_manager.get_temp_file(config.CVS_REVS_DB),
+        database.DB_OPEN_NEW)
     self.resync = open(
         artifact_manager.get_temp_file(config.RESYNC_DATAFILE), 'w')
     self.default_branches_db = database.SDatabase(
