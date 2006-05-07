@@ -36,6 +36,7 @@ from context import Ctx
 from artifact_manager import artifact_manager
 import cvs_revision
 from stats_keeper import StatsKeeper
+from key_generator import KeyGenerator
 import database
 import symbol_database
 import cvs2svn_rcsparse
@@ -88,6 +89,11 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     # Whether or not the executable bit is set.
     self.file_executable = bool(file_stat[0] & stat.S_IXUSR)
+
+    # A map { revision -> id } of the unique ids of all CVSRevisions
+    # related to this file.  Note that ids might be pre-allocated for
+    # revisions referred to be earlier revisions:
+    self._rev_ids = {}
 
     # revision -> [timestamp, author, old-timestamp]
     self.rev_data = { }
@@ -155,6 +161,15 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # prevent multiple definitions of a symbol, something which can
     # easily happen when --symbol-transform is used.
     self.defined_symbols = { }
+
+  def _get_rev_id(self, revision):
+    if revision is None:
+      return None
+    id = self._rev_ids.get(revision)
+    if id is None:
+      id = self.collect_data.key_generator.gen_id()
+      self._rev_ids[revision] = id
+    return id
 
   def set_principal_branch(self, branch):
     self.default_branch = branch
@@ -464,7 +479,10 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         cur_num = self.prev_rev.get(cur_num, None)
 
     c_rev = cvs_revision.CVSRevision(
-        timestamp, digest, prev_timestamp, next_timestamp, op,
+        self._get_rev_id(revision),
+        timestamp, digest,
+        self._get_rev_id(prev_rev), self._get_rev_id(next_rev),
+        prev_timestamp, next_timestamp, op,
         prev_rev, revision, next_rev,
         self.file_in_attic, self.file_executable, self.file_size,
         bool(text), self.fname, self.mode,
@@ -512,6 +530,9 @@ class CollectData:
 
     # 1 if we've collected data for at least one file, None otherwise.
     self.found_valid_file = None
+
+    # Key generator to generate unique keys for each CVSRevision object:
+    self.key_generator = KeyGenerator()
 
   def add_cvs_revision(self, c_rev):
     self._revs.write(c_rev.__getstate__() + '\n')

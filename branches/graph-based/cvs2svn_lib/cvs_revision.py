@@ -26,7 +26,8 @@ import common
 class CVSRevisionID(object):
   """An object that identifies a CVS revision of a file."""
 
-  def __init__(self, fname, rev):
+  def __init__(self, id, fname, rev):
+    self.id = id
     self.fname = fname
     self.rev = rev
 
@@ -64,7 +65,10 @@ class CVSRevision(CVSRevisionID):
   ctx = None
 
   def __init__(self,
-               timestamp, digest, prev_timestamp, next_timestamp,
+               id,
+               timestamp, digest,
+               prev_id, next_id,
+               prev_timestamp, next_timestamp,
                op, prev_rev, rev, next_rev,
                file_in_attic, file_executable,
                file_size, deltatext_exists,
@@ -72,8 +76,11 @@ class CVSRevision(CVSRevisionID):
     """Initialize a new CVSRevision object.
 
     Arguments:
+       ID              -->  (string) unique ID for this revision.
        TIMESTAMP       -->  (int) date stamp for this cvs revision
        DIGEST          -->  (string) digest of author+logmsg
+       PREV_ID         -->  (int) id of the previous cvs revision (or None)
+       NEXT_ID         -->  (int) id of the next cvs revision (or None)
        PREV_TIMESTAMP  -->  (int) date stamp for the previous cvs revision
        NEXT_TIMESTAMP  -->  (int) date stamp for the next cvs revision
        OP              -->  (char) OP_ADD, OP_CHANGE, or OP_DELETE
@@ -95,15 +102,15 @@ class CVSRevision(CVSRevisionID):
     WARNING: Due to the resync process in pass2, prev_timestamp or
     next_timestamp may be incorrect in the c-revs or s-revs files."""
 
-    CVSRevisionID.__init__(self, fname, rev)
+    CVSRevisionID.__init__(self, id, fname, rev)
 
     self.timestamp = timestamp
     self.digest = digest
     self.prev_timestamp = prev_timestamp
     self.next_timestamp = next_timestamp
     self.op = op
-    self.prev_rev = prev_rev and CVSRevisionID(self.fname, prev_rev)
-    self.next_rev = next_rev and CVSRevisionID(self.fname, next_rev)
+    self.prev_rev = prev_rev and CVSRevisionID(prev_id, self.fname, prev_rev)
+    self.next_rev = next_rev and CVSRevisionID(next_id, self.fname, next_rev)
     self.file_in_attic = file_in_attic
     self.file_executable = file_executable
     self.file_size = file_size
@@ -140,6 +147,12 @@ class CVSRevision(CVSRevisionID):
       else:
         return '*'
 
+    def id_to_string(rev):
+      if rev is None:
+        return '*'
+      else:
+        return '%x' % (rev.id,)
+
     def rev_to_string(rev):
       if rev is None:
         return '*'
@@ -155,9 +168,12 @@ class CVSRevision(CVSRevisionID):
 
       return ' '.join([str(len(l))] + l)
 
-    return ('%s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s'
+    return ('%s %s %s %s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s'
             % (timestamp_to_string(self.timestamp),
                self.digest,
+               id_to_string(self),
+               id_to_string(self.prev_rev),
+               id_to_string(self.next_rev),
                timestamp_to_string(self.prev_timestamp),
                timestamp_to_string(self.next_timestamp),
                self.op,
@@ -246,16 +262,26 @@ def _parse_cvs_revision_state(line):
     else:
       return s
 
+  def string_to_id(s):
+    if s == '*':
+      return None
+    else:
+      return long(s, 16)
+
   def string_to_bool(s):
     return { 'T' : True, 'F' : False }[s]
 
-  (timestamp, digest, prev_timestamp, next_timestamp,
+  (timestamp, digest, id,
+   prev_id, next_id, prev_timestamp, next_timestamp,
    op, prev_rev, rev, next_rev, file_in_attic,
    file_executable, file_size, deltatext_exists,
-   mode, branch_name, numtags, remainder) = line.split(' ', 15)
+   mode, branch_name, numtags, remainder) = line.split(' ', 18)
 
   # Patch up items which are not simple strings:
   timestamp = string_to_timestamp(timestamp)
+  id = string_to_id(id)
+  prev_id = string_to_id(prev_id)
+  next_id = string_to_id(next_id)
   prev_timestamp = string_to_timestamp(prev_timestamp)
   next_timestamp = string_to_timestamp(next_timestamp)
 
@@ -284,7 +310,8 @@ def _parse_cvs_revision_state(line):
   branches = branches_and_fname[:-1]
   fname = branches_and_fname[-1]
 
-  return (timestamp, digest, prev_timestamp, next_timestamp,
+  return (id, timestamp, digest,
+          prev_id, next_id, prev_timestamp, next_timestamp,
           op, prev_rev, rev, next_rev,
           file_in_attic, file_executable, file_size, deltatext_exists,
           fname, mode, branch_name, tags, branches,)
