@@ -90,10 +90,12 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # Whether or not the executable bit is set.
     self.file_executable = bool(file_stat[0] & stat.S_IXUSR)
 
-    # A map { revision -> id } of the unique ids of all CVSRevisions
-    # related to this file.  Note that ids might be pre-allocated for
-    # revisions referred to be earlier revisions:
-    self._rev_ids = {}
+    # A map { revision -> c_rev } of the CVSRevision instances for all
+    # revisions related to this file.  Note that items in this map
+    # might be pre-filled as CVSRevisionIDs for revisions referred to
+    # by earlier revisions but not yet processed.  As the revisions
+    # are defined, the values are changed into CVSRevision instances.
+    self._c_revs = {}
 
     # revision -> [timestamp, author, old-timestamp]
     self.rev_data = { }
@@ -165,11 +167,12 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
   def _get_rev_id(self, revision):
     if revision is None:
       return None
-    id = self._rev_ids.get(revision)
+    id = self._c_revs.get(revision)
     if id is None:
-      id = self.collect_data.key_generator.gen_id()
-      self._rev_ids[revision] = id
-    return id
+      id = cvs_revision.CVSRevisionID(
+          self.collect_data.key_generator.gen_id(), self.fname, revision)
+      self._c_revs[revision] = id
+    return id.id
 
   def set_principal_branch(self, branch):
     self.default_branch = branch
@@ -488,6 +491,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         bool(text), self.fname, self.mode,
         self.rev_to_branch_name(revision),
         self.taglist.get(revision, []), self.branchlist.get(revision, []))
+    self._c_revs[revision] = c_rev
     self.collect_data.add_cvs_revision(c_rev)
 
     if not self.collect_data.metadata_db.has_key(digest):
