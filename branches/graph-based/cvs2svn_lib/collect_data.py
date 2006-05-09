@@ -297,8 +297,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # Ratchet up the highest vendor head revision, if necessary.
     if self.default_branch:
       default_branch_root = self.default_branch + "."
-      if ((revision.find(default_branch_root) == 0)
-          and (default_branch_root.count('.') == revision.count('.'))):
+      if (revision.startswith(default_branch_root)
+          and default_branch_root.count('.') == revision.count('.')):
         # This revision is on the default branch, so record that it is
         # the new highest default branch head revision.
         self.collect_data.default_branches_db[self.cvs_path] = revision
