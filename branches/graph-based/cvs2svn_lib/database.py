@@ -173,6 +173,6 @@ class PDatabase(AbstractDatabase):
     return cPickle.loads(self.db[key])
 
   def __setitem__(self, key, value):
-    self.db[key] = cPickle.dumps(value)
+    self.db[key] = cPickle.dumps(value, True)
 
 
