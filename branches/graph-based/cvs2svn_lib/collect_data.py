@@ -205,6 +205,12 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
                        % (warning_prefix, self.fname, branch_number,
                           self.branch_names[branch_number], name))
 
+  def set_tag_name(self, revision, name):
+    """Record that tag NAME refers to the specified REVISION."""
+
+    self.taglist.setdefault(revision, []).append(name)
+    self.collect_data.symbol_db.register_tag_creation(name)
+
   def rev_to_branch_name(self, revision):
     """Return the name of the branch on which REVISION lies.
     REVISION is a non-branch revision number with an even number of,
@@ -231,20 +237,22 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         Log().write(Log.WARN, "   symbol '%s' transformed to '%s'"
                     % (name, newname))
         name = newname
+
     if self.defined_symbols.has_key(name):
       err = "%s: Multiple definitions of the symbol '%s' in '%s'" \
                 % (error_prefix, name, self.fname)
       sys.stderr.write(err + "\n")
       self.collect_data.fatal_errors.append(err)
+
     self.defined_symbols[name] = None
+
     m = cvs_branch_tag.match(revision)
     if m:
       self.set_branch_name(m.group(1) + m.group(2), name)
     elif rcs_branch_tag.match(revision):
       self.set_branch_name(revision, name)
     else:
-      self.taglist.setdefault(revision, []).append(name)
-      self.collect_data.symbol_db.register_tag_creation(name)
+      self.set_tag_name(revision, name)
 
   def define_revision(self, revision, timestamp, author, state,
                       branches, next):
