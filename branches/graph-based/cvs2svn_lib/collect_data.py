@@ -43,9 +43,9 @@ import symbol_database
 import cvs2svn_rcsparse
 
 
-trunk_rev = re.compile('^[0-9]+\\.[0-9]+$')
-cvs_branch_tag = re.compile('^((?:[0-9]+\\.[0-9]+\\.)+)0\\.([0-9]+)$')
-rcs_branch_tag = re.compile('^(?:[0-9]+\\.[0-9]+\\.)+[0-9]+$')
+trunk_rev = re.compile(r'^[0-9]+\.[0-9]+$')
+cvs_branch_tag = re.compile(r'^((?:[0-9]+\.[0-9]+\.)+)0\.([0-9]+)$')
+rcs_branch_tag = re.compile(r'^(?:[0-9]+\.[0-9]+\.)+[0-9]+$')
 
 # This really only matches standard '1.1.1.*'-style vendor revisions.
 # One could conceivably have a file whose default branch is 1.1.3 or
@@ -54,7 +54,7 @@ rcs_branch_tag = re.compile('^(?:[0-9]+\\.[0-9]+\\.)+[0-9]+$')
 # is the only time this regexp gets used), we'd have no basis for
 # assuming that the non-standard vendor branch had ever been the
 # default branch anyway, so we don't want this to match them anyway.
-vendor_revision = re.compile('^(1\\.1\\.1)\\.([0-9])+$')
+vendor_revision = re.compile(r'^(1\.1\.1)\.([0-9])+$')
 
 
 class FileDataCollector(cvs2svn_rcsparse.Sink):
