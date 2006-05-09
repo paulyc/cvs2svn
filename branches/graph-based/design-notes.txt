@@ -53,7 +53,7 @@ revision was committed "before" a lower one (rare, but it can happen
 when there was clock skew on the repository machine).  If there are
 any, it "resyncs" the timestamp of the earlier rev to be just before
 that of the later rev, but saves the original timestamp in
-self.rev_data[blah][2], so we can later write out a record to the
+self._rev_data[blah][2], so we can later write out a record to the
 resync file indicating that an adjustment was made (this makes it
 possible to catch the other parts of this commit and resync them
 similarly, more details below).

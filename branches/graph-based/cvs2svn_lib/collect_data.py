@@ -99,7 +99,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     self._c_revs = {}
 
     # revision -> [timestamp, author, old-timestamp]
-    self.rev_data = { }
+    self._rev_data = { }
 
     # Maps revision number (key) to the revision number of the
     # previous revision along this line of development.
@@ -254,7 +254,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     self.rev_state[revision] = state
 
     # store the rev_data as a list in case we have to jigger the timestamp
-    self.rev_data[revision] = [int(timestamp), author, None]
+    self._rev_data[revision] = [int(timestamp), author, None]
 
     # When on trunk, the RCS 'next' revision number points to what
     # humans might consider to be the 'previous' revision number.  For
@@ -353,8 +353,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         if not prev:
           # no previous revision exists (i.e. the initial revision)
           continue
-        t_c = self.rev_data[current][0]
-        t_p = self.rev_data[prev][0]
+        t_c = self._rev_data[current][0]
+        t_p = self._rev_data[prev][0]
         if t_p >= t_c:
           # the previous revision occurred later than the current revision.
           # shove the previous revision back in time (and any before it that
@@ -371,8 +371,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
           # don't resync revision R *after* any revisions that have R
           # as a previous revision.
           while t_p >= t_c:
-            self.rev_data[prev][0] = t_c - 1 # new timestamp
-            self.rev_data[prev][2] = t_p # old timestamp
+            self._rev_data[prev][0] = t_c - 1 # new timestamp
+            self._rev_data[prev][2] = t_p # old timestamp
             delta = t_c - 1 - t_p
             msg =  "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
                   % (self.cvs_path, prev, time.ctime(t_p), delta)
@@ -387,8 +387,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
             prev = self.prev_rev[current]
             if not prev:
               break
-            t_c -= 1 # self.rev_data[current][0]
-            t_p = self.rev_data[prev][0]
+            t_c -= 1 # self._rev_data[current][0]
+            t_p = self._rev_data[prev][0]
 
           # break from the for-loop
           break
@@ -399,7 +399,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
   def set_revision_info(self, revision, log, text):
     """This is a callback method declared in Sink."""
 
-    timestamp, author, old_ts = self.rev_data[revision]
+    timestamp, author, old_ts = self._rev_data[revision]
     digest = sha.new(log + '\0' + author).hexdigest()
     if old_ts:
       # the timestamp on this revision was changed. log it for later
@@ -424,10 +424,10 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     # Get the timestamps of the previous and next revisions
     prev_rev = self.prev_rev[revision]
-    prev_timestamp, ign, ign = self.rev_data.get(prev_rev, [0, None, None])
+    prev_timestamp, ign, ign = self._rev_data.get(prev_rev, [0, None, None])
 
     next_rev = self.next_rev.get(revision)
-    next_timestamp, ign, ign = self.rev_data.get(next_rev, [0, None, None])
+    next_timestamp, ign, ign = self._rev_data.get(next_rev, [0, None, None])
 
     # How to tell if a CVSRevision is an add, a change, or a deletion:
     #
