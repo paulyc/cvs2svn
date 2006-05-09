@@ -187,23 +187,24 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
   def set_branch_name(self, branch_number, name):
     """Record that BRANCH_NUMBER is the branch number for branch NAME,
-    and that NAME sprouts from BRANCH_NUMBER.
-    BRANCH_NUMBER is an RCS branch number with an odd number of components,
-    for example '1.7.2' (never '1.7.0.2')."""
+    and derive and record the revision from which NAME sprouts.
+    BRANCH_NUMBER is an RCS branch number with an odd number of
+    components, for example '1.7.2' (never '1.7.0.2')."""
 
-    if not self.branch_names.has_key(branch_number):
-      self.branch_names[branch_number] = name
-      # The branchlist is keyed on the revision number from which the
-      # branch sprouts, so strip off the odd final component.
-      sprout_rev = branch_number[:branch_number.rfind(".")]
-      self.branchlist.setdefault(sprout_rev, []).append(name)
-      self.collect_data.symbol_db.register_branch_creation(name)
-    else:
+    if self.branch_names.has_key(branch_number):
       sys.stderr.write("%s: in '%s':\n"
                        "   branch '%s' already has name '%s',\n"
                        "   cannot also have name '%s', ignoring the latter\n"
                        % (warning_prefix, self.fname, branch_number,
                           self.branch_names[branch_number], name))
+      return
+
+    self.branch_names[branch_number] = name
+    # The branchlist is keyed on the revision number from which the
+    # branch sprouts, so strip off the odd final component.
+    sprout_rev = branch_number[:branch_number.rfind(".")]
+    self.branchlist.setdefault(sprout_rev, []).append(name)
+    self.collect_data.symbol_db.register_branch_creation(name)
 
   def set_tag_name(self, revision, name):
     """Record that tag NAME refers to the specified REVISION."""
