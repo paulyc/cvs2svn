@@ -130,64 +130,33 @@ class CVSRevision(CVSRevisionID):
 
   svn_path = property(get_svn_path)
 
-  def __getstate__(self):
-    """Return the contents of this instance, encoded as a string.
+  def __getinitargs__(self):
+    """Return the contents of this instance, for pickling.
 
-    The format of the output (a single string, without newlines, with
-    particular field order) is important for the correct behavior of
-    the various REVS_DATAFILEs."""
+    The presence of this method improves the space efficiency of
+    pickling CVSRevision instances."""
 
-    def timestamp_to_string(timestamp):
-      if timestamp:
-        return '%08lx' % timestamp
-      else:
-        return '*'
-
-    def id_to_string(rev):
-      if rev is None:
-        return '*'
-      else:
-        return '%x' % (rev.id,)
-
-    def rev_to_string(rev):
-      if rev is None:
-        return '*'
-      else:
-        return rev.rev
-
-    def bool_to_string(v):
-      return { True : 'T', False : 'F' }[bool(v)]
-
-    def list_to_string(l):
-      """Format list L as a count of elements followed by the elements
-      themselves, each separated by spaces."""
-
-      return ' '.join([str(len(l))] + l)
-
-    return ('%s %s %s %s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s'
-            % (timestamp_to_string(self.timestamp),
-               self.digest,
-               id_to_string(self),
-               id_to_string(self.prev_rev),
-               id_to_string(self.next_rev),
-               timestamp_to_string(self.prev_timestamp),
-               timestamp_to_string(self.next_timestamp),
-               self.op,
-               rev_to_string(self.prev_rev),
-               self.rev,
-               rev_to_string(self.next_rev),
-               bool_to_string(self.file_in_attic),
-               bool_to_string(self.file_executable),
-               self.file_size,
-               bool_to_string(self.deltatext_exists),
-               self.mode or '*',
-               self.branch_name or '*',
-               list_to_string(self.tags),
-               list_to_string(self.branches),
-               self.fname,))
-
-  def __setstate__(self, state):
-    self.__init__(*_parse_cvs_revision_state(state))
+    return (
+        self.id,
+        self.timestamp,
+        self.digest,
+        self.prev_rev and self.prev_rev.id,
+        self.next_rev and self.next_rev.id,
+        self.prev_timestamp,
+        self.next_timestamp,
+        self.op,
+        self.prev_rev and self.prev_rev.rev,
+        self.rev,
+        self.next_rev and self.next_rev.rev,
+        self.file_in_attic,
+        self.file_executable,
+        self.file_size,
+        self.deltatext_exists,
+        self.fname,
+        self.mode,
+        self.branch_name,
+        self.tags,
+        self.branches,)
 
   def opens_symbolic_name(self, name):
     """Return True iff this CVSRevision is the opening CVSRevision for
@@ -238,86 +207,5 @@ class CVSRevision(CVSRevisionID):
     """Return the last path component of self.fname, minus the ',v'."""
 
     return os.path.split(self.fname)[-1][:-2]
-
-
-def _parse_cvs_revision_state(line):
-  """Parse LINE into the constructor arguments needed to create a
-  CVSRevision object and return the arguments as a tuple.  LINE is a
-  string in the format of a line from a revs file.  It should *not*
-  include a trailing newline."""
-
-  def string_to_timestamp(s):
-    if s == '*':
-      return 0
-    else:
-      return int(s, 16)
-
-  def string_to_rev(s):
-    if s == '*':
-      return None
-    else:
-      return s
-
-  def string_to_id(s):
-    if s == '*':
-      return None
-    else:
-      return long(s, 16)
-
-  def string_to_bool(s):
-    return { 'T' : True, 'F' : False }[s]
-
-  (timestamp, digest, id,
-   prev_id, next_id, prev_timestamp, next_timestamp,
-   op, prev_rev, rev, next_rev, file_in_attic,
-   file_executable, file_size, deltatext_exists,
-   mode, branch_name, numtags, remainder) = line.split(' ', 18)
-
-  # Patch up items which are not simple strings:
-  timestamp = string_to_timestamp(timestamp)
-  id = string_to_id(id)
-  prev_id = string_to_id(prev_id)
-  next_id = string_to_id(next_id)
-  prev_timestamp = string_to_timestamp(prev_timestamp)
-  next_timestamp = string_to_timestamp(next_timestamp)
-
-  prev_rev = string_to_rev(prev_rev)
-  next_rev = string_to_rev(next_rev)
-
-  file_in_attic = string_to_bool(file_in_attic)
-  file_executable = string_to_bool(file_executable)
-
-  file_size = int(file_size)
-
-  deltatext_exists = string_to_bool(deltatext_exists)
-
-  if mode == "*":
-    mode = None
-
-  if branch_name == "*":
-    branch_name = None
-
-  numtags = int(numtags)
-  tags_and_numbranches_and_remainder = remainder.split(' ', numtags + 1)
-  tags = tags_and_numbranches_and_remainder[:-2]
-  numbranches = int(tags_and_numbranches_and_remainder[-2])
-  remainder = tags_and_numbranches_and_remainder[-1]
-  branches_and_fname = remainder.split(' ', numbranches)
-  branches = branches_and_fname[:-1]
-  fname = branches_and_fname[-1]
-
-  return (id, timestamp, digest,
-          prev_id, next_id, prev_timestamp, next_timestamp,
-          op, prev_rev, rev, next_rev,
-          file_in_attic, file_executable, file_size, deltatext_exists,
-          fname, mode, branch_name, tags, branches,)
-
-
-def parse_cvs_revision(line):
-  """Parse LINE into a CVSRevision instance and return the instance.
-  LINE is a string in the format of a line from a revs file.  It
-  should *not* include a trailing newline."""
-
-  return CVSRevision(*_parse_cvs_revision_state(line))
 
 
