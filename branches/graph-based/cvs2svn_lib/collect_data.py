@@ -176,9 +176,13 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     return id.id
 
   def set_principal_branch(self, branch):
+    """This is a callback method declared in Sink."""
+
     self.default_branch = branch
 
   def set_expansion(self, mode):
+    """This is a callback method declared in Sink."""
+
     self.mode = mode
 
   def set_branch_name(self, branch_number, name):
@@ -217,7 +221,9 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     REVISION is an unprocessed revision number from the RCS file's
     header, for example: '1.7', '1.7.0.2', or '1.1.1' or '1.1.1.1'.
     This function will determine what kind of symbolic name it is by
-    inspection, and record it in the right places."""
+    inspection, and record it in the right places.
+
+    This is a callback method declared in Sink."""
 
     for (pattern, replacement) in Ctx().symbol_transforms:
       newname = pattern.sub(replacement, name)
@@ -242,6 +248,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
   def define_revision(self, revision, timestamp, author, state,
                       branches, next):
+    """This is a callback method declared in Sink."""
+
     # Record the state of our revision for later calculations
     self.rev_state[revision] = state
 
@@ -325,7 +333,9 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
       self.collect_data.symbol_db.register_branch_commit(branch_name)
 
   def tree_completed(self):
-    """The revision tree has been parsed.  Analyze it for consistency."""
+    """The revision tree has been parsed.  Analyze it for consistency.
+
+    This is a callback method declared in Sink."""
 
     # Our algorithm depends upon the timestamps on the revisions occuring
     # monotonically over time.  That is, we want to see rev 1.34 occur in
@@ -387,6 +397,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         return
 
   def set_revision_info(self, revision, log, text):
+    """This is a callback method declared in Sink."""
+
     timestamp, author, old_ts = self.rev_data[revision]
     digest = sha.new(log + '\0' + author).hexdigest()
     if old_ts:
@@ -499,8 +511,11 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
       self.collect_data.metadata_db[digest] = (author, log)
 
   def parse_completed(self):
-    # Walk through all branches and tags and register them with
-    # their parent branch in the symbol database.
+    """Walk through all branches and tags and register them with their
+    parent branch in the symbol database.
+
+    This is a callback method declared in Sink."""
+
     for revision, symbols in self.taglist.items() + self.branchlist.items():
       for symbol in symbols:
         name = self.rev_to_branch_name(revision)
