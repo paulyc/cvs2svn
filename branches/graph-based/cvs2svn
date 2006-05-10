@@ -815,6 +815,44 @@ class ResyncRevsPass(Pass):
 
     return True
 
+  def _read_resync(self):
+    """Read RESYNC_DATAFILE and return its contents.
+
+    Return a map that maps a digest to a sequence of lists which
+    specify a lower and upper time bound for matching up the commit:
+
+    { digest -> [[old_time_lower, old_time_upper, new_time], ...] }
+
+    Each triplet is a list because we will dynamically expand the
+    lower/upper bound as we find commits that fall into a particular
+    msg and time range.  We keep a sequence of these for each digest
+    because a number of checkins with the same log message (e.g. an
+    empty log message) could need to be remapped.  The lists of
+    triplets are sorted by old_time_lower.
+
+    Note that we assume that we can hold the entire resync file in
+    memory.  Really large repositories with wacky timestamps could
+    bust this assumption.  Should that ever happen, then it is
+    possible to split the resync file into pieces and make multiple
+    passes, using each piece."""
+
+    DELTA = config.COMMIT_THRESHOLD/2
+
+    resync = { }
+    for line in fileinput.FileInput(
+            artifact_manager.get_temp_file(config.RESYNC_DATAFILE)):
+      [t1, digest, t2] = line.strip().split()
+      t1 = int(t1, 16)
+      digest = line[9:DIGEST_END_IDX]
+      t2 = int(t2, 16)
+      resync.setdefault(digest, []).append([t1 - DELTA, t1 + DELTA, t2])
+
+    # For each digest, sort the resync items:
+    for val in resync.values():
+      val.sort()
+
+    return resync
+
   def run(self):
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
@@ -857,45 +895,7 @@ class ResyncRevsPass(Pass):
     # scan for any other files which may have had the same log message and
     # occurred at "the same time" and change their timestamps, too.
 
-    # read the resync data file
-    def read_resync(fname):
-      """Read the .resync file into memory."""
-
-      ### note that we assume that we can hold the entire resync file in
-      ### memory. really large repositories with whacky timestamps could
-      ### bust this assumption. should that ever happen, then it is possible
-      ### to split the resync file into pieces and make multiple passes,
-      ### using each piece.
-
-      #
-      # A digest maps to a sequence of lists which specify a lower and upper
-      # time bound for matching up the commit.  We keep a sequence of these
-      # because a number of checkins with the same log message (e.g. an empty
-      # log message) could need to be remapped.  We also make them a list
-      # because we will dynamically expand the lower/upper bound as we find
-      # commits that fall into a particular msg and time range.
-      #
-      # resync == digest -> [[old_time_lower, old_time_upper, new_time], ...]
-      #
-      resync = { }
-
-      for line in fileinput.FileInput(fname):
-        t1 = int(line[:8], 16)
-        digest = line[9:DIGEST_END_IDX]
-        t2 = int(line[DIGEST_END_IDX+1:], 16)
-        t1_l = t1 - config.COMMIT_THRESHOLD/2
-        t1_u = t1 + config.COMMIT_THRESHOLD/2
-        resync.setdefault(digest, []).append([t1_l, t1_u, t2])
-
-      # For each digest, sort the resync items in it in increasing order,
-      # based on the lower time bound.
-      for val in resync.values():
-        val.sort()
-
-      return resync
-
-    resync = read_resync(
-        artifact_manager.get_temp_file(config.RESYNC_DATAFILE))
+    resync = self._read_resync()
 
     output = open(artifact_manager.get_temp_file(config.CLEAN_REVS_DATAFILE),
                   'w')
