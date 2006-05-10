@@ -786,6 +786,35 @@ class ResyncRevsPass(Pass):
 
     return True
 
+  def _check_symbol_mismatches(self, symbol_db, excludes):
+    """Check for symbols that are defined as both tags and branches.
+
+    Exclude the symbols in EXCLUDES.  If any are found, output error
+    messages describing the problems.  Return True iff any problems
+    are found."""
+
+    mismatches = symbol_db.find_mismatches(excludes)
+
+    def is_not_forced(mismatch):
+      name = mismatch[0]
+      return not (name in Ctx().forced_tags or name in Ctx().forced_branches)
+
+    mismatches = filter(is_not_forced, mismatches)
+    if not mismatches:
+      # No problems found:
+      return False
+
+    sys.stderr.write(error_prefix + ": The following symbols are tags "
+                     "in some files and branches in others.\nUse "
+                     "--force-tag, --force-branch and/or --exclude to "
+                     "resolve the symbols.\n")
+    for name, tag_count, branch_count, commit_count in mismatches:
+      sys.stderr.write("    '%s' is a tag in %d files, a branch in "
+                       "%d files and has commits in %d files.\n"
+                       % (name, tag_count, branch_count, commit_count))
+
+    return True
+
   def run(self):
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
@@ -807,20 +836,7 @@ class ResyncRevsPass(Pass):
       error_detected = True
 
     Log().write(Log.QUIET, "Checking for tag/branch mismatches...")
-    mismatches = symbol_db.find_mismatches(excludes)
-    def is_not_forced(mismatch):
-      name = mismatch[0]
-      return not (name in Ctx().forced_tags or name in Ctx().forced_branches)
-    mismatches = filter(is_not_forced, mismatches)
-    if mismatches:
-      sys.stderr.write(error_prefix + ": The following symbols are tags "
-                       "in some files and branches in others.\nUse "
-                       "--force-tag, --force-branch and/or --exclude to "
-                       "resolve the symbols.\n")
-      for name, tag_count, branch_count, commit_count in mismatches:
-        sys.stderr.write("    '%s' is a tag in %d files, a branch in "
-                         "%d files and has commits in %d files.\n"
-                         % (name, tag_count, branch_count, commit_count))
+    if self._check_symbol_mismatches(symbol_db, excludes):
       error_detected = True
 
     # Bail out now if we found errors
