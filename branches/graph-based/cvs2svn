@@ -739,6 +739,27 @@ class ResyncRevsPass(Pass):
     self._register_temp_file_needed(config.CVS_REVS_DB)
     self._register_temp_file_needed(config.ALL_REVS_DATAFILE)
 
+  def _check_blocked_excludes(self, symbol_db, excludes):
+    """Check whether any excluded branches are blocked.
+
+    A branch can be blocked because it has another, non-excluded
+    symbol that depends on it.  If any blocked excludes are found,
+    output error messages describing the situation.  Return True if
+    any errors were found."""
+
+    blocked_excludes = symbol_db.find_blocked_excludes(excludes)
+    if not blocked_excludes:
+      return False
+
+    for branch, blockers in blocked_excludes.items():
+      sys.stderr.write(error_prefix + ": The branch '%s' cannot be "
+                       "excluded because the following symbols depend "
+                       "on it:\n" % (branch))
+      for blocker in blockers:
+        sys.stderr.write("    '%s'\n" % (blocker))
+    sys.stderr.write("\n")
+    return True
+
   def run(self):
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
@@ -752,16 +773,8 @@ class ResyncRevsPass(Pass):
     error_detected = 0
 
     Log().write(Log.QUIET, "Checking for blocked exclusions...")
-    blocked_excludes = symbol_db.find_blocked_excludes(excludes)
-    if blocked_excludes:
-      for branch, blockers in blocked_excludes.items():
-        sys.stderr.write(error_prefix + ": The branch '%s' cannot be "
-                         "excluded because the following symbols depend "
-                         "on it:\n" % (branch))
-        for blocker in blockers:
-          sys.stderr.write("    '%s'\n" % (blocker))
-      sys.stderr.write("\n")
-      error_detected = 1
+    if self._check_blocked_excludes(symbol_db, excludes):
+      error_detected = True
 
     Log().write(Log.QUIET, "Checking for forced tags with commits...")
     invalid_forced_tags = [ ]
