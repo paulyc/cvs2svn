@@ -770,7 +770,7 @@ class ResyncRevsPass(Pass):
     # Convert the list of regexps to a list of strings
     excludes = symbol_db.find_excluded_symbols(Ctx().excludes)
 
-    error_detected = True
+    error_detected = False
 
     Log().write(Log.QUIET, "Checking for blocked exclusions...")
     if self._check_blocked_excludes(symbol_db, excludes):
