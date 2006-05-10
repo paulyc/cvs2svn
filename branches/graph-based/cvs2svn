@@ -963,13 +963,14 @@ class ResyncRevsPass(Pass):
           new_timestamp = record[2]
           # If the new timestamp is earlier than that of our previous revision
           if new_timestamp < c_rev.prev_timestamp:
-            desc = ("%s: Attempt to set timestamp of revision %s on file %s"
-                    + " to time %s, which is before previous the time of"
-                    + " revision %s (%s):")
-            Log().write(Log.WARN, desc % (warning_prefix, c_rev.rev,
-                                          c_rev.cvs_path, new_timestamp,
-                                          c_rev.prev_rev.rev,
-                                          c_rev.prev_timestamp))
+            Log().write(
+                Log.WARN,
+                "%s: Attempt to set timestamp of revision %s on file %s"
+                " to time %s, which is before previous the time of"
+                " revision %s (%s):"
+                % (warning_prefix, c_rev.rev, c_rev.cvs_path, new_timestamp,
+                   c_rev.prev_rev.rev, c_rev.prev_timestamp))
+
             # If resyncing our rev to c_rev.prev_timestamp + 1 will place
             # the timestamp of c_rev within COMMIT_THRESHOLD of the
             # attempted resync time, then sync back to c_rev.prev_timestamp
@@ -986,17 +987,18 @@ class ResyncRevsPass(Pass):
 
           # If the new timestamp is later than that of our next revision
           elif c_rev.next_timestamp and new_timestamp > c_rev.next_timestamp:
-            desc = ("%s: Attempt to set timestamp of revision %s on file %s"
-                    + " to time %s, which is after time of next"
-                    + " revision %s (%s):")
-            Log().write(Log.WARN, desc % (warning_prefix, c_rev.rev,
-                                          c_rev.cvs_path, new_timestamp,
-                                          c_rev.next_rev.rev,
-                                          c_rev.next_timestamp))
+            Log().write(
+                Log.WARN,
+                "%s: Attempt to set timestamp of revision %s on file %s"
+                " to time %s, which is after time of next"
+                " revision %s (%s):"
+                % (warning_prefix, c_rev.rev, c_rev.cvs_path, new_timestamp,
+                   c_rev.next_rev.rev, c_rev.next_timestamp))
+
             # If resyncing our rev to c_rev.next_timestamp - 1 will place
             # the timestamp of c_rev within COMMIT_THRESHOLD of the
-            # attempted resync time, then sync forward to c_rev.next_timestamp
-            # - 1...
+            # attempted resync time, then sync forward to
+            # c_rev.next_timestamp - 1...
             if (new_timestamp - (c_rev.next_timestamp - 1)) \
                    < config.COMMIT_THRESHOLD:
               new_timestamp = c_rev.next_timestamp - 1
