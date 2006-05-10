@@ -770,7 +770,7 @@ class ResyncRevsPass(Pass):
     # Convert the list of regexps to a list of strings
     excludes = symbol_db.find_excluded_symbols(Ctx().excludes)
 
-    error_detected = 0
+    error_detected = True
 
     Log().write(Log.QUIET, "Checking for blocked exclusions...")
     if self._check_blocked_excludes(symbol_db, excludes):
@@ -789,7 +789,7 @@ class ResyncRevsPass(Pass):
       for tag in invalid_forced_tags:
         sys.stderr.write("    '%s'\n" % (tag))
       sys.stderr.write("\n")
-      error_detected = 1
+      error_detected = True
 
     Log().write(Log.QUIET, "Checking for tag/branch mismatches...")
     mismatches = symbol_db.find_mismatches(excludes)
@@ -806,7 +806,7 @@ class ResyncRevsPass(Pass):
         sys.stderr.write("    '%s' is a tag in %d files, a branch in "
                          "%d files and has commits in %d files.\n"
                          % (name, tag_count, branch_count, commit_count))
-      error_detected = 1
+      error_detected = True
 
     # Bail out now if we found errors
     if error_detected:
