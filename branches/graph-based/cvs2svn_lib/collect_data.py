@@ -34,6 +34,7 @@ import config
 from log import Log
 from context import Ctx
 from artifact_manager import artifact_manager
+from cvs_file import CVSFile
 import cvs_revision
 from stats_keeper import StatsKeeper
 from key_generator import KeyGenerator
@@ -76,26 +77,33 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     (dirname, basename,) = os.path.split(filename)
     if dirname.endswith(OS_SEP_PLUS_ATTIC):
       # drop the 'Attic' portion from the filename for the canonical name:
-      self._canonical_filename = os.path.join(
+      canonical_filename = os.path.join(
           dirname[:-len(OS_SEP_PLUS_ATTIC)], basename)
-      self.file_in_attic = True
+      file_in_attic = True
     else:
-      self._canonical_filename = filename
-      self.file_in_attic = False
+      canonical_filename = filename
+      file_in_attic = False
 
     # We calculate and save some file metadata here, where we can do
     # it only once per file, instead of waiting until later where we
     # would have to do the same calculations once per CVS *revision*.
 
-    self.cvs_path = Ctx().cvs_repository.get_cvs_path(
-        self._canonical_filename)
+    cvs_path = Ctx().cvs_repository.get_cvs_path(canonical_filename)
 
     file_stat = os.stat(filename)
     # The size of our file in bytes
-    self._file_size = file_stat[stat.ST_SIZE]
+    file_size = file_stat[stat.ST_SIZE]
 
     # Whether or not the executable bit is set.
-    self._file_executable = bool(file_stat[0] & stat.S_IXUSR)
+    file_executable = bool(file_stat[0] & stat.S_IXUSR)
+
+    # mode is not known yet, so we temporarily set it to None.
+    self.cvs_file = CVSFile(
+        self.collect_data.file_key_generator.gen_id(),
+        filename, canonical_filename, cvs_path,
+        file_in_attic, file_executable, file_size,
+        None
+        )
 
     # A map { revision -> c_rev } of the CVSRevision instances for all
     # revisions related to this file.  Note that items in this map
@@ -141,9 +149,6 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # like 'Release_1_0_dev'.
     self.branch_names = { }
 
-    # RCS flags (used for keyword expansion).
-    self._mode = None
-
     # Hash mapping revision numbers, like '1.7', to lists of names
     # indicating which branches sprout from that revision, like
     # ['Release_1_0_dev', 'experimental_driver', ...].
@@ -178,7 +183,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     if id is None:
       id = cvs_revision.CVSRevisionID(
           self.collect_data.key_generator.gen_id(),
-          self._canonical_filename, revision)
+          self.cvs_file.canonical_filename, revision)
       self._c_revs[revision] = id
     return id.id
 
@@ -190,7 +195,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
   def set_expansion(self, mode):
     """This is a callback method declared in Sink."""
 
-    self._mode = mode
+    self.cvs_file.mode = mode
 
   def set_branch_name(self, branch_number, name):
     """Record that BRANCH_NUMBER is the branch number for branch NAME,
@@ -203,7 +208,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
                        "   branch '%s' already has name '%s',\n"
                        "   cannot also have name '%s', ignoring the latter\n"
                        % (warning_prefix,
-                          self._canonical_filename, branch_number,
+                          self.cvs_file.filename, branch_number,
                           self.branch_names[branch_number], name))
       return
 
@@ -248,7 +253,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     if self.defined_symbols.has_key(name):
       err = "%s: Multiple definitions of the symbol '%s' in '%s'" \
-                % (error_prefix, name, self._canonical_filename)
+                % (error_prefix, name, self.cvs_file.filename)
       sys.stderr.write(err + "\n")
       self.collect_data.fatal_errors.append(err)
 
@@ -317,7 +322,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
           and default_branch_root.count('.') == revision.count('.')):
         # This revision is on the default branch, so record that it is
         # the new highest default branch head revision.
-        self.collect_data.default_branches_db[self.cvs_path] = revision
+        self.collect_data.default_branches_db[self.cvs_file.cvs_path] = \
+            revision
     else:
       # No default branch, so make an educated guess.
       if revision == '1.2':
@@ -331,7 +337,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
           # We're looking at a vendor revision, and it wasn't
           # committed after this file lost its default branch, so bump
           # the maximum trunk vendor revision in the permanent record.
-          self.collect_data.default_branches_db[self.cvs_path] = revision
+          self.collect_data.default_branches_db[self.cvs_file.cvs_path] = \
+              revision
 
     if not trunk_rev.match(revision):
       # Check for unlabeled branches, record them.  We tried to collect
@@ -391,13 +398,13 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
             self._rev_data[prev][2] = t_p # old timestamp
             delta = t_c - 1 - t_p
             msg =  "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
-                  % (self.cvs_path, prev, time.ctime(t_p), delta)
+                  % (self.cvs_file.cvs_path, prev, time.ctime(t_p), delta)
             Log().verbose(msg)
             if (delta > config.COMMIT_THRESHOLD
                 or delta < (config.COMMIT_THRESHOLD * -1)):
               Log().warn(
                   "%s: Significant timestamp change for '%s' (%d seconds)"
-                  % (warning_prefix, self.cvs_path, delta))
+                  % (warning_prefix, self.cvs_file.cvs_path, delta))
             current = prev
             prev = self.prev_rev[current]
             if not prev:
@@ -433,7 +440,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # for 1.1 in imports is "Initial revision\n" with no period.
     if revision == '1.1' and log != 'Initial revision\n':
       try:
-        del self.collect_data.default_branches_db[self.cvs_path]
+        del self.collect_data.default_branches_db[self.cvs_file.cvs_path]
       except KeyError:
         pass
 
@@ -515,8 +522,9 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         self._get_rev_id(prev_rev), self._get_rev_id(next_rev),
         prev_timestamp, next_timestamp, op,
         prev_rev, revision, next_rev,
-        self.file_in_attic, self._file_executable, self._file_size,
-        bool(text), self._canonical_filename, self._mode,
+        self.cvs_file.in_attic, self.cvs_file.executable,
+        self.cvs_file.file_size,
+        bool(text), self.cvs_file.canonical_filename, self.cvs_file.mode,
         self.rev_to_branch_name(revision),
         self.taglist.get(revision, []), self.branchlist.get(revision, []))
     self._c_revs[revision] = c_rev
@@ -568,6 +576,9 @@ class CollectData:
 
     # 1 if we've collected data for at least one file, None otherwise.
     self.found_valid_file = None
+
+    # Key generator to generate unique keys for each CVSFile object:
+    self.file_key_generator = KeyGenerator()
 
     # Key generator to generate unique keys for each CVSRevision object:
     self.key_generator = KeyGenerator()

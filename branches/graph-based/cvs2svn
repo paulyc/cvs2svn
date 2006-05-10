@@ -673,7 +673,7 @@ class CollectRevsPass(Pass):
 
         fdc = collect_data.FileDataCollector(cd, pathname)
 
-        if not fdc.file_in_attic:
+        if not fdc.cvs_file.in_attic:
           # If this file also exists in the attic, it's a fatal error
           attic_path = os.path.join(dirname, 'Attic', fname)
           if os.path.exists(attic_path):
