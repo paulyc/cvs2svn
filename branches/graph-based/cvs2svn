@@ -914,23 +914,22 @@ class ResyncRevsPass(Pass):
       if excludes.has_key(c_rev.branch_name):
         continue
 
-      new_prev_ts = None
       if c_rev.prev_rev is not None:
         new_prev_ts = tweaked_timestamps_db.get(
             c_rev.prev_rev.unique_key(), None)
-      if new_prev_ts:
-        c_rev.prev_timestamp = new_prev_ts
+        if new_prev_ts:
+          c_rev.prev_timestamp = new_prev_ts
 
-      new_next_ts = None
       if c_rev.next_rev is not None:
         new_next_ts = tweaked_timestamps_db.get(
           c_rev.next_rev.unique_key(), None)
-      if new_next_ts:
-        c_rev.next_timestamp = new_next_ts
+        if new_next_ts:
+          c_rev.next_timestamp = new_next_ts
 
       # Remove all references to excluded tags and branches
       def not_excluded(symbol, excludes=excludes):
         return not excludes.has_key(symbol)
+
       c_rev.branches = filter(not_excluded, c_rev.branches)
       c_rev.tags = filter(not_excluded, c_rev.tags)
 
