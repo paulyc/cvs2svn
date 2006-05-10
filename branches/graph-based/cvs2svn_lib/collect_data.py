@@ -76,17 +76,17 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     (dirname, basename,) = os.path.split(filename)
     if dirname.endswith(OS_SEP_PLUS_ATTIC):
       # drop the 'Attic' portion from the filename for the canonical name:
-      self.fname = os.path.join(dirname[:-len(OS_SEP_PLUS_ATTIC)], basename)
+      self._fname = os.path.join(dirname[:-len(OS_SEP_PLUS_ATTIC)], basename)
       self.file_in_attic = True
     else:
-      self.fname = filename
+      self._fname = filename
       self.file_in_attic = False
 
     # We calculate and save some file metadata here, where we can do
     # it only once per file, instead of waiting until later where we
     # would have to do the same calculations once per CVS *revision*.
 
-    self.cvs_path = Ctx().cvs_repository.get_cvs_path(self.fname)
+    self.cvs_path = Ctx().cvs_repository.get_cvs_path(self._fname)
 
     file_stat = os.stat(filename)
     # The size of our file in bytes
@@ -175,7 +175,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     id = self._c_revs.get(revision)
     if id is None:
       id = cvs_revision.CVSRevisionID(
-          self.collect_data.key_generator.gen_id(), self.fname, revision)
+          self.collect_data.key_generator.gen_id(), self._fname, revision)
       self._c_revs[revision] = id
     return id.id
 
@@ -199,7 +199,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
       sys.stderr.write("%s: in '%s':\n"
                        "   branch '%s' already has name '%s',\n"
                        "   cannot also have name '%s', ignoring the latter\n"
-                       % (warning_prefix, self.fname, branch_number,
+                       % (warning_prefix, self._fname, branch_number,
                           self.branch_names[branch_number], name))
       return
 
@@ -244,7 +244,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     if self.defined_symbols.has_key(name):
       err = "%s: Multiple definitions of the symbol '%s' in '%s'" \
-                % (error_prefix, name, self.fname)
+                % (error_prefix, name, self._fname)
       sys.stderr.write(err + "\n")
       self.collect_data.fatal_errors.append(err)
 
@@ -512,7 +512,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         prev_timestamp, next_timestamp, op,
         prev_rev, revision, next_rev,
         self.file_in_attic, self.file_executable, self.file_size,
-        bool(text), self.fname, self.mode,
+        bool(text), self._fname, self.mode,
         self.rev_to_branch_name(revision),
         self.taglist.get(revision, []), self.branchlist.get(revision, []))
     self._c_revs[revision] = c_rev
