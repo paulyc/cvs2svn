@@ -173,8 +173,7 @@ class AutoPropsPropertySetter(SVNPropertySetter):
         for (key,value) in pattern.propdict.items():
           if propdict.has_key(key):
             if propdict[key] != value:
-              Log().write(
-                  Log.WARN,
+              Log().warn(
                   "Contradictory values set for property '%s' for file %s."
                   % (key, path,))
           else:
@@ -187,8 +186,7 @@ class AutoPropsPropertySetter(SVNPropertySetter):
     for (k,v) in propdict.items():
       if s_item.svn_props.has_key(k):
         if s_item.svn_props[k] != v:
-          Log().write(
-              Log.WARN,
+          Log().warn(
               "Property '%s' already set to %r for file %s; "
               "auto-props value (%r) ignored."
               % (k, s_item.svn_props[k], s_item.c_rev.cvs_path, v,))

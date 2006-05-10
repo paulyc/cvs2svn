@@ -426,19 +426,19 @@ class CVSCommit:
     self.done_symbols = done_symbols
     seconds = self.t_max - self.t_min + 1
 
-    Log().write(Log.VERBOSE, '-' * 60)
-    Log().write(Log.VERBOSE, 'CVS Revision grouping:')
+    Log().verbose('-' * 60)
+    Log().verbose('CVS Revision grouping:')
     if seconds == 1:
-      Log().write(Log.VERBOSE, '  Start time: %s (duration: 1 second)'
-                  % time.ctime(self.t_max))
+      Log().verbose('  Start time: %s (duration: 1 second)'
+                    % time.ctime(self.t_max))
     else:
-      Log().write(Log.VERBOSE, '  Start time: %s' % time.ctime(self.t_min))
-      Log().write(Log.VERBOSE, '  End time:   %s (duration: %d seconds)'
-                  % (time.ctime(self.t_max), seconds))
+      Log().verbose('  Start time: %s' % time.ctime(self.t_min))
+      Log().verbose('  End time:   %s (duration: %d seconds)'
+                    % (time.ctime(self.t_max), seconds))
 
     if seconds > config.COMMIT_THRESHOLD + 1:
-      Log().write(Log.WARN, '%s: grouping spans more than %d seconds'
-                  % (warning_prefix, config.COMMIT_THRESHOLD))
+      Log().warn('%s: grouping spans more than %d seconds'
+                 % (warning_prefix, config.COMMIT_THRESHOLD))
 
     if Ctx().trunk_only: # Only do the primary commit if we're trunk-only
       self._commit()
@@ -660,7 +660,7 @@ class CollectRevsPass(Pass):
 
   def run(self):
     OS_SEP_PLUS_ATTIC = os.sep + 'Attic'
-    Log().write(Log.QUIET, "Examining all CVS ',v' files...")
+    Log().quiet("Examining all CVS ',v' files...")
     cd = collect_data.CollectData()
 
     def visit_file(baton, dirname, files):
@@ -684,7 +684,7 @@ class CollectRevsPass(Pass):
             sys.stderr.write(err + '\n')
             cd.fatal_errors.append(err)
           fdc = collect_data.FileDataCollector(cd, pathname, pathname)
-        Log().write(Log.NORMAL, pathname)
+        Log().normal(pathname)
         try:
           cvs2svn_rcsparse.parse(open(pathname, 'rb'), fdc)
         except (cvs2svn_rcsparse.common.RCSParseError, ValueError,
@@ -694,12 +694,11 @@ class CollectRevsPass(Pass):
           sys.stderr.write(err + '\n')
           cd.fatal_errors.append(err)
         except:
-          Log().write(Log.WARN,
-                      "Exception occurred while parsing %s" % pathname)
+          Log().warn("Exception occurred while parsing %s" % pathname)
           raise
 
     os.path.walk(Ctx().project.project_cvs_repos_path, visit_file, cd)
-    Log().write(Log.VERBOSE, 'Processed', cd.num_files, 'files')
+    Log().verbose('Processed', cd.num_files, 'files')
 
     cd.write_symbol_db()
 
@@ -721,7 +720,7 @@ class CollectRevsPass(Pass):
 
     StatsKeeper().reset_c_rev_info()
     StatsKeeper().archive()
-    Log().write(Log.QUIET, "Done")
+    Log().quiet("Done")
 
 
 class ResyncRevsPass(Pass):
@@ -865,15 +864,15 @@ class ResyncRevsPass(Pass):
 
     error_detected = False
 
-    Log().write(Log.QUIET, "Checking for blocked exclusions...")
+    Log().quiet("Checking for blocked exclusions...")
     if self._check_blocked_excludes(symbol_db, excludes):
       error_detected = True
 
-    Log().write(Log.QUIET, "Checking for forced tags with commits...")
+    Log().quiet("Checking for forced tags with commits...")
     if self._check_invalid_forced_tags(symbol_db, excludes):
       error_detected = True
 
-    Log().write(Log.QUIET, "Checking for tag/branch mismatches...")
+    Log().quiet("Checking for tag/branch mismatches...")
     if self._check_symbol_mismatches(symbol_db, excludes):
       error_detected = True
 
@@ -889,7 +888,7 @@ class ResyncRevsPass(Pass):
     for tag in Ctx().forced_tags:
       tags_db.add(tag)
 
-    Log().write(Log.QUIET, "Re-synchronizing CVS revision timestamps...")
+    Log().quiet("Re-synchronizing CVS revision timestamps...")
 
     # We may have recorded some changes in revisions' timestamp.  We need to
     # scan for any other files which may have had the same log message and
@@ -963,8 +962,7 @@ class ResyncRevsPass(Pass):
           new_timestamp = record[2]
           # If the new timestamp is earlier than that of our previous revision
           if new_timestamp < c_rev.prev_timestamp:
-            Log().write(
-                Log.WARN,
+            Log().warn(
                 "%s: Attempt to set timestamp of revision %s on file %s"
                 " to time %s, which is before previous the time of"
                 " revision %s (%s):"
@@ -978,17 +976,15 @@ class ResyncRevsPass(Pass):
             if ((c_rev.prev_timestamp + 1) - new_timestamp) \
                    < config.COMMIT_THRESHOLD:
               new_timestamp = c_rev.prev_timestamp + 1
-              Log().write(Log.WARN, "%s: Time set to %s" % (warning_prefix,
-                                                            new_timestamp))
+              Log().warn("%s: Time set to %s"
+                         % (warning_prefix, new_timestamp))
             else:
-              Log().write(Log.WARN, "%s: Timestamp left untouched" %
-                          warning_prefix)
+              Log().warn("%s: Timestamp left untouched" % warning_prefix)
               continue
 
           # If the new timestamp is later than that of our next revision
           elif c_rev.next_timestamp and new_timestamp > c_rev.next_timestamp:
-            Log().write(
-                Log.WARN,
+            Log().warn(
                 "%s: Attempt to set timestamp of revision %s on file %s"
                 " to time %s, which is after time of next"
                 " revision %s (%s):"
@@ -1002,11 +998,10 @@ class ResyncRevsPass(Pass):
             if (new_timestamp - (c_rev.next_timestamp - 1)) \
                    < config.COMMIT_THRESHOLD:
               new_timestamp = c_rev.next_timestamp - 1
-              Log().write(Log.WARN, "%s: Time set to %s" % (warning_prefix,
-                                                            new_timestamp))
+              Log().warn("%s: Time set to %s"
+                         % (warning_prefix, new_timestamp))
             else:
-              Log().write(Log.WARN, "%s: Timestamp left untouched" %
-                          warning_prefix)
+              Log().warn("%s: Timestamp left untouched" % warning_prefix)
               continue
 
           # Fix for Issue #71: Avoid resyncing two consecutive revisions
@@ -1025,7 +1020,7 @@ class ResyncRevsPass(Pass):
           msg = "PASS2 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
                 % (c_rev.cvs_path, c_rev.rev, time.ctime(c_rev.timestamp),
                    new_timestamp - c_rev.timestamp)
-          Log().write(Log.VERBOSE, msg)
+          Log().verbose(msg)
 
           c_rev.timestamp = new_timestamp
           tweaked_timestamps_db[c_rev.unique_key()] = new_timestamp
@@ -1036,7 +1031,7 @@ class ResyncRevsPass(Pass):
       output.write('%08lx %s %x\n'
                    % (c_rev.timestamp, c_rev.digest, c_rev.id,))
       cvs_revs_db.log_revision(c_rev)
-    Log().write(Log.QUIET, "Done")
+    Log().quiet("Done")
 
 
 class SortRevsPass(Pass):
@@ -1047,10 +1042,10 @@ class SortRevsPass(Pass):
     self._register_temp_file_needed(config.CLEAN_REVS_DATAFILE)
 
   def run(self):
-    Log().write(Log.QUIET, "Sorting CVS revisions...")
+    Log().quiet("Sorting CVS revisions...")
     sort_file(artifact_manager.get_temp_file(config.CLEAN_REVS_DATAFILE),
               artifact_manager.get_temp_file(config.SORTED_REVS_DATAFILE))
-    Log().write(Log.QUIET, "Done")
+    Log().quiet("Done")
 
 
 class CreateDatabasesPass(Pass):
@@ -1068,14 +1063,12 @@ class CreateDatabasesPass(Pass):
     LastSymbolicNameDatabase, which contains the last CVSRevision
     that is a source for each tag or branch."""
 
-    Log().write(Log.QUIET,
-        "Copying CVS revision data from flat file to database...")
+    Log().quiet("Copying CVS revision data from flat file to database...")
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_WRITE)
     if not Ctx().trunk_only:
-      Log().write(Log.QUIET,
-          "Finding last CVS revisions for all symbolic names...")
+      Log().quiet("Finding last CVS revisions for all symbolic names...")
       last_sym_name_db = LastSymbolicNameDatabase()
     else:
       # This is to avoid testing Ctx().trunk_only every time around the loop
@@ -1096,7 +1089,7 @@ class CreateDatabasesPass(Pass):
 
     last_sym_name_db.create_database()
     StatsKeeper().archive()
-    Log().write(Log.QUIET, "Done")
+    Log().quiet("Done")
 
 
 class AggregateRevsPass(Pass):
@@ -1121,7 +1114,7 @@ class AggregateRevsPass(Pass):
     self._register_temp_file_needed(config.SORTED_REVS_DATAFILE)
 
   def run(self):
-    Log().write(Log.QUIET, "Mapping CVS revisions to Subversion commits...")
+    Log().quiet("Mapping CVS revisions to Subversion commits...")
 
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
@@ -1137,7 +1130,7 @@ class AggregateRevsPass(Pass):
 
     StatsKeeper().set_svn_rev_count(SVNCommit.revnum - 1)
     StatsKeeper().archive()
-    Log().write(Log.QUIET, "Done")
+    Log().quiet("Done")
 
 
 class SortSymbolsPass(Pass):
@@ -1149,14 +1142,14 @@ class SortSymbolsPass(Pass):
     self._register_temp_file_needed(config.SYMBOL_OPENINGS_CLOSINGS)
 
   def run(self):
-    Log().write(Log.QUIET, "Sorting symbolic name source revisions...")
+    Log().quiet("Sorting symbolic name source revisions...")
 
     if not Ctx().trunk_only:
       sort_file(
           artifact_manager.get_temp_file(config.SYMBOL_OPENINGS_CLOSINGS),
           artifact_manager.get_temp_file(
               config.SYMBOL_OPENINGS_CLOSINGS_SORTED))
-    Log().write(Log.QUIET, "Done")
+    Log().quiet("Done")
 
 
 class IndexSymbolsPass(Pass):
@@ -1168,7 +1161,7 @@ class IndexSymbolsPass(Pass):
       self._register_temp_file_needed(config.SYMBOL_OPENINGS_CLOSINGS_SORTED)
 
   def run(self):
-    Log().write(Log.QUIET, "Determining offsets for all symbolic names...")
+    Log().quiet("Determining offsets for all symbolic names...")
 
     def generate_offsets_for_symbolings():
       """This function iterates through all the lines in
@@ -1197,13 +1190,13 @@ class IndexSymbolsPass(Pass):
           break
         sym, svn_revnum, cvs_rev_key = line.split(" ", 2)
         if sym != old_sym:
-          Log().write(Log.VERBOSE, " ", sym)
+          Log().verbose(" ", sym)
           old_sym = sym
           offsets_db[sym] = fpos
 
     if not Ctx().trunk_only:
       generate_offsets_for_symbolings()
-    Log().write(Log.QUIET, "Done.")
+    Log().quiet("Done.")
 
 
 class OutputPass(Pass):
@@ -1229,11 +1222,11 @@ class OutputPass(Pass):
     if Ctx().target:
       if not Ctx().dry_run:
         repos.add_delegate(RepositoryDelegate())
-      Log().write(Log.QUIET, "Starting Subversion Repository.")
+      Log().quiet("Starting Subversion Repository.")
     else:
       if not Ctx().dry_run:
         repos.add_delegate(DumpfileDelegate())
-      Log().write(Log.QUIET, "Starting Subversion Dumpfile.")
+      Log().quiet("Starting Subversion Dumpfile.")
 
     repos.add_delegate(StdoutDelegate(StatsKeeper().svn_rev_count()))
 

@@ -235,8 +235,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     for (pattern, replacement) in Ctx().symbol_transforms:
       newname = pattern.sub(replacement, name)
       if newname != name:
-        Log().write(Log.WARN, "   symbol '%s' transformed to '%s'"
-                    % (name, newname))
+        Log().warn("   symbol '%s' transformed to '%s'" % (name, newname))
         name = newname
 
     if self.defined_symbols.has_key(name):
@@ -385,13 +384,12 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
             delta = t_c - 1 - t_p
             msg =  "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
                   % (self.cvs_path, prev, time.ctime(t_p), delta)
-            Log().write(Log.VERBOSE, msg)
+            Log().verbose(msg)
             if (delta > config.COMMIT_THRESHOLD
                 or delta < (config.COMMIT_THRESHOLD * -1)):
-              Log().write(Log.WARN,
-                          "%s: Significant timestamp change for '%s' "
-                          "(%d seconds)"
-                          % (warning_prefix, self.cvs_path, delta))
+              Log().warn(
+                  "%s: Significant timestamp change for '%s' (%d seconds)"
+                  % (warning_prefix, self.cvs_path, delta))
             current = prev
             prev = self.prev_rev[current]
             if not prev:

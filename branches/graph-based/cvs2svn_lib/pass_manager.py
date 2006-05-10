@@ -111,8 +111,7 @@ class PassManager:
     times[index_start] = time.time()
     for i in range(index_start, index_end):
       the_pass = self.passes[i]
-      Log().write(Log.QUIET,
-                  '----- pass %d (%s) -----' % (i + 1, the_pass.name,))
+      Log().quiet('----- pass %d (%s) -----' % (i + 1, the_pass.name,))
       the_pass.run()
       times[i + 1] = time.time()
       StatsKeeper().log_duration_for_pass(times[i + 1] - times[i], i + 1)
@@ -131,8 +130,8 @@ class PassManager:
     for the_pass in self.passes[index_end:]:
       artifact_manager.pass_deferred(the_pass)
 
-    Log().write(Log.QUIET, StatsKeeper())
-    Log().write(Log.NORMAL, StatsKeeper().timings())
+    Log().quiet(StatsKeeper())
+    Log().normal(StatsKeeper().timings())
 
     if index_end == self.num_passes:
       # The overall conversion is done:

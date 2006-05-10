@@ -133,7 +133,7 @@ class PersistenceManager:
           'Write operation attempted on read-only PersistenceManager'
 
     for c_rev in cvs_revs:
-      Log().write(Log.VERBOSE, " ", c_rev.unique_key())
+      Log().verbose(" ", c_rev.unique_key())
 
     self.svn2cvs_db[str(svn_revnum)] = ([x.unique_key() for x in cvs_revs],
                                         motivating_revnum, name, date)
