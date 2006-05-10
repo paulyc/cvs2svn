@@ -659,7 +659,6 @@ class CollectRevsPass(Pass):
     self._register_temp_file(config.ALL_REVS_DATAFILE)
 
   def run(self):
-    OS_SEP_PLUS_ATTIC = os.sep + 'Attic'
     Log().quiet("Examining all CVS ',v' files...")
     cd = collect_data.CollectData()
 
@@ -671,11 +670,10 @@ class CollectRevsPass(Pass):
           continue
         cd.found_valid_file = 1
         pathname = os.path.join(dirname, fname)
-        if dirname.endswith(OS_SEP_PLUS_ATTIC):
-          # drop the 'Attic' portion from the pathname for the canonical name.
-          fdc = collect_data.FileDataCollector(
-              cd, os.path.join(dirname[:-6], fname), pathname)
-        else:
+
+        fdc = collect_data.FileDataCollector(cd, pathname)
+
+        if not fdc.file_in_attic:
           # If this file also exists in the attic, it's a fatal error
           attic_path = os.path.join(dirname, 'Attic', fname)
           if os.path.exists(attic_path):
@@ -683,7 +681,7 @@ class CollectRevsPass(Pass):
                   % (error_prefix, pathname, attic_path)
             sys.stderr.write(err + '\n')
             cd.fatal_errors.append(err)
-          fdc = collect_data.FileDataCollector(cd, pathname, pathname)
+
         Log().normal(pathname)
         try:
           cvs2svn_rcsparse.parse(open(pathname, 'rb'), fdc)

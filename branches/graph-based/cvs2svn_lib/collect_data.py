@@ -43,6 +43,8 @@ import symbol_database
 import cvs2svn_rcsparse
 
 
+OS_SEP_PLUS_ATTIC = os.sep + 'Attic'
+
 trunk_rev = re.compile(r'^[0-9]+\.[0-9]+$')
 cvs_branch_tag = re.compile(r'^((?:[0-9]+\.[0-9]+\.)+)0\.([0-9]+)$')
 rcs_branch_tag = re.compile(r'^(?:[0-9]+\.[0-9]+\.)+[0-9]+$')
@@ -63,26 +65,28 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
   Any collected data that need to be remembered are stored into the
   referenced CollectData instance."""
 
-  def __init__(self, collect_data, canonical_name, filename):
+  def __init__(self, collect_data, filename):
     """Create an object that is prepared to receive data for FILENAME.
-    FILENAME is the absolute filesystem path to the file in question,
-    and CANONICAL_NAME is FILENAME with the 'Attic' component removed
-    (if the file is indeed in the Attic).  COLLECT_DATA is used to
-    store the information collected about the file."""
+    FILENAME is the absolute filesystem path to the file in question.
+    COLLECT_DATA is used to store the information collected about the
+    file."""
 
     self.collect_data = collect_data
 
-    self.fname = canonical_name
+    (dirname, basename,) = os.path.split(filename)
+    if dirname.endswith(OS_SEP_PLUS_ATTIC):
+      # drop the 'Attic' portion from the filename for the canonical name:
+      self.fname = os.path.join(dirname[:-len(OS_SEP_PLUS_ATTIC)], basename)
+      self.file_in_attic = True
+    else:
+      self.fname = filename
+      self.file_in_attic = False
 
     # We calculate and save some file metadata here, where we can do
     # it only once per file, instead of waiting until later where we
     # would have to do the same calculations once per CVS *revision*.
 
     self.cvs_path = Ctx().cvs_repository.get_cvs_path(self.fname)
-
-    # If the paths are not the same, then that means that the
-    # canonical_name has had the 'Attic' component stripped out.
-    self.file_in_attic = (canonical_name != filename)
 
     file_stat = os.stat(filename)
     # The size of our file in bytes
