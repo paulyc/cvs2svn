@@ -911,7 +911,7 @@ class ResyncRevsPass(Pass):
       c_rev = cvs_revs_db.get_revision(c_rev_key)
 
       # Skip this entire revision if it's on an excluded branch
-      if excludes.has_key(c_rev.branch_name):
+      if c_rev.branch_name in excludes:
         continue
 
       if c_rev.prev_rev is not None:
@@ -926,12 +926,12 @@ class ResyncRevsPass(Pass):
         if new_next_ts:
           c_rev.next_timestamp = new_next_ts
 
-      # Remove all references to excluded tags and branches
-      def not_excluded(symbol, excludes=excludes):
-        return not excludes.has_key(symbol)
-
-      c_rev.branches = filter(not_excluded, c_rev.branches)
-      c_rev.tags = filter(not_excluded, c_rev.tags)
+      c_rev.branches = [ branch
+                         for branch in c_rev.branches
+                         if branch not in excludes ]
+      c_rev.tags = [ tag
+                     for tag in c_rev.tags
+                     if tag not in excludes ]
 
       # Convert all branches that are forced to be tags
       for forced_tag in Ctx().forced_tags:
