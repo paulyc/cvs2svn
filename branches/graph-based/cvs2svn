@@ -760,6 +760,32 @@ class ResyncRevsPass(Pass):
     sys.stderr.write("\n")
     return True
 
+  def _check_invalid_forced_tags(self, symbol_db, excludes):
+    """Check for commits on any branches that were forced to be tags.
+
+    In that case, they can't be converted into tags.  If any invalid
+    forced tags are found, output error messages describing the
+    problems.  Return True iff any errors are found."""
+
+    invalid_forced_tags = [ ]
+    for forced_tag in Ctx().forced_tags:
+      if excludes.has_key(forced_tag):
+        continue
+      if symbol_db.branch_has_commit(forced_tag):
+        invalid_forced_tags.append(forced_tag)
+
+    if not invalid_forced_tags:
+      # No problems found:
+      return False
+
+    sys.stderr.write(error_prefix + ": The following branches cannot be "
+                     "forced to be tags because they have commits:\n")
+    for tag in invalid_forced_tags:
+      sys.stderr.write("    '%s'\n" % (tag))
+    sys.stderr.write("\n")
+
+    return True
+
   def run(self):
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
@@ -777,18 +803,7 @@ class ResyncRevsPass(Pass):
       error_detected = True
 
     Log().write(Log.QUIET, "Checking for forced tags with commits...")
-    invalid_forced_tags = [ ]
-    for forced_tag in Ctx().forced_tags:
-      if excludes.has_key(forced_tag):
-        continue
-      if symbol_db.branch_has_commit(forced_tag):
-        invalid_forced_tags.append(forced_tag)
-    if invalid_forced_tags:
-      sys.stderr.write(error_prefix + ": The following branches cannot be "
-                       "forced to be tags because they have commits:\n")
-      for tag in invalid_forced_tags:
-        sys.stderr.write("    '%s'\n" % (tag))
-      sys.stderr.write("\n")
+    if self._check_invalid_forced_tags(symbol_db, excludes):
       error_detected = True
 
     Log().write(Log.QUIET, "Checking for tag/branch mismatches...")
