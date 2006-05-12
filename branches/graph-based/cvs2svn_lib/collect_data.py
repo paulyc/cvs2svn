@@ -585,7 +585,7 @@ class CollectData:
     persistent id and store it now.  The way we tell whether it was
     already stored is by whether it already has a non-None id."""
 
-    if cvs_file.id is not None:
+    if cvs_file.id is None:
       cvs_file.id = self.file_key_generator.gen_id()
       self._cvs_revs_db.log_file(cvs_file)
 

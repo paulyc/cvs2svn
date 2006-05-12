@@ -40,7 +40,7 @@ class CVSRevisionDatabase:
   def log_file(self, cvs_file):
     """Add CVS_FILE, a CVSFile instance, to the database."""
 
-    self.cvs_files_db[cvs_file.id] = cvs_file
+    self.cvs_files_db['%x' % cvs_file.id] = cvs_file
 
   def log_revision(self, c_rev):
     """Add C_REV, a CVSRevision, to the database."""
@@ -50,7 +50,7 @@ class CVSRevisionDatabase:
   def get_file(self, id):
     """Return the CVSFile with the specified ID."""
 
-    return self.cvs_files_db[id]
+    return self.cvs_files_db['%x' % id]
 
   def get_revision(self, unique_key):
     """Return the CVSRevision stored under UNIQUE_KEY."""
