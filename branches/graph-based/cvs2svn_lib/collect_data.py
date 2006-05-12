@@ -99,10 +99,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     # mode is not known yet, so we temporarily set it to None.
     self.cvs_file = CVSFile(
-        self.collect_data.file_key_generator.gen_id(),
-        filename, canonical_filename, cvs_path,
-        file_in_attic, file_executable, file_size,
-        None
+        None, filename, canonical_filename, cvs_path,
+        file_in_attic, file_executable, file_size, None
         )
 
     # A map { revision -> c_rev } of the CVSRevision instances for all
@@ -577,12 +575,22 @@ class CollectData:
     self.found_valid_file = None
 
     # Key generator to generate unique keys for each CVSFile object:
-    self.file_key_generator = KeyGenerator()
+    self.file_key_generator = KeyGenerator(1)
 
     # Key generator to generate unique keys for each CVSRevision object:
     self.key_generator = KeyGenerator()
 
+  def _store_cvs_file(self, cvs_file):
+    """If CVS_FILE is not already stored to _cvs_revs_db, give it a
+    persistent id and store it now.  The way we tell whether it was
+    already stored is by whether it already has a non-None id."""
+
+    if cvs_file.id is not None:
+      cvs_file.id = self.file_key_generator.gen_id()
+      self._cvs_revs_db.log_file(cvs_file)
+
   def add_cvs_revision(self, c_rev):
+    self._store_cvs_file(c_rev.cvs_file)
     self._cvs_revs_db.log_revision(c_rev)
     self._all_revs.write('%s\n' % (c_rev.unique_key(),))
     StatsKeeper().record_c_rev(c_rev)
