@@ -72,6 +72,9 @@ SYMBOL_OFFSETS_DB = 'cvs2svn-symbolic-name-offsets.db'
 # list at least B in its list.
 SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
 
+# Maps CVSFile.id to instance.
+CVS_FILES_DB = 'cvs2svn-cvs-files.db'
+
 # Maps CVSRevision.unique_key() to corresponding line in s-revs.
 ###PERF Or, we could map to an offset into s-revs, instead of dup'ing
 ### the s-revs data in this database.

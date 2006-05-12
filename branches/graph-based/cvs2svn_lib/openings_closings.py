@@ -119,6 +119,8 @@ class SymbolingsLogger:
 
     # Use this to get the c_rev of our rev_key
     cvs_revs_db = CVSRevisionDatabase(
+        artifact_manager.get_temp_file(config.CVS_FILES_DB),
+        database.DB_OPEN_READ,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_READ)
 

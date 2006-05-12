@@ -56,6 +56,8 @@ class PersistenceManager:
         artifact_manager.get_temp_file(config.METADATA_DB),
         database.DB_OPEN_READ)
     self.cvs_revisions = CVSRevisionDatabase(
+        artifact_manager.get_temp_file(config.CVS_FILES_DB),
+        database.DB_OPEN_READ,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_READ)
     ###PERF kff Elsewhere there are comments about sucking the tags db

@@ -555,6 +555,8 @@ class CollectData:
 
   def __init__(self):
     self._cvs_revs_db = CVSRevisionDatabase(
+        artifact_manager.get_temp_file(config.CVS_FILES_DB),
+        database.DB_OPEN_NEW,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_NEW)
     self._all_revs = open(

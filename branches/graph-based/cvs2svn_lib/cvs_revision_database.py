@@ -29,16 +29,28 @@ class CVSRevisionDatabase:
   """A Database to store CVSRevision objects and retrieve them by their
   unique_key()."""
 
-  def __init__(self, filename, mode):
+  def __init__(self, cvs_files_filename, cvs_files_mode,
+               cvs_revs_filename, cvs_revs_mode):
     """Initialize an instance, opening database in MODE (like the MODE
     argument to Database or anydbm.open())."""
 
-    self.cvs_revs_db = database.PDatabase(filename, mode)
+    self.cvs_files_db = database.PDatabase(cvs_files_filename, cvs_files_mode)
+    self.cvs_revs_db = database.PDatabase(cvs_revs_filename, cvs_revs_mode)
+
+  def log_file(self, cvs_file):
+    """Add CVS_FILE, a CVSFile instance, to the database."""
+
+    self.cvs_files_db[cvs_file.id] = cvs_file
 
   def log_revision(self, c_rev):
     """Add C_REV, a CVSRevision, to the database."""
 
     self.cvs_revs_db[c_rev.unique_key()] = c_rev
+
+  def get_file(self, id):
+    """Return the CVSFile with the specified ID."""
+
+    return self.cvs_files_db[id]
 
   def get_revision(self, unique_key):
     """Return the CVSRevision stored under UNIQUE_KEY."""
