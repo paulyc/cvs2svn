@@ -45,7 +45,9 @@ class CVSRevisionDatabase:
   def log_revision(self, c_rev):
     """Add C_REV, a CVSRevision, to the database."""
 
-    self.cvs_revs_db[c_rev.unique_key()] = c_rev
+    args = list(c_rev.__getinitargs__())
+    args[1] = args[1].id
+    self.cvs_revs_db[c_rev.unique_key()] = args
 
   def get_file(self, id):
     """Return the CVSFile with the specified ID."""
@@ -55,6 +57,8 @@ class CVSRevisionDatabase:
   def get_revision(self, unique_key):
     """Return the CVSRevision stored under UNIQUE_KEY."""
 
-    return self.cvs_revs_db[unique_key]
+    args = self.cvs_revs_db[unique_key]
+    args[1] = self.get_file(args[1])
+    return cvs_revision.CVSRevision(*args)
 
 
