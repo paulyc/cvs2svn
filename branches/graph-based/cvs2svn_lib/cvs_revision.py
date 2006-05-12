@@ -26,10 +26,15 @@ import common
 class CVSRevisionID(object):
   """An object that identifies a CVS revision of a file."""
 
-  def __init__(self, id, fname, rev):
+  def __init__(self, id, cvs_file, rev):
     self.id = id
-    self.fname = fname
+    self.cvs_file = cvs_file
     self.rev = rev
+
+  def get_fname(self):
+    return self.cvs_file.canonical_filename
+
+  fname = property(get_fname)
 
   def unique_key(self):
     """Return a string that can be used as a unique key for this revision."""
@@ -61,18 +66,16 @@ class CVSRevision(CVSRevisionID):
   ctx = None
 
   def __init__(self,
-               id,
+               id, cvs_file,
                timestamp, digest,
-               prev_id, next_id,
-               prev_timestamp, next_timestamp,
-               op, prev_rev, rev, next_rev,
-               file_in_attic, file_executable,
-               file_size, deltatext_exists,
-               fname, mode, branch_name, tags, branches):
+               prev_id, next_id, prev_timestamp, next_timestamp,
+               op, prev_rev, rev, next_rev, deltatext_exists,
+               branch_name, tags, branches):
     """Initialize a new CVSRevision object.
 
     Arguments:
        ID              -->  (string) unique ID for this revision.
+       CVS_FILE        -->  (CVSFile) CVSFile affected by this revision
        TIMESTAMP       -->  (int) date stamp for this cvs revision
        DIGEST          -->  (string) digest of author+logmsg
        PREV_ID         -->  (int) id of the previous cvs revision (or None)
@@ -85,12 +88,7 @@ class CVSRevision(CVSRevisionID):
        REV             -->  (string) this CVS rev, e.g., '1.3'
        NEXT_REV        -->  (string or None) next CVS rev, e.g., '1.4'.
                             This is converted to a CVSRevisionID instance.
-       FILE_IN_ATTIC   -->  (bool) true iff RCS file is in Attic
-       FILE_EXECUTABLE -->  (bool) true iff RCS file has exec bit set.
-       FILE_SIZE       -->  (int) size of the RCS file
        DELTATEXT_EXISTS-->  (bool) true iff non-empty deltatext
-       FNAME           -->  (string) relative path of file in CVS repos
-       MODE            -->  (string or None) 'kkv', 'kb', etc.
        BRANCH_NAME     -->  (string or None) branch on which this rev occurred
        TAGS            -->  (list of strings) all tags on this revision
        BRANCHES        -->  (list of strings) all branches rooted in this rev
@@ -98,23 +96,41 @@ class CVSRevision(CVSRevisionID):
     WARNING: Due to the resync process in pass2, prev_timestamp or
     next_timestamp may be incorrect in the c-revs or s-revs files."""
 
-    CVSRevisionID.__init__(self, id, fname, rev)
+    CVSRevisionID.__init__(self, id, cvs_file, rev)
 
     self.timestamp = timestamp
     self.digest = digest
     self.prev_timestamp = prev_timestamp
     self.next_timestamp = next_timestamp
     self.op = op
-    self.prev_rev = prev_rev and CVSRevisionID(prev_id, self.fname, prev_rev)
-    self.next_rev = next_rev and CVSRevisionID(next_id, self.fname, next_rev)
-    self.file_in_attic = file_in_attic
-    self.file_executable = file_executable
-    self.file_size = file_size
+    self.prev_rev = prev_rev \
+                    and CVSRevisionID(prev_id, self.cvs_file, prev_rev)
+    self.next_rev = next_rev \
+                    and CVSRevisionID(next_id, self.cvs_file, next_rev)
     self.deltatext_exists = deltatext_exists
-    self.mode = mode
     self.branch_name = branch_name
     self.tags = tags
     self.branches = branches
+
+  def get_file_in_attic(self):
+    return self.cvs_file.in_attic
+
+  file_in_attic = property(get_file_in_attic)
+
+  def get_file_executable(self):
+    return self.cvs_file.executable
+
+  file_executable = property(get_file_executable)
+
+  def get_file_size(self):
+    return self.cvs_file.file_size
+
+  file_size = property(get_file_size)
+
+  def get_mode(self):
+    return self.cvs_file.mode
+
+  mode = property(get_mode)
 
   def get_cvs_path(self):
     return self.ctx.cvs_repository.get_cvs_path(self.fname)
@@ -137,9 +153,8 @@ class CVSRevision(CVSRevisionID):
     pickling CVSRevision instances."""
 
     return (
-        self.id,
-        self.timestamp,
-        self.digest,
+        self.id, self.cvs_file,
+        self.timestamp, self.digest,
         self.prev_rev and self.prev_rev.id,
         self.next_rev and self.next_rev.id,
         self.prev_timestamp,
@@ -148,12 +163,7 @@ class CVSRevision(CVSRevisionID):
         self.prev_rev and self.prev_rev.rev,
         self.rev,
         self.next_rev and self.next_rev.rev,
-        self.file_in_attic,
-        self.file_executable,
-        self.file_size,
         self.deltatext_exists,
-        self.fname,
-        self.mode,
         self.branch_name,
         self.tags,
         self.branches,)

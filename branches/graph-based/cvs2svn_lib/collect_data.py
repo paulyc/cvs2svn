@@ -182,8 +182,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     id = self._c_revs.get(revision)
     if id is None:
       id = cvs_revision.CVSRevisionID(
-          self.collect_data.key_generator.gen_id(),
-          self.cvs_file.canonical_filename, revision)
+          self.collect_data.key_generator.gen_id(), self.cvs_file, revision)
       self._c_revs[revision] = id
     return id.id
 
@@ -517,14 +516,12 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
         cur_num = self.prev_rev.get(cur_num, None)
 
     c_rev = cvs_revision.CVSRevision(
-        self._get_rev_id(revision),
+        self._get_rev_id(revision), self.cvs_file,
         timestamp, digest,
         self._get_rev_id(prev_rev), self._get_rev_id(next_rev),
         prev_timestamp, next_timestamp, op,
         prev_rev, revision, next_rev,
-        self.cvs_file.in_attic, self.cvs_file.executable,
-        self.cvs_file.file_size,
-        bool(text), self.cvs_file.canonical_filename, self.cvs_file.mode,
+        bool(text),
         self.rev_to_branch_name(revision),
         self.taglist.get(revision, []), self.branchlist.get(revision, []))
     self._c_revs[revision] = c_rev
