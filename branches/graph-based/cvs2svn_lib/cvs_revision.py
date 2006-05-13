@@ -36,6 +36,11 @@ class CVSRevisionID(object):
 
   fname = property(get_fname)
 
+  def get_cvs_path(self):
+    return self.cvs_file.cvs_path
+
+  cvs_path = property(get_cvs_path)
+
   def get_file_in_attic(self):
     return self.cvs_file.in_attic
 
@@ -131,11 +136,6 @@ class CVSRevision(CVSRevisionID):
     self.branch_name = branch_name
     self.tags = tags
     self.branches = branches
-
-  def get_cvs_path(self):
-    return self.ctx.cvs_repository.get_cvs_path(self.fname)
-
-  cvs_path = property(get_cvs_path)
 
   def get_svn_path(self):
     if self.branch_name:
