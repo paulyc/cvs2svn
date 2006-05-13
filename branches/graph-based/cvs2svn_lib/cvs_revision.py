@@ -36,6 +36,26 @@ class CVSRevisionID(object):
 
   fname = property(get_fname)
 
+  def get_file_in_attic(self):
+    return self.cvs_file.in_attic
+
+  file_in_attic = property(get_file_in_attic)
+
+  def get_file_executable(self):
+    return self.cvs_file.executable
+
+  file_executable = property(get_file_executable)
+
+  def get_file_size(self):
+    return self.cvs_file.file_size
+
+  file_size = property(get_file_size)
+
+  def get_mode(self):
+    return self.cvs_file.mode
+
+  mode = property(get_mode)
+
   def unique_key(self):
     """Return a string that can be used as a unique key for this revision."""
 
@@ -111,26 +131,6 @@ class CVSRevision(CVSRevisionID):
     self.branch_name = branch_name
     self.tags = tags
     self.branches = branches
-
-  def get_file_in_attic(self):
-    return self.cvs_file.in_attic
-
-  file_in_attic = property(get_file_in_attic)
-
-  def get_file_executable(self):
-    return self.cvs_file.executable
-
-  file_executable = property(get_file_executable)
-
-  def get_file_size(self):
-    return self.cvs_file.file_size
-
-  file_size = property(get_file_size)
-
-  def get_mode(self):
-    return self.cvs_file.mode
-
-  mode = property(get_mode)
 
   def get_cvs_path(self):
     return self.ctx.cvs_repository.get_cvs_path(self.fname)
