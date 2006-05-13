@@ -264,21 +264,17 @@ class CVSCommit:
   def add_dependency(self, dep):
     self.deps[dep] = None
 
-  def dependencies_resolved(self):
-    """Return True iff all dependencies of this commit have been resolved."""
-    for dep in self.deps:
+  def resolve_dependencies(self):
+    """Resolve any dependencies that are no longer pending.
+    Return True iff this commit has no remaining unresolved dependencies."""
+
+    for dep in self.deps.keys():
       if dep.pending:
         return False
+      self.t_max = max(self.t_max, dep.t_max + 1)
+      del self.deps[dep]
 
     return True
-
-  def clear_dependencies(self):
-    """Update self.t_max to be later than all dependencies, then clear
-    the dependency list."""
-
-    for dep in self.deps:
-      self.t_max = max(self.t_max, dep.t_max + 1)
-    self.deps.clear()
 
   def _pre_commit(self):
     """Generates any SVNCommits that must exist before the main commit."""
@@ -586,8 +582,7 @@ class CVSRevisionAggregator:
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
-        if cvs_commit.dependencies_resolved():
-          cvs_commit.clear_dependencies()
+        if cvs_commit.resolve_dependencies():
           for r in cvs_commit.revisions():
             del self.pending_revs[r.unique_key()]
           self.expired_queue.remove(cvs_commit)
