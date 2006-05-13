@@ -39,12 +39,11 @@ class CVSRevisionDatabase:
   def log_revision(self, c_rev):
     """Add C_REV, a CVSRevision, to the database."""
 
-    self.cvs_revs_db[c_rev.unique_key()] = str(c_rev)
+    self.cvs_revs_db[c_rev.unique_key()] = c_rev.__getstate__()
 
   def get_revision(self, unique_key):
     """Return the CVSRevision stored under UNIQUE_KEY."""
 
-    return cvs_revision.parse_cvs_revision(Ctx(),
-                                           self.cvs_revs_db[unique_key])
+    return cvs_revision.parse_cvs_revision(self.cvs_revs_db[unique_key])
 
 
