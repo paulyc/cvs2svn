@@ -203,16 +203,6 @@ class CVSRevision(CVSRevisionID):
 
     return False
 
-  def rcs_path(self):
-    """Returns the actual filesystem path to the RCS file of this
-    CVSRevision."""
-
-    if self.file_in_attic:
-      basepath, filename = os.path.split(self.fname)
-      return os.path.join(basepath, 'Attic', filename)
-    else:
-      return self.fname
-
   def filename(self):
     """Return the last path component of self.fname, minus the ',v'."""
 
