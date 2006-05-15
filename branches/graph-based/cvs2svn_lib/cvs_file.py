@@ -16,8 +16,12 @@
 
 """This module contains a class to store information about a CVS file."""
 
+import os
 
-class CVSFile:
+from boolean import *
+
+
+class CVSFile(object):
   """Represent a CVS file."""
 
   def __init__(self, id, filename, canonical_filename, cvs_path,
@@ -44,5 +48,12 @@ class CVSFile:
     self.executable = executable
     self.file_size = file_size
     self.mode = mode
+
+  def get_basename(self):
+    """Return the last path component of self.filename, minus the ',v'."""
+
+    return os.path.basename(self.filename)[:-2]
+
+  basename = property(get_basename)
 
 

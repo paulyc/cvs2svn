@@ -203,9 +203,4 @@ class CVSRevision(CVSRevisionID):
 
     return False
 
-  def filename(self):
-    """Return the last path component of self.fname, minus the ',v'."""
-
-    return os.path.split(self.fname)[-1][:-2]
-
 
