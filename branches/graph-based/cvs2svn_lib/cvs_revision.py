@@ -31,10 +31,10 @@ class CVSRevisionID(object):
     self.cvs_file = cvs_file
     self.rev = rev
 
-  def get_cvs_path(self):
+  def _get_cvs_path(self):
     return self.cvs_file.cvs_path
 
-  cvs_path = property(get_cvs_path)
+  cvs_path = property(_get_cvs_path)
 
   def unique_key(self):
     """Return a string that can be used as a unique key for this revision."""
@@ -115,9 +115,9 @@ class CVSRevision(CVSRevisionID):
   def get_svn_path(self):
     if self.branch_name:
       return self.ctx.project.make_branch_path(
-          self.branch_name, self.cvs_path)
+          self.branch_name, self.cvs_file.cvs_path)
     else:
-      return self.ctx.project.make_trunk_path(self.cvs_path)
+      return self.ctx.project.make_trunk_path(self.cvs_file.cvs_path)
 
   svn_path = property(get_svn_path)
 
@@ -160,11 +160,11 @@ class CVSRevision(CVSRevisionID):
     return False
 
   def is_default_branch_revision(self):
-    """Return True iff SELF.rev of SELF.cvs_path is a default branch
-    revision according to DEFAULT_BRANCHES_DB (see the conditions
-    documented there)."""
+    """Return True iff SELF.rev of SELF.cvs_file.cvs_path is a default
+    branch revision according to DEFAULT_BRANCHES_DB (see the
+    conditions documented there)."""
 
-    val = self.ctx._default_branches_db.get(self.cvs_path, None)
+    val = self.ctx._default_branches_db.get(self.cvs_file.cvs_path, None)
     if val is not None:
       val_last_dot = val.rindex(".")
       our_last_dot = self.rev.rindex(".")
