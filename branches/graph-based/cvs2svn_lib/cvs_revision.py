@@ -36,26 +36,6 @@ class CVSRevisionID(object):
 
   cvs_path = property(get_cvs_path)
 
-  def get_file_in_attic(self):
-    return self.cvs_file.in_attic
-
-  file_in_attic = property(get_file_in_attic)
-
-  def get_file_executable(self):
-    return self.cvs_file.executable
-
-  file_executable = property(get_file_executable)
-
-  def get_file_size(self):
-    return self.cvs_file.file_size
-
-  file_size = property(get_file_size)
-
-  def get_mode(self):
-    return self.cvs_file.mode
-
-  mode = property(get_mode)
-
   def unique_key(self):
     """Return a string that can be used as a unique key for this revision."""
 
