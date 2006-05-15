@@ -152,7 +152,7 @@ class SVNCommit:
       Log().warn("  date:   '%s'" % date)
       Log().warn("(subversion rev %s)  Related files:" % self.revnum)
       for c_rev in self.cvs_revs:
-        Log().warn(" ", c_rev.fname)
+        Log().warn(" ", c_rev.cvs_file.canonical_filename)
 
       Log().warn(
           "Consider rerunning with one or more '--encoding' parameters.\n")
