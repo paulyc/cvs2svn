@@ -31,11 +31,6 @@ class CVSRevisionID(object):
     self.cvs_file = cvs_file
     self.rev = rev
 
-  def get_fname(self):
-    return self.cvs_file.canonical_filename
-
-  fname = property(get_fname)
-
   def get_cvs_path(self):
     return self.cvs_file.cvs_path
 
