@@ -70,6 +70,7 @@ from cvs2svn_lib import property_setters
 from cvs2svn_lib.svn_revision_range import SVNRevisionRange
 from cvs2svn_lib.tags_database import TagsDatabase
 from cvs2svn_lib.cvs_revision import CVSRevision
+from cvs2svn_lib.cvs_file_database import CVSFileDatabase
 from cvs2svn_lib.cvs_revision_database import CVSRevisionDatabase
 from cvs2svn_lib.openings_closings import \
         OpeningsClosingsMap, \
@@ -929,14 +930,15 @@ class ResyncRevsPass(Pass):
     return resync
 
   def run(self):
-    cvs_revs_db = CVSRevisionDatabase(
+    cvs_file_db = CVSFileDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
-        database.DB_OPEN_READ,
+        database.DB_OPEN_READ)
+    cvs_revs_db = CVSRevisionDatabase(
+        cvs_file_db,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_WRITE)
     cvs_revs_resync_db = CVSRevisionDatabase(
-        artifact_manager.get_temp_file(config.CVS_FILES_DB),
-        database.DB_OPEN_READ,
+        cvs_file_db,
         artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
         database.DB_OPEN_NEW)
     symbol_db = SymbolDatabase()
@@ -1148,9 +1150,11 @@ class CreateDatabasesPass(Pass):
     revisions to StatsKeeper()."""
 
     Log().quiet("Copying CVS revision data from flat file to database...")
-    cvs_revs_db = CVSRevisionDatabase(
+    cvs_file_db = CVSFileDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
-        database.DB_OPEN_READ,
+        database.DB_OPEN_READ)
+    cvs_revs_db = CVSRevisionDatabase(
+        cvs_file_db,
         artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
         database.DB_OPEN_READ)
     if not Ctx().trunk_only:
@@ -1203,9 +1207,11 @@ class AggregateRevsPass(Pass):
   def run(self):
     Log().quiet("Mapping CVS revisions to Subversion commits...")
 
-    cvs_revs_db = CVSRevisionDatabase(
+    cvs_file_db = CVSFileDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
-        database.DB_OPEN_READ,
+        database.DB_OPEN_READ)
+    cvs_revs_db = CVSRevisionDatabase(
+        cvs_file_db,
         artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
         database.DB_OPEN_READ)
     aggregator = CVSRevisionAggregator()

@@ -39,6 +39,7 @@ import cvs_revision
 from stats_keeper import StatsKeeper
 from key_generator import KeyGenerator
 import database
+from cvs_file_database import CVSFileDatabase
 from cvs_revision_database import CVSRevisionDatabase
 import symbol_database
 import cvs2svn_rcsparse
@@ -552,9 +553,11 @@ class CollectData:
   each file to be parsed."""
 
   def __init__(self):
-    self._cvs_revs_db = CVSRevisionDatabase(
+    self._cvs_file_db = CVSFileDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
-        database.DB_OPEN_NEW,
+        database.DB_OPEN_NEW)
+    self._cvs_revs_db = CVSRevisionDatabase(
+        self._cvs_file_db,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_NEW)
     self._all_revs = open(
@@ -587,7 +590,7 @@ class CollectData:
 
     if cvs_file.id is None:
       cvs_file.id = self.file_key_generator.gen_id()
-      self._cvs_revs_db.log_file(cvs_file)
+      self._cvs_file_db.log_file(cvs_file)
 
   def add_cvs_revision(self, c_rev):
     self._store_cvs_file(c_rev.cvs_file)
