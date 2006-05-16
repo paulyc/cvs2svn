@@ -167,35 +167,25 @@ reseparates the commits.
 CreateDatabasesPass (formerly called pass4):
 ===================
 
-This pass has two primary objectives:
+Find and create a database containing the last CVS revision that is a
+source (also referred to as an "opening" revision) for all symbolic
+names.  This will result in a database containing key-value pairs
+whose key is the unique key for a CVSRevision, and whose value is a
+list of symbolic names for which that CVSRevision is the last
+"opening."
 
-1. Create a database that maps CVSRevision unique keys to the actual
-   CVSRevision string from the revs file (whose format is described
-   above in CollectRevsPass).  This results in a database containing
-   one key-value pair for each line in the revs file.  This gives us
-   the ability to pass around these smaller keys instead of whole CVS
-   revisions (which look like lines from the s-revs file).  See the
-   CVSRevision class for more details on what the unique key is.
+The format for this file is:
 
-2. Find and create a database containing the last CVS revision that is
-   a source (also referred to as an "opening" revision) for all
-   symbolic names.  This will result in a database containing
-   key-value pairs whose key is the unique key for a CVSRevision, and
-   whose value is a list of symbolic names for which that CVSRevision
-   is the last "opening."
+    cvs-symname-last-revs.db:
+         Key                      Value
+         CVS Revision             array of Symbolic names
 
-   The format for this file is:
+    For example:
 
-       cvs-symname-last-revs.db:
-            Key                      Value
-            CVS Revision             array of Symbolic names
-
-       For example:
-
-            1.38/foo/bar/baz.txt,v  --> [TAG11, BRANCH38]
-            1.93/foo/qux/bat.c,v    --> [TAG39]
-            1.4/foo/bar/baz.txt,v   --> [BRANCH48, BRANCH37]
-            1.18/foo/bar/quux.txt,v --> [TAG320, TAG1178]
+         1.38/foo/bar/baz.txt,v  --> [TAG11, BRANCH38]
+         1.93/foo/qux/bat.c,v    --> [TAG39]
+         1.4/foo/bar/baz.txt,v   --> [BRANCH48, BRANCH37]
+         1.18/foo/bar/quux.txt,v --> [TAG320, TAG1178]
 
 
 AggregateRevsPass (formerly called pass5)
