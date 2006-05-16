@@ -1136,17 +1136,17 @@ class CreateDatabasesPass(Pass):
     self._register_temp_file_needed(config.SORTED_REVS_DATAFILE)
 
   def run(self):
-    """Iterate through sorted revs, storing them in a database.
-    If we're not doing a trunk-only conversion, generate the
-    LastSymbolicNameDatabase, which contains the last CVSRevision
-    that is a source for each tag or branch."""
+    """If we're not doing a trunk-only conversion, generate the
+    LastSymbolicNameDatabase, which contains the last CVSRevision that
+    is a source for each tag or branch.  Also record the remaining
+    revisions to StatsKeeper()."""
 
     Log().quiet("Copying CVS revision data from flat file to database...")
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
         database.DB_OPEN_READ,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
-        database.DB_OPEN_WRITE)
+        database.DB_OPEN_READ)
     if not Ctx().trunk_only:
       Log().quiet("Finding last CVS revisions for all symbolic names...")
       last_sym_name_db = LastSymbolicNameDatabase()
