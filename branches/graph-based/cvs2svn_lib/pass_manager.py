@@ -107,19 +107,19 @@ class PassManager:
     for the_pass in self.passes[0:index_start]:
       artifact_manager.pass_skipped(the_pass)
 
-    times = [ None ] * (index_end + 1)
-    times[index_start] = time.time()
+    start_time = time.time()
     for i in range(index_start, index_end):
       the_pass = self.passes[i]
       Log().quiet('----- pass %d (%s) -----' % (i + 1, the_pass.name,))
       the_pass.run()
-      times[i + 1] = time.time()
-      StatsKeeper().log_duration_for_pass(times[i + 1] - times[i], i + 1)
-      # Dispose of items in Ctx() not intended to live past the end of the pass
-      # (Identified by exactly one leading underscore)
+      end_time = time.time()
+      StatsKeeper().log_duration_for_pass(end_time - start_time, i + 1)
+      start_time = end_time
+      # Dispose of items in Ctx() not intended to live past the end of the
+      # pass (identified by exactly one leading underscore)
       for attr in dir(Ctx()):
-        if (len(attr) > 2 and attr[0] == '_' and attr[1] != '_'
-            and attr[:6] != "_Ctx__"):
+        if (attr.startswith('_') and not attr.startswith('__')
+            and not attr.startswith('_Ctx__')):
           delattr(Ctx(), attr)
       StatsKeeper().set_end_time(time.time())
       # Allow the artifact manager to clean up artifacts that are no
