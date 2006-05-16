@@ -58,7 +58,7 @@ class PersistenceManager:
     self.cvs_revisions = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
         database.DB_OPEN_READ,
-        artifact_manager.get_temp_file(config.CVS_REVS_DB),
+        artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
         database.DB_OPEN_READ)
     ###PERF kff Elsewhere there are comments about sucking the tags db
     ### into memory.  That seems like a good idea.

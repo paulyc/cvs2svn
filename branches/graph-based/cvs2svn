@@ -806,6 +806,7 @@ class ResyncRevsPass(Pass):
     self._register_temp_file(config.TAGS_DB)
     self._register_temp_file(config.CLEAN_REVS_DATAFILE)
     self._register_temp_file(config.TWEAKED_TIMESTAMPS_DB)
+    self._register_temp_file(config.CVS_REVS_RESYNC_DB)
     self._register_temp_file_needed(config.TAGS_LIST)
     self._register_temp_file_needed(config.BRANCHES_LIST)
     self._register_temp_file_needed(config.RESYNC_DATAFILE)
@@ -933,6 +934,11 @@ class ResyncRevsPass(Pass):
         database.DB_OPEN_READ,
         artifact_manager.get_temp_file(config.CVS_REVS_DB),
         database.DB_OPEN_WRITE)
+    cvs_revs_resync_db = CVSRevisionDatabase(
+        artifact_manager.get_temp_file(config.CVS_FILES_DB),
+        database.DB_OPEN_READ,
+        artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
+        database.DB_OPEN_NEW)
     symbol_db = SymbolDatabase()
     symbol_db.read()
 
@@ -1107,7 +1113,7 @@ class ResyncRevsPass(Pass):
 
       output.write('%08lx %s %x\n'
                    % (c_rev.timestamp, c_rev.digest, c_rev.id,))
-      cvs_revs_db.log_revision(c_rev)
+      cvs_revs_resync_db.log_revision(c_rev)
     Log().quiet("Done")
 
 
@@ -1132,7 +1138,7 @@ class CreateDatabasesPass(Pass):
     if not Ctx().trunk_only:
       self._register_temp_file(config.SYMBOL_LAST_CVS_REVS_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_REVS_DB)
+    self._register_temp_file_needed(config.CVS_REVS_RESYNC_DB)
     self._register_temp_file_needed(config.SORTED_REVS_DATAFILE)
 
   def run(self):
@@ -1145,7 +1151,7 @@ class CreateDatabasesPass(Pass):
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
         database.DB_OPEN_READ,
-        artifact_manager.get_temp_file(config.CVS_REVS_DB),
+        artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
         database.DB_OPEN_READ)
     if not Ctx().trunk_only:
       Log().quiet("Finding last CVS revisions for all symbolic names...")
@@ -1188,7 +1194,7 @@ class AggregateRevsPass(Pass):
     if not Ctx().trunk_only:
       self._register_temp_file_needed(config.SYMBOL_LAST_CVS_REVS_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_REVS_DB)
+    self._register_temp_file_needed(config.CVS_REVS_RESYNC_DB)
     self._register_temp_file_needed(config.TAGS_DB)
     self._register_temp_file_needed(config.DEFAULT_BRANCHES_DB)
     self._register_temp_file_needed(config.METADATA_DB)
@@ -1200,7 +1206,7 @@ class AggregateRevsPass(Pass):
     cvs_revs_db = CVSRevisionDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
         database.DB_OPEN_READ,
-        artifact_manager.get_temp_file(config.CVS_REVS_DB),
+        artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DB),
         database.DB_OPEN_READ)
     aggregator = CVSRevisionAggregator()
     for line in fileinput.FileInput(
@@ -1289,7 +1295,7 @@ class OutputPass(Pass):
     self._register_temp_file(config.SVN_MIRROR_REVISIONS_DB)
     self._register_temp_file(config.SVN_MIRROR_NODES_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_REVS_DB)
+    self._register_temp_file_needed(config.CVS_REVS_RESYNC_DB)
     self._register_temp_file_needed(config.TAGS_DB)
     self._register_temp_file_needed(config.METADATA_DB)
     self._register_temp_file_needed(config.SVN_REVNUMS_TO_CVS_REVS)

@@ -75,10 +75,11 @@ SYMBOL_LAST_CVS_REVS_DB = 'cvs2svn-symbol-last-cvs-revs.db'
 # Maps CVSFile.id to instance.
 CVS_FILES_DB = 'cvs2svn-cvs-files.db'
 
-# Maps CVSRevision.unique_key() to corresponding line in s-revs.
-###PERF Or, we could map to an offset into s-revs, instead of dup'ing
-### the s-revs data in this database.
+# Maps CVSRevision.unique_key() to CVSRevision.
 CVS_REVS_DB = 'cvs2svn-cvs-revs.db'
+
+# Maps CVSRevision.unique_key() to CVSRevision after resynchronization.
+CVS_REVS_RESYNC_DB = 'cvs2svn-cvs-revs-resync.db'
 
 # Lists all symbolic names that are tags.  Keys are strings (symbolic
 # names), values are ignorable.
