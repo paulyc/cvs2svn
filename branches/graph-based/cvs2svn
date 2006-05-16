@@ -929,6 +929,41 @@ class ResyncRevsPass(Pass):
 
     return resync
 
+  def _fix_prev_next_timestamps(self, c_rev, tweaked_timestamps_db):
+    """Fix up C_REV.prev_rev and C_REV.next_rev based on the contents
+    of TWEAKED_TIMESTAMPS_DB."""
+
+    if c_rev.prev_rev is not None:
+      new_prev_ts = tweaked_timestamps_db.get(
+        c_rev.prev_rev.unique_key(), None)
+      if new_prev_ts:
+        c_rev.prev_timestamp = new_prev_ts
+
+    if c_rev.next_rev is not None:
+      new_next_ts = tweaked_timestamps_db.get(
+        c_rev.next_rev.unique_key(), None)
+      if new_next_ts:
+        c_rev.next_timestamp = new_next_ts
+
+  def _get_non_excluded_symbols(self, symbols, excludes):
+    return [ symbol
+             for symbol in symbols
+             if symbol not in excludes ]
+
+  def _force_tags(self, c_rev):
+    """Convert all branches in C_REV that are forced to be tags."""
+    for forced_tag in Ctx().forced_tags:
+      if forced_tag in c_rev.branches:
+        c_rev.branches.remove(forced_tag)
+        c_rev.tags.append(forced_tag)
+
+  def _force_branches(self, c_rev):
+    """Convert all tags in C_REV that are forced to be branches."""
+    for forced_branch in Ctx().forced_branches:
+      if forced_branch in c_rev.tags:
+        c_rev.tags.remove(forced_branch)
+        c_rev.branches.append(forced_branch)
+
   def run(self):
     cvs_file_db = CVSFileDatabase(
         artifact_manager.get_temp_file(config.CVS_FILES_DB),
@@ -998,36 +1033,13 @@ class ResyncRevsPass(Pass):
       if c_rev.branch_name in excludes:
         continue
 
-      if c_rev.prev_rev is not None:
-        new_prev_ts = tweaked_timestamps_db.get(
-            c_rev.prev_rev.unique_key(), None)
-        if new_prev_ts:
-          c_rev.prev_timestamp = new_prev_ts
+      self._fix_prev_next_timestamps(c_rev, tweaked_timestamps_db)
 
-      if c_rev.next_rev is not None:
-        new_next_ts = tweaked_timestamps_db.get(
-          c_rev.next_rev.unique_key(), None)
-        if new_next_ts:
-          c_rev.next_timestamp = new_next_ts
+      c_rev.branches = self._get_non_excluded_symbols(c_rev.branches, excludes)
+      c_rev.tags = self._get_non_excluded_symbols(c_rev.tags, excludes)
 
-      c_rev.branches = [ branch
-                         for branch in c_rev.branches
-                         if branch not in excludes ]
-      c_rev.tags = [ tag
-                     for tag in c_rev.tags
-                     if tag not in excludes ]
-
-      # Convert all branches that are forced to be tags
-      for forced_tag in Ctx().forced_tags:
-        if forced_tag in c_rev.branches:
-          c_rev.branches.remove(forced_tag)
-          c_rev.tags.append(forced_tag)
-
-      # Convert all tags that are forced to be branches
-      for forced_branch in Ctx().forced_branches:
-        if forced_branch in c_rev.tags:
-          c_rev.tags.remove(forced_branch)
-          c_rev.branches.append(forced_branch)
+      self._force_tags(c_rev)
+      self._force_branches(c_rev)
 
       # see if this is "near" any of the resync records we
       # have recorded for this digest [of the log message].
