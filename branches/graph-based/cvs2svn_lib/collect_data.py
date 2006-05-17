@@ -62,11 +62,20 @@ vendor_revision = re.compile(r'^(1\.1\.1)\.([0-9])+$')
 
 
 class _RevisionData:
-  def __init__(self, timestamp, author):
+  """We track the state of each revision so that in set_revision_info,
+  we can determine if our op is an add/change/delete.  We can do this
+  because in set_revision_info, we'll have all of the _RevisionData
+  for a file at our fingertips, and we need to examine the state of
+  our prev_rev to determine if we're an add or a change.  Without the
+  state of the prev_rev, we are unable to distinguish between an add
+  and a change."""
+
+  def __init__(self, timestamp, author, state):
     self.timestamp = timestamp
     self.author = author
     self.original_timestamp = timestamp
     self._adjusted = False
+    self.state = state
 
   def adjust_timestamp(self, timestamp):
     self._adjusted = True
@@ -149,15 +158,6 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # Unlike self.prev_rev, if the key has no next revision, then the
     # key is not present.
     self.next_rev = { }
-
-    # Track the state of each revision so that in set_revision_info,
-    # we can determine if our op is an add/change/delete.  We can do
-    # this because in set_revision_info, we'll have all of the
-    # revisions for a file at our fingertips, and we need to examine
-    # the state of our prev_rev to determine if we're an add or a
-    # change--without the state of the prev_rev, we are unable to
-    # distinguish between an add and a change.
-    self.rev_state = { }
 
     # Hash mapping branch numbers, like '1.7.2', to branch names,
     # like 'Release_1_0_dev'.
@@ -284,11 +284,8 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
                       branches, next):
     """This is a callback method declared in Sink."""
 
-    # Record the state of our revision for later calculations
-    self.rev_state[revision] = state
-
     # store the rev_data as a list in case we have to jigger the timestamp
-    self._rev_data[revision] = _RevisionData(int(timestamp), author)
+    self._rev_data[revision] = _RevisionData(int(timestamp), author, state)
 
     # When on trunk, the RCS 'next' revision number points to what
     # humans might consider to be the 'previous' revision number.  For
@@ -488,10 +485,9 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     #      - we have a previous revision whose state is 'dead'
     #
     # Anything else is a change.
-    if self.rev_state[revision] == 'dead':
+    if rev_data.state == 'dead':
       op = common.OP_DELETE
-    elif ((self.prev_rev.get(revision, None) is None)
-          or (self.rev_state[self.prev_rev[revision]] == 'dead')):
+    elif prev_rev_data is None or prev_rev_data.state == 'dead':
       op = common.OP_ADD
     else:
       op = common.OP_CHANGE
@@ -532,14 +528,14 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     #
     # This is issue #89.
     cur_num = revision
-    if is_branch_revision(revision) and self.rev_state[revision] != 'dead':
+    if is_branch_revision(revision) and rev_data.state != 'dead':
       while 1:
         prev_num = self.prev_rev.get(cur_num, None)
         if not cur_num or not prev_num:
           break
         if (not is_same_line_of_development(cur_num, prev_num)
-            and self.rev_state[cur_num] == 'dead'
-            and self.rev_state[prev_num] != 'dead'):
+            and self._rev_data[cur_num].state == 'dead'
+            and self._rev_data[prev_num].state != 'dead'):
           op = common.OP_CHANGE
         cur_num = self.prev_rev.get(cur_num, None)
 
