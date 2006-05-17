@@ -280,6 +280,11 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     else:
       self.set_tag_name(revision, name)
 
+  def admin_completed(self):
+    """This is a callback method declared in Sink."""
+
+    self.collect_data.add_cvs_file(self.cvs_file)
+
   def define_revision(self, revision, timestamp, author, state,
                       branches, next):
     """This is a callback method declared in Sink."""
@@ -608,17 +613,16 @@ class CollectData:
     # Key generator to generate unique keys for each CVSRevision object:
     self.key_generator = KeyGenerator()
 
-  def _store_cvs_file(self, cvs_file):
+  def add_cvs_file(self, cvs_file):
     """If CVS_FILE is not already stored to _cvs_revs_db, give it a
     persistent id and store it now.  The way we tell whether it was
     already stored is by whether it already has a non-None id."""
 
-    if cvs_file.id is None:
-      cvs_file.id = self.file_key_generator.gen_id()
-      self._cvs_file_db.log_file(cvs_file)
+    assert cvs_file.id is None
+    cvs_file.id = self.file_key_generator.gen_id()
+    self._cvs_file_db.log_file(cvs_file)
 
   def add_cvs_revision(self, c_rev):
-    self._store_cvs_file(c_rev.cvs_file)
     self._cvs_revs_db.log_revision(c_rev)
     self._all_revs.write('%s\n' % (c_rev.unique_key(),))
     StatsKeeper().record_c_rev(c_rev)
