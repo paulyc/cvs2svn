@@ -8,10 +8,11 @@ state in memory, and b) the conversion process is resumable.
 CollectRevsPass (formerly called pass1)
 ===============
 
-The goal of this pass is to write to 'cvs2svn-cvs-revs.db' a summary of
-all the revisions for each RCS file.  Each revision will be assigned
-an arbitrary key and stored in the database as one record, which is a
-pickled instance of CVSRevision.
+The goal of this pass is to write a summary of each CVS file as a
+pickled CVSFile to 'cvs2svn-cvs-files.db', and a summary of each CVS
+file revision as a pickled CVSRevision to 'cvs2svn-cvs-revs.db'.  In
+each case, items are assigned an arbitrary key that is used to refer
+to them.
 
 We walk over the repository, collecting data about the RCS files into
 an instance of CollectData.  Each RCS file is processed with
@@ -24,7 +25,8 @@ administrative header, including the head revision, the principal
 branch, symbolic names, RCS comments, etc.  The main thing that
 happens here is that FileDataCollector.define_tag() is invoked on each
 symbolic name and its attached revision, so all the tags and branches
-of this file get collected.
+of this file get collected.  When this stage is done, the parser
+invokes admin_completed(), which writes the CVSFile to the database.
 
 Next, the parser hits the revision summary section.  That's the part
 of the RCS file that looks like this:
@@ -53,10 +55,10 @@ revision was committed "before" a lower one (rare, but it can happen
 when there was clock skew on the repository machine).  If there are
 any, it "resyncs" the timestamp of the earlier rev to be just before
 that of the later rev, but saves the original timestamp in
-self._rev_data[blah][2], so we can later write out a record to the
-resync file indicating that an adjustment was made (this makes it
-possible to catch the other parts of this commit and resync them
-similarly, more details below).
+self._rev_data[blah].original_timestamp, so we can later write out a
+record to the resync file indicating that an adjustment was made (this
+makes it possible to catch the other parts of this commit and resync
+them similarly; more details below).
 
 Next, the parser encounters the *real* revision data, which has the
 log messages and file contents.  For each revision, it invokes
@@ -76,11 +78,18 @@ The fields are:
 
 That's it -- the RCS file is done.
 
-When every RCS file is done, CollectRevsPass is complete, and:
+When every CVS file is done, CollectRevsPass is complete, and:
 
-   - cvs2svn-cvs-revs.db contains a summary of every RCS file's
-     revisions.  The order of the revisions is arbitrary.  In other
-     words, a multi-file commit will be scattered all over the place.
+   - cvs2svn-cvs-files.db contains a record of every CVS file.
+
+   - cvs2svn-cvs-revs.db contains a summary of every revision to every
+     CVS file, including a reference to the corresponding CVS file
+     record in cvs2svn-cvs-files.db.  The order of the revisions is
+     arbitrary.  In other words, a multi-file commit will be scattered
+     all over the place.
+
+   - cvs2svn-data.a-revs contains a list of CVSRevision keys that are
+     in cvs2svn-cvs-revs.db, in the order that they were written.
 
    - cvs2svn-data.resync contains a small amount of resync data, in
      no particular order.
@@ -91,8 +100,8 @@ ResyncRevsPass (formerly called pass2)
 
 This is where the resync file is used.  The goal of this pass is to
 output the information from cvs2svn-cvs-revs.db to a new file,
-'cvs2svn-data.c-revs' (clean revs).  It has the same content as the
-original file, except for some resync'd timestamps.
+'cvs2svn-cvs-revs-resync.db' (clean revs).  It has the same content as
+the original file, except for some resync'd timestamps.
 
 First, read the whole resync file into a hash table that maps each
 author+log digest to a list of lists.  Each sublist represents one of
