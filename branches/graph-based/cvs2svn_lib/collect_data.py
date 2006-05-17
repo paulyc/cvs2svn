@@ -401,8 +401,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
           "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds"
           % (self.cvs_file.cvs_path, prev,
              time.ctime(old_timestamp), delta))
-      if (delta > config.COMMIT_THRESHOLD
-          or delta < (config.COMMIT_THRESHOLD * -1)):
+      if abs(delta) > config.COMMIT_THRESHOLD:
         Log().warn(
             "%s: Significant timestamp change for '%s' (%d seconds)"
             % (warning_prefix, self.cvs_file.cvs_path, delta))
