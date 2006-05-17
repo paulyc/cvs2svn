@@ -368,6 +368,49 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
       branch_name = self.branch_names[branch_number]
       self.collect_data.symbol_db.register_branch_commit(branch_name)
 
+  def _resync_chain(self, current, prev):
+    """If the PREV revision exists and it occurred later than the
+    CURRENT revision, then shove the previous revision back in time
+    (and any before it that may need to shift).  Return True iff any
+    resyncing was done.
+
+    We sync backwards and not forwards because any given CVS Revision
+    has only one previous revision.  However, a CVS Revision can *be*
+    a previous revision for many other revisions (e.g., a revision
+    that is the source of multiple branches).  This becomes relevant
+    when we do the secondary synchronization in pass 2--we can make
+    certain that we don't resync a revision earlier than its previous
+    revision, but it would be non-trivial to make sure that we don't
+    resync revision R *after* any revisions that have R as a previous
+    revision."""
+
+    resynced = False
+    while prev is not None:
+      current_rev_data = self._rev_data[current]
+      prev_rev_data = self._rev_data[prev]
+
+      if prev_rev_data.timestamp < current_rev_data.timestamp:
+        # No resyncing needed here.
+        return resynced
+
+      old_timestamp = prev_rev_data.timestamp
+      prev_rev_data.adjust_timestamp(current_rev_data.timestamp - 1)
+      resynced = True
+      delta = prev_rev_data.timestamp - old_timestamp
+      Log().verbose(
+          "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds"
+          % (self.cvs_file.cvs_path, prev,
+             time.ctime(old_timestamp), delta))
+      if (delta > config.COMMIT_THRESHOLD
+          or delta < (config.COMMIT_THRESHOLD * -1)):
+        Log().warn(
+            "%s: Significant timestamp change for '%s' (%d seconds)"
+            % (warning_prefix, self.cvs_file.cvs_path, delta))
+      current = prev
+      prev = self.prev_rev[current]
+
+    return resynced
+
   def tree_completed(self):
     """The revision tree has been parsed.  Analyze it for consistency.
 
@@ -378,61 +421,20 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
     # time before rev 1.35.  If we inserted 1.35 *first* (due to the time-
     # sorting), and then tried to insert 1.34, we'd be screwed.
 
-    # to perform the analysis, we'll simply visit all of the 'previous'
+    # To perform the analysis, we'll simply visit all of the 'previous'
     # links that we have recorded and validate that the timestamp on the
-    # previous revision is before the specified revision
+    # previous revision is before the specified revision.
 
-    # if we have to resync some nodes, then we restart the scan. just keep
-    # looping as long as we need to restart.
+    # If we have to resync some nodes, then we restart the scan.  Just
+    # keep looping as long as we need to restart.
     while True:
       for current, prev in self.prev_rev.items():
-        if not prev:
-          # no previous revision exists (i.e. the initial revision)
-          continue
-
-        current_rev_data = self._rev_data[current]
-        prev_rev_data = self._rev_data[prev]
-
-        if prev_rev_data.timestamp >= current_rev_data.timestamp:
-          # the previous revision occurred later than the current revision.
-          # shove the previous revision back in time (and any before it that
-          # may need to shift).
-
-          # We sync backwards and not forwards because any given CVS
-          # Revision has only one previous revision.  However, a CVS
-          # Revision can *be* a previous revision for many other
-          # revisions (e.g., a revision that is the source of multiple
-          # branches).  This becomes relevant when we do the secondary
-          # synchronization in pass 2--we can make certain that we
-          # don't resync a revision earlier than it's previous
-          # revision, but it would be non-trivial to make sure that we
-          # don't resync revision R *after* any revisions that have R
-          # as a previous revision.
-          while prev_rev_data.timestamp >= current_rev_data.timestamp:
-            old_timestamp = prev_rev_data.timestamp
-            prev_rev_data.adjust_timestamp(current_rev_data.timestamp - 1)
-            delta = prev_rev_data.timestamp - old_timestamp
-            Log().verbose(
-                "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds"
-                % (self.cvs_file.cvs_path, prev,
-                   time.ctime(old_timestamp), delta))
-            if (delta > config.COMMIT_THRESHOLD
-                or delta < (config.COMMIT_THRESHOLD * -1)):
-              Log().warn(
-                  "%s: Significant timestamp change for '%s' (%d seconds)"
-                  % (warning_prefix, self.cvs_file.cvs_path, delta))
-            current = prev
-            current_rev_data = prev_rev_data
-
-            prev = self.prev_rev[current]
-            if not prev:
-              break
-            prev_rev_data = self._rev_data[prev]
-
-          # break from the for-loop
+        if self._resync_chain(current, prev):
+          # Abort for loop, causing the scan to start again:
           break
       else:
-        # finished the for-loop (no resyncing was performed)
+        # Finished the for-loop without having to resync anything.
+        # We're done.
         return
 
   def set_revision_info(self, revision, log, text):
