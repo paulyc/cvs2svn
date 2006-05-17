@@ -384,14 +384,16 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     # if we have to resync some nodes, then we restart the scan. just keep
     # looping as long as we need to restart.
-    while 1:
+    while True:
       for current, prev in self.prev_rev.items():
         if not prev:
           # no previous revision exists (i.e. the initial revision)
           continue
-        t_c = self._rev_data[current].timestamp
-        t_p = self._rev_data[prev].timestamp
-        if t_p >= t_c:
+
+        current_rev_data = self._rev_data[current]
+        prev_rev_data = self._rev_data[prev]
+
+        if prev_rev_data.timestamp >= current_rev_data.timestamp:
           # the previous revision occurred later than the current revision.
           # shove the previous revision back in time (and any before it that
           # may need to shift).
@@ -406,23 +408,26 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
           # revision, but it would be non-trivial to make sure that we
           # don't resync revision R *after* any revisions that have R
           # as a previous revision.
-          while t_p >= t_c:
-            self._rev_data[prev].adjust_timestamp(t_c - 1) # new timestamp
-            delta = t_c - 1 - t_p
-            msg =  "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
-                  % (self.cvs_file.cvs_path, prev, time.ctime(t_p), delta)
-            Log().verbose(msg)
+          while prev_rev_data.timestamp >= current_rev_data.timestamp:
+            old_timestamp = prev_rev_data.timestamp
+            prev_rev_data.adjust_timestamp(current_rev_data.timestamp - 1)
+            delta = prev_rev_data.timestamp - old_timestamp
+            Log().verbose(
+                "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds"
+                % (self.cvs_file.cvs_path, prev,
+                   time.ctime(old_timestamp), delta))
             if (delta > config.COMMIT_THRESHOLD
                 or delta < (config.COMMIT_THRESHOLD * -1)):
               Log().warn(
                   "%s: Significant timestamp change for '%s' (%d seconds)"
                   % (warning_prefix, self.cvs_file.cvs_path, delta))
             current = prev
+            current_rev_data = prev_rev_data
+
             prev = self.prev_rev[current]
             if not prev:
               break
-            t_c -= 1 # self._rev_data[current].timestamp
-            t_p = self._rev_data[prev].timestamp
+            prev_rev_data = self._rev_data[prev]
 
           # break from the for-loop
           break
