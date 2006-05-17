@@ -65,7 +65,15 @@ class _RevisionData:
   def __init__(self, timestamp, author):
     self.timestamp = timestamp
     self.author = author
-    self.original_timestamp = None
+    self.original_timestamp = timestamp
+    self._adjusted = False
+
+  def adjust_timestamp(self, timestamp):
+    self._adjusted = True
+    self.timestamp = timestamp
+
+  def timestamp_was_adjusted(self):
+    return self._adjusted
 
 
 class FileDataCollector(cvs2svn_rcsparse.Sink):
@@ -399,8 +407,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
           # don't resync revision R *after* any revisions that have R
           # as a previous revision.
           while t_p >= t_c:
-            self._rev_data[prev].timestamp = t_c - 1 # new timestamp
-            self._rev_data[prev].original_timestamp = t_p # old timestamp
+            self._rev_data[prev].adjust_timestamp(t_c - 1) # new timestamp
             delta = t_c - 1 - t_p
             msg =  "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds" \
                   % (self.cvs_file.cvs_path, prev, time.ctime(t_p), delta)
@@ -428,7 +435,7 @@ class FileDataCollector(cvs2svn_rcsparse.Sink):
 
     rev_data = self._rev_data[revision]
     digest = sha.new(log + '\0' + rev_data.author).hexdigest()
-    if rev_data.original_timestamp is not None:
+    if rev_data.timestamp_was_adjusted():
       # the timestamp on this revision was changed. log it for later
       # resynchronization of other files's revisions that occurred
       # for this time and log message.
