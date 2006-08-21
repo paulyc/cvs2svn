@@ -1,0 +1,237 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<style type="text/css"> /* <![CDATA[ */
+  @import "tigris-branding/css/tigris.css";
+  @import "tigris-branding/css/inst.css";
+  /* ]]> */</style>
+<link rel="stylesheet" type="text/css" media="print"
+  href="tigris-branding/css/print.css"/>
+<script type="text/javascript" src="tigris-branding/scripts/tigris.js"></script>
+<title>cvs2svn FAQ</title>
+</head>
+
+<body id="bodycol">
+<div class="app">
+
+<h1>cvs2svn FAQ</h1>
+
+<p><strong>How-to:</strong></p>
+
+<ol>
+
+  <li><a href="#oneatatime">How can I convert my CVS repository one module at a time?</a></li>
+
+  <li><a href="#inverted">How can I convert project <tt>foo</tt> so
+    that <tt>trunk/tags/branches</tt> are inside of
+    <tt>foo</tt>?</a></li>
+
+  <li><a href="#atticprob">I get an error "A CVS repository cannot
+    contain both repo/path/file.txt,v and
+    repo/path/Attic/file.txt,v".  What can I do?</a></li>
+
+</ol>
+
+<hr />
+
+<h2>How-to:</h2>
+
+<h3><a name="oneatatime" title="#oneatatime">How can I convert my CVS repository one module at a time?</a></h3>
+
+<p>If you need to convert certain CVS modules (in one large
+repository) to Subversion
+<b>now</b> and other modules <b>later</b>, you may want to convert
+your repository one module at a time.  This situation is typically
+encountered in large organizations where each project has a separate
+lifecycle and schedule, and a one-step conversion process is not
+practical.
+</p>
+
+<p>To incrementally migrate modules contained within a CVS repository
+to Subversion you will need to use cvs2svn to create a "dumpfile".
+Then, using <tt>svnadmin</tt> you will load the dumpfile into a
+project directory created within the Subversion repository.  For
+example:
+</p>
+
+<ol>
+  <li>If the svn repository doesn't already exist, create it:
+    <pre>
+      svnadmin create file:///path/to/svnrepos
+    </pre></li>
+
+  <li>Remember to <b>Make a backup</b> before starting.  Never run
+    cvs2svn on a live CVS repository--always work on a copy of your
+    repository.</li>
+
+  <li>Run cvs2svn against one of the modules you want converted:
+    <pre>
+      # Copy the CVS modules into a temporary cvs repository.
+      # This is not absolutely necessary, but it's for safety's sake.
+      $ mkdir ~/newcvsrepo
+      $ mkdir ~/newcvsrepo/CVSROOT # needed by cvs2svn --use-cvs
+      $ cp -r /oldcvsrepo/projectA ~/newcvsrepo
+
+      # Create a dumpfile containing the new CVS repository contents
+      $ mkdir ~/svndump; cd ~/svndump
+      $ cvs2svn --dump-only ~/newcvsrepo/projectA
+    </pre></li>
+
+
+  <li>Import the dump into the Subversion repository:
+    <pre>
+      # Make a directory for the project.
+      $ svn mkdir file:///path/to/svnrepos/projectA -m "Added projectA directory."
+
+      # Use "svnadmin load" to load the dumpfile.
+      $ cd ~/svndump
+      $ svnadmin --parent-dir projectA load /path/to/svnrepo &lt; cvs2svn-dump
+    </pre></li>
+
+  <li>Repeat steps 3 and 4 for each module you want to convert.</li>
+
+</ol>
+
+
+<h3><a name="inverted" title="#inverted">How can I convert project <tt>foo</tt> so
+    that <tt>trunk/tags/branches</tt> are inside of
+    <tt>foo</tt>?</a></h3>
+
+  <p>Given a CVS repository with the layout:</p>
+
+<pre>
+  /project_a
+  /project_b
+</pre>
+
+  <p>cvs2svn will produce a Subversion repository with the following
+    layout:</p>
+
+<pre>
+   trunk/
+      project_a/
+         ...
+      project_b/
+         ...
+   tags/
+      ...
+   branches/
+      ...
+</pre>
+
+  <p>However, you may want your Subversion repository to be laid out
+    like this:</p>
+
+<pre>
+   project_a/
+      trunk/
+         ...
+      branches/
+         ...
+      tags/
+         ...
+   project_b/
+      trunk/
+         ...
+      branches/
+         ...
+      tags/
+         ...
+</pre>
+
+  <p>Currently, cvs2svn does not support converting a repository in
+    this manner (see <a
+    href="http://cvs2svn.tigris.org/issues/show_bug.cgi?id=86">Issue
+    #86</a> for details), however, there is a workaround.  You can
+    convert your repository one project (or module) at a time and load
+    the individual dumpfiles into your Subversion repository using
+    <tt>svnadmin</tt> with the <tt>--parent-dir</tt> switch.  See the
+    answer to <a href="#oneatatime">How can I convert my CVS
+    repository one module at a time?</a> for details.</p>
+
+<hr />
+
+<h2>Problems:</h2>
+
+<h3><a name="atticprob" title="#atticprob">I get an error "A CVS
+    repository cannot contain both repo/path/file.txt,v and
+    repo/path/Attic/file.txt,v".  What can I do?</a></h3>
+
+<p>Background: Normally, if you have a file called
+<tt>path/file.txt</tt> in your project, CVS stores its history in a
+file called <tt>repo/path/file.txt,v</tt>.  But if <tt>file.txt</tt>
+is deleted on the main line of development, CVS moves its history file
+to a special <tt>Attic</tt> subdirectory:
+<tt>repo/path/Attic/file.txt,v</tt>.  (If the file is recreated, then
+it is moved back out of the <tt>Attic</tt> subdirectory.)  Your
+repository should never contain both of these files at the same
+time.</p>
+
+<p>This cvs2svn error message thus indicates a mild form of corruption
+in your CVS repository.  The file has two conflicting histories, and
+even CVS does not know the correct history of <tt>path/file.txt</tt>.
+The corruption was probably created by using tools other than CVS to
+backup or manipulate the files in your repository.  With a little work
+you can learn more about the two histories by viewing each of the
+<tt>file.txt,v</tt> files in a text editor.</p>
+
+<p>There are four straightforward approaches to fixing the repository
+corruption, but each has potential disadvantages.  Remember to <b>make
+a backup</b> before starting.  Never run cvs2svn on a live CVS
+repository--always work on a copy of your repository.</p>
+
+<ol>
+  <li>Remove the <tt>Attic</tt> version of the file and restart the
+    conversion.  Sometimes it represents an old version of the file
+    that was deleted long ago, and it won't be missed.  But this
+    completely discards one of the file's histories, probably causing
+    <tt>file.txt</tt> to be missing in older historical revisions.
+    (For what it's worth, this is probably how CVS would behave in
+    this situation.)
+
+    <pre>
+      # You did make a backup, right?
+      $ rm repo/path/Attic/file.txt,v
+    </pre></li>
+
+  <li>Remove the non-<tt>Attic</tt> version of the file and restart
+    the conversion.  This might be appropriate if the
+    non-<tt>Attic</tt> version has less important content than the
+    <tt>Attic</tt> version.  But this completely discards one of the
+    file's histories, probably causing <tt>file.txt</tt> to be missing
+    in recent historical revisions.
+
+    <pre>
+      # You did make a backup, right?
+      $ rm repo/path/file.txt,v
+    </pre></li>
+
+  <li>Rename the <tt>Attic</tt> version of the file and restart the
+    conversion.  This avoids losing history, but it changes the name
+    of the <tt>Attic</tt> version of the file to
+    <tt>file-from-Attic.txt</tt> whenever it appeared, and might
+    thereby cause revisions to be broken.
+
+    <pre>
+      # You did make a backup, right?
+      $ mv repo/path/Attic/file.txt,v repo/path/Attic/file-from-Attic.txt,v
+    </pre></li>
+
+  <li>Rename the non-<tt>Attic</tt> version of the file and restart
+    the conversion.  This avoids losing history, but it changes the
+    name of the non-<tt>Attic</tt> version of the file to
+    <tt>file-not-from-Attic.txt</tt> whenever it appeared, and might
+    thereby cause revisions to be broken.
+
+    <pre>
+      # You did make a backup, right?
+      $ mv repo/path/file.txt,v repo/path/file-not-from-Attic.txt,v
+    </pre></li>
+
+</ol>
+
+
+</div>
+</body>
+</html>
