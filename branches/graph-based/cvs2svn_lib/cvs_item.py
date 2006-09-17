@@ -210,6 +210,11 @@ class CVSBranch(CVSSymbol):
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 
+  def __str__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s Branch \'%s\' <%x>' % (self.cvs_file, self.symbol, self.id,)
+
 
 class CVSTag(CVSSymbol):
   """Represent the creation of a tag on a particular CVSFile."""
@@ -232,5 +237,10 @@ class CVSTag(CVSSymbol):
     (self.id, cvs_file_id, symbol_id, self.rev_id) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
+
+  def __str__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s Tag \'%s\' <%x>' % (self.cvs_file, self.symbol, self.id,)
 
 
