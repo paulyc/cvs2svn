@@ -223,7 +223,7 @@ class CVSTag(CVSSymbol):
        SYMBOL          -->  (Symbol) the corresponding symbol
        REV_ID          -->  (int) id of CVSRevision being tagged"""
 
-    CVSSymbol.__init__(self, id, cvs_file, symbol_id, rev_id)
+    CVSSymbol.__init__(self, id, cvs_file, symbol, rev_id)
 
   def __getstate__(self):
     return (self.id, self.cvs_file.id, self.symbol.id, self.rev_id)
