@@ -476,7 +476,7 @@ class Conversion:
 
     try:
       if passbypass:
-        for p in range(1, 10):
+        for p in range(1, 11):
           run_cvs2svn(error_re, '-p', str(p), *args)
       else:
         run_cvs2svn(error_re, *args)

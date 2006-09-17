@@ -49,6 +49,7 @@ Ctx().VERSION = VERSION
 pass_manager = PassManager([
   passes.CollectRevsPass(),
   passes.CollateSymbolsPass(),
+  passes.InitializeChangesetsPass(),
   passes.ResyncRevsPass(),
   passes.SortRevsPass(),
   passes.CreateDatabasesPass(),

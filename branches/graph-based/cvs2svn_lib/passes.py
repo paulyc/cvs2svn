@@ -42,10 +42,13 @@ from cvs2svn_lib.symbol_database import create_symbol_database
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.symbol_statistics import SymbolStatistics
 from cvs2svn_lib.cvs_item import CVSRevision
+from cvs2svn_lib.cvs_item import CVSSymbol
 from cvs2svn_lib.cvs_item_database import NewCVSItemStore
 from cvs2svn_lib.cvs_item_database import NewIndexedCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldIndexedCVSItemStore
+from cvs2svn_lib.key_generator import KeyGenerator
+from cvs2svn_lib.changeset import Changeset
 from cvs2svn_lib.cvs_revision_resynchronizer import CVSRevisionResynchronizer
 from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
 from cvs2svn_lib.svn_commit import SVNCommit
@@ -158,6 +161,81 @@ class CollateSymbolsPass(Pass):
       sys.exit(1)
 
     create_symbol_database(symbols)
+
+    Log().quiet("Done")
+
+
+class InitializeChangesetsPass(Pass):
+  """Create preliminary CommitSets."""
+
+  def register_artifacts(self):
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_STORE)
+
+  def split_by_timestamp(self, cvs_items):
+    changesets = []
+    changeset_start = 0
+    for i in range(1, len(cvs_items)):
+      if cvs_items[i].timestamp - cvs_items[i - 1].timestamp > 300:
+        # Split the cvs_items here:
+        changesets.append(Changeset(self.changeset_key_generator.gen_id(),
+                                    cvs_items[changeset_start:i]))
+        changeset_start = i
+    changesets.append(Changeset(self.changeset_key_generator.gen_id(),
+                                cvs_items[changeset_start:]))
+    return changesets
+
+  def run(self, stats_keeper):
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    self.symbol_db = SymbolDatabase()
+    Ctx()._symbol_db = self.symbol_db
+    cvs_item_store = OldCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
+    self.changeset_key_generator = KeyGenerator(1)
+
+    Log().quiet("Creating preliminary commit sets...")
+
+    # A map {metadata_id -> [cvs_rev, ...]} of CVSRevisions with this
+    # metadata_id.
+    metadata_id_to_cvs_revs = {}
+
+    # A map {symbol_id -> [cvs_symbol, ...]} of CVSSymbols with this
+    # symbol_id.
+    symbol_id_to_cvs_symbols = {}
+
+    for cvs_item in cvs_item_store:
+      if isinstance(cvs_item, CVSRevision):
+        # Skip this entire revision if it's on an excluded branch
+        if isinstance(cvs_item.lod, Branch):
+          symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
+          if isinstance(symbol, ExcludedSymbol):
+            continue
+        metadata_id_to_cvs_revs.setdefault(
+            cvs_item.metadata_id, []).append(cvs_item)
+      elif isinstance(cvs_item, CVSSymbol):
+        # Skip this symbol if it is to be excluded
+        symbol = self.symbol_db.get_symbol(cvs_item.symbol.id)
+        if isinstance(symbol, ExcludedSymbol):
+          continue
+        symbol_id_to_cvs_symbols.setdefault(
+            cvs_item.symbol.id, []).append(cvs_item)
+      else:
+        raise RuntimeError('Unknown cvs item type')
+
+    # Create a list of changesets:
+    changesets = []
+
+    for cvs_revs in metadata_id_to_cvs_revs.itervalues():
+      cvs_revs.sort(lambda a, b: cmp(a.timestamp, b.timestamp))
+      changesets.extend(self.split_by_timestamp(cvs_revs))
+
+    for cvs_symbols in symbol_id_to_cvs_symbols.itervalues():
+      changesets.append(Changeset(self.changeset_key_generator.gen_id(),
+                                  cvs_symbols))
+
+    for changeset in changesets:
+      Log().verbose(repr(changeset))
 
     Log().quiet("Done")
 
