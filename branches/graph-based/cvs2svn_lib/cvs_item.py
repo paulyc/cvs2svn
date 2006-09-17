@@ -29,6 +29,12 @@ class CVSItem(object):
     self.id = id
     self.cvs_file = cvs_file
 
+  def __cmp__(self, other):
+    return cmp(self.id, other.id)
+
+  def __hash__(self):
+    return self.id
+
   def __getstate__(self):
     raise NotImplementedError()
 
