@@ -10,9 +10,9 @@ CollectRevsPass (formerly called pass1)
 
 The goal of this pass is to write a summary of each CVS file as a
 pickled CVSFile to 'cvs2svn-cvs-files.db', and a summary of each CVS
-file's revisions as a list of pickled CVSRevisions to
-'cvs2svn-cvs-items.pck'.  In each case, items are assigned an
-arbitrary key that is used to refer to them.
+file's events (revisions, tagging, and branching) as a list of pickled
+CVSItems to 'cvs2svn-cvs-items.pck'.  In each case, items are assigned
+an arbitrary key that is used to refer to them.
 
 We walk over the repository, collecting data about the RCS files into
 an instance of CollectData.  Each RCS file is processed with
@@ -83,11 +83,12 @@ When every CVS file is done, CollectRevsPass is complete, and:
 
    - 'cvs2svn-cvs-files.db' contains a record of every CVS file.
 
-   - 'cvs2svn-cvs-items.pck' contains a summary of every revision to
-     every CVS file, including a reference to the corresponding CVS
-     file record in 'cvs2svn-cvs-files.db'.  The revisions are sorted
-     in groups, one per CVSFile.  But a multi-file commit will still
-     be scattered all over the place.
+   - 'cvs2svn-cvs-items.pck' contains a summary of every item
+     (revision, tagging, or branching) in every CVS file, including a
+     reference to the corresponding CVS file record in
+     'cvs2svn-cvs-files.db'.  The revisions are sorted in groups, one
+     per CVSFile.  But a multi-file commit will still be scattered all
+     over the place.
 
    - 'cvs2svn-resync.txt' contains a small amount of resync data, in
      no particular order.

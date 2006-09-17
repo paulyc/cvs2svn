@@ -40,6 +40,8 @@ from cvs2svn_lib.cvs_file import CVSFile
 from cvs2svn_lib.line_of_development import Trunk
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.cvs_item import CVSRevision
+from cvs2svn_lib.cvs_item import CVSBranch
+from cvs2svn_lib.cvs_item import CVSTag
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.database import Database
 from cvs2svn_lib.database import SDatabase
@@ -765,6 +767,26 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     rev_data.cvs_rev = cvs_rev
     self.collect_data.add_cvs_item(cvs_rev)
 
+  def _process_symbol_data(self):
+    """Store information about the accumulated symbols to collect_data."""
+
+    for branch_data in self.sdc.branches_data.values():
+      self.collect_data.add_cvs_item(
+          CVSBranch(
+              branch_data.id, self.cvs_file, branch_data.symbol.id,
+              branch_data.branch_number,
+              self._get_rev_id(branch_data.parent),
+              self._get_rev_id(branch_data.child),
+              ))
+
+    for tags_data in self.sdc.tags_data.values():
+      for tag_data in tags_data:
+        self.collect_data.add_cvs_item(
+            CVSTag(
+                tag_data.id, self.cvs_file, tag_data.symbol.id,
+                self._get_rev_id(tag_data.rev),
+                ))
+
   def parse_completed(self):
     """Finish the processing of this file.
 
@@ -779,6 +801,8 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
       self._process_revision_data(rev_data)
 
     self.collect_data.add_cvs_file(self.cvs_file)
+
+    self._process_symbol_data()
 
     self.sdc.register_branch_blockers()
 
