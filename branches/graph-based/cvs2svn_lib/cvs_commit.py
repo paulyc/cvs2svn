@@ -197,7 +197,7 @@ class CVSCommit:
       this file) and we need to fill the branch; else return False.
       See comments below for the detailed rules."""
 
-      if not cvs_rev.first_on_branch:
+      if cvs_rev.first_on_branch_id is None:
         # Only commits that are the first on their branch can force fills:
         return False
 

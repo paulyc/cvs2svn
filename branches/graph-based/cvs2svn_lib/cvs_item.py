@@ -53,7 +53,7 @@ class CVSRevision(CVSItem):
                timestamp, metadata_id,
                prev_id, next_id,
                op, rev, deltatext_exists,
-               lod, first_on_branch, default_branch_revision,
+               lod, first_on_branch_id, default_branch_revision,
                tag_ids, branch_ids, closed_symbol_ids):
     """Initialize a new CVSRevision object.
 
@@ -68,7 +68,8 @@ class CVSRevision(CVSItem):
        REV             -->  (string) this CVS rev, e.g., '1.3'
        DELTATEXT_EXISTS-->  (bool) true iff non-empty deltatext
        LOD             -->  (LineOfDevelopment) LOD where this rev occurred
-       FIRST_ON_BRANCH -->  (bool) true iff the first rev on its branch
+       FIRST_ON_BRANCH_ID -->  (int or None) if the first rev on its branch,
+                               the branch_id of that branch; else, None.
        DEFAULT_BRANCH_REVISION --> (bool) true iff this is a default branch
                                    revision
        TAG_IDS         -->  (list of int) ids of all tags on this revision
@@ -88,7 +89,7 @@ class CVSRevision(CVSItem):
     self.next_id = next_id
     self.deltatext_exists = deltatext_exists
     self.lod = lod
-    self.first_on_branch = first_on_branch
+    self.first_on_branch_id = first_on_branch_id
     self.default_branch_revision = default_branch_revision
     self.tag_ids = tag_ids
     self.branch_ids = branch_ids
@@ -123,7 +124,7 @@ class CVSRevision(CVSItem):
         self.rev,
         self.deltatext_exists,
         lod_id,
-        self.first_on_branch,
+        self.first_on_branch_id,
         self.default_branch_revision,
         ' '.join(['%x' % id for id in self.tag_ids]),
         ' '.join(['%x' % id for id in self.branch_ids]),
@@ -133,7 +134,7 @@ class CVSRevision(CVSItem):
     (self.id, cvs_file_id, self.timestamp, self.metadata_id,
      self.prev_id, self.next_id, self.op, self.rev,
      self.deltatext_exists,
-     lod_id, self.first_on_branch, self.default_branch_revision,
+     lod_id, self.first_on_branch_id, self.default_branch_revision,
      tag_ids, branch_ids, closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     if lod_id is None:

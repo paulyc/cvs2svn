@@ -172,8 +172,8 @@ class _RevisionData:
   def timestamp_was_adjusted(self):
     return self._adjusted
 
-  def is_first_on_branch(self):
-    return not self.parent or self.parent_branch_data is not None
+  def get_first_on_branch_id(self):
+    return self.parent_branch_data and self.parent_branch_data.id
 
 
 class _SymbolData:
@@ -761,7 +761,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         rev_data.rev,
         rev_data.deltatext_exists,
         lod,
-        rev_data.is_first_on_branch(),
+        rev_data.get_first_on_branch_id(),
         self._is_default_branch_revision(rev_data),
         tag_ids, branch_ids, closed_symbol_ids)
     rev_data.cvs_rev = cvs_rev
