@@ -773,7 +773,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     for branch_data in self.sdc.branches_data.values():
       self.collect_data.add_cvs_item(
           CVSBranch(
-              branch_data.id, self.cvs_file, branch_data.symbol.id,
+              branch_data.id, self.cvs_file, branch_data.symbol,
               branch_data.branch_number,
               self._get_rev_id(branch_data.parent),
               self._get_rev_id(branch_data.child),
@@ -783,7 +783,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
       for tag_data in tags_data:
         self.collect_data.add_cvs_item(
             CVSTag(
-                tag_data.id, self.cvs_file, tag_data.symbol.id,
+                tag_data.id, self.cvs_file, tag_data.symbol,
                 self._get_rev_id(tag_data.rev),
                 ))
 
