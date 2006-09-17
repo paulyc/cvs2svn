@@ -1,0 +1,739 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<style type="text/css"> /* <![CDATA[ */
+  @import "tigris-branding/css/tigris.css";
+  @import "tigris-branding/css/inst.css";
+  /* ]]> */</style>
+<link rel="stylesheet" type="text/css" media="print"
+  href="tigris-branding/css/print.css"/>
+<script type="text/javascript" src="tigris-branding/scripts/tigris.js"></script>
+<title>cvs2svn Documentation</title>
+</head>
+
+<body id="bodycol">
+<div class="app">
+
+<h1>cvs2svn Documentation</h1>
+
+<h2>Index</h2>
+
+<ul>
+
+  <li><a href="#reqs">Requirements</a></li>
+
+  <li><a href="#install">Installation</a></li>
+
+  <li><a href="#convert">Deciding how much to convert</a></li>
+
+  <li><a href="#prep">Prepping your repository</a></li>
+
+  <li><a href="#cmd-ref">Command line reference</a></li>
+
+  <li><a href="#examples">A few examples</a></li>
+
+</ul>
+
+<hr />
+
+<h1>Requirements</h1>
+<a name="reqs"></a>
+
+<p>cvs2svn requires the following:</p>
+
+<ul>
+
+  <li>Python 2.2 or greater.  See
+      <a href="http://www.python.org/">http://www.python.org/.</a>
+  </li>
+  <li>One or both of RCS `co' or CVS.  The RCS home page is
+     <a href="http://www.cs.purdue.edu/homes/trinkle/RCS/"
+             >http://www.cs.purdue.edu/homes/trinkle/RCS/</a>,
+     and the CVS home page is
+     <a href="http://ccvs.cvshome.org/">http://ccvs.cvshome.org/</a>.
+
+  By default, cvs2svn only depends on RCS 'co', and we recommend this
+  as it is faster.  Most likely you will never encounter the edge
+  cases that would make it necessary to use CVS instead.  See the <a
+  href="#use-cvs">--use-cvs flag</a> for more details.
+  </li>
+  <li>GNU sort, which is part of the coreutils package, see <a
+    href="http://www.gnu.org/software/coreutils/"
+         >http://www.gnu.org/software/coreutils/</a>.  Binaries for
+    Win32 can be found at <a href="http://unxutils.sourceforge.net/"
+                                  >http://unxutils.sourceforge.net/</a>.
+    Windows <tt>sort.exe</tt> is <b>not</b> adequate.
+  </li>
+
+</ul>
+
+<h2>CVSNT repositories</h2>
+
+<p>cvs2svn does not support conversion of <a
+href="http://www.cvsnt.org/">CVSNT</a> repositories.  Some people have
+indicated success with such conversions, while others have had
+problems.  In other words, <em>such conversions, even if apparently
+successful, should be checked carefully before use.</em> See the <a
+href="faq.html#cvsnt">FAQ</a> for more information.</p>
+
+<hr />
+
+<h1>Installation</h1>
+<a name="install"></a>
+
+<ul>
+  <li>As root, run 'make install'.</li>
+
+  <li>Or, if you do not wish to install cvs2svn on your system, you
+    can simply run it out of this directory.  As long as it can find
+    the 'cvs2svn_rcsparse' library, it should be happy.</li>
+</ul>
+
+<hr />
+
+<h1>Deciding how much to convert</h1>
+<a name="convert"></a>
+
+<p>If you're looking to switch an existing CVS repository to
+Subversion, you have a number of choices for migrating your existing
+CVS data to a Subversion repository, depending on your needs.</p>
+
+<p>There are a few basic routes to choose when switching from CVS to
+Subversion, and the one you choose will depend on how much historical
+data you want in your Subversion repository.  You may be content to
+refer to your existing (soon-to-be-converted-to-read-only) CVS
+repository for "pre-Subversion" data and start working with a new
+Subversion repository.  Maybe you prefer to squeeze every last drop of
+data out of your CVS repository into your Subversion repository.  Then
+again, perhaps you want a conversion somewhere in between these two.
+Based on these needs, we've come up with these different recommended
+paths for converting your CVS repository to a Subversion
+repository.</p>
+
+<ul>
+
+  <li>Top-skim (Doesn't require cvs2svn!)</li>
+
+  <li>Trunk only</li>
+
+  <li>Pick and choose</li>
+
+  <li>Full conversion</li>
+
+  <li>Smorgasbord</li>
+
+  <li>One project at a time</li>
+
+</ul>
+
+<p>If you decide that top-skimming doesn't meet your needs and you're
+going to use cvs2svn (yay!), then be sure to read the section below on
+<a href="#prep">prepping your repository</a> before you start your
+conversion.</p>
+
+
+<h2>Top-skimming</h2>
+
+<p>This is the quickest and easiest way to get started in your new
+repository.  You're basically going to export the latest revision of
+your cvs repository, possibly do some rearranging, and then import the
+resulting files into your Subversion repository.  Typically, if you
+top-skim, that means you'll be either be keeping your old CVS
+repository around as a read-only reference for older data or just
+tossing that historical data outright (Note to you data packrats who
+have just stopped breathing, please take a deep breath and put down
+the letter opener.  You don't <i>have</i> to do this yourself--it's
+just that some people don't feel the same way you do about historical
+data.  They're really not <i>bad</i> people.  Really.).</p>
+
+<blockquote>
+
+  <p><b>Pros:</b> Quick, easy, convenient, results in a very compact and
+  "neat" Subversion repository.</p>
+
+  <p><b>Cons:</b> You've got no historical data, no branches, and no tags
+  in your Subversion repository.  If you want any of this data, you'll
+  have to go back into the CVS Repository and get it.</p>
+
+</blockquote>
+
+
+<h2>Trunk only</h2>
+
+<p>If you decide that you'd like to have the main development line of
+your historical data in your Subversion repository but don't need to
+carry over the tags and branches, you may want to skip converting your
+CVS tags and branches entirely and only convert the "trunk" of your
+repository.  To do this, you'll use the <tt>--trunk-only</tt> switch
+to cvs2svn.</p>
+
+<blockquote>
+
+  <p><b>Pros:</b>Saves disk space in your new Subversion repository.
+  Attractive to neatniks.</p>
+
+  <p><b>Cons:</b> You've got no branches and no tags in your
+  Subversion repository.</p>
+
+</blockquote>
+
+
+<h2>Pick and choose</h2>
+
+<p>Let's say, for example, that you want to convert your CVS repository's
+historical data but you have no use for the myriad daily build tags
+that you've got in your CVS repository.  In addition to that, you want
+some branches but would prefer to ignore others.  In this case, you'll
+want to use the <tt>--exclude</tt> switch to instruct cvs2svn which
+branches and tags it should ignore. </p>
+
+<blockquote>
+
+  <p><b>Pros:</b>You only get what you want from your CVS repository.
+  Saves a some space.</p>
+
+  <p><b>Cons:</b>If you forgot something, you'll have to go to your
+  CVS repository.</p>
+
+</blockquote>
+
+
+<h2>Full conversion</h2>
+
+<p>If you want to convert your entire CVS repository, including all
+tags and branches, you want a full conversion.  This is cvs2svn's
+default behavior.</p>
+
+<blockquote>
+
+  <p><b>Pros:</b> Converts every last byte of your CVS repository.</p>
+
+  <p><b>Cons:</b> Requires more disk space.</p>
+
+</blockquote>
+
+
+<h2>Smorgasbord</h2>
+
+<p>You can convert your repository (or repositories) piece by piece
+using a combination of the above .</p>
+
+<blockquote>
+
+  <p><b>Pros:</b> You get exactly what you want.</p>
+
+  <p><b>Cons:</b> Importing converted repositories multiple times into
+  a single Subversion repository will likely break date-based range
+  commands (e.g. <tt>svn diff -r {2002-02-17:2002-03-18}</tt>) since
+  Subversion does a binary search through the repository for dates.
+  While this is not the end of the world, it can be a minor
+  inconvenience.</p>
+
+</blockquote>
+
+
+<h2>One project at a time</h2>
+
+<p>If you have many diverse projects in your CVS repository and you
+don't want to move them all to Subversion at once, you may want to
+convert to Subversion one project at a time.  This requires a few
+extra steps, but it can make the conversion of a large CVS repository
+much more manageable.  See <a href="/faq.html#oneatatime">How can I
+convert my CVS repository one module at a time?</a> on the cvs2svn FAQ
+for a detailed example on converting your CVS repository one project
+at a time.</p>
+
+<blockquote>
+
+  <p><b>Pros:</b>Allows multiple projects in a single repository to
+  convert to Subversion according to a schedule that works best for
+  them.</p>
+
+  <p><b>Cons:</b>Requires some extra steps to accomplish the
+  conversion.  Importing converted repositories multiple times into a
+  single Subversion repository will likely break date-based range
+  commands (e.g. <tt>svn diff -r {2002-02-17:2002-03-18}</tt>) since
+  Subversion does a binary search through the repository for dates.
+  While this is not the end of the world, it can be a minor
+  inconvenience.</p>
+
+</blockquote>
+
+<hr />
+
+<h1>Prepping your repository</h1>
+<a name="prep"></a>
+
+<p>There are a number of reasons that you may need to prep your CVS
+Repository.  If you decide that you need to change part of your CVS
+repository, we <b>strongly</b> recommend working on a <b>copy</b> of
+it instead of working on the real thing.  cvs2svn itself does not make
+any changes to your CVS repository, but if you start moving things
+around and deleting things in a CVS repository, it's all too easy to
+shoot yourself in the foot.</p>
+
+<p>If you want to convert a subdirectory in your repository, you can
+just point cvs2svn at the subdirectory and go.</p>
+
+<p>If there are any files that you <i>don't</i> want converted into
+your new Subversion repository, you should delete them or move them
+aside.</p>
+
+Lastly, even though you can move and copy files and directories around
+in Subversion, you may want to do some rearranging (typically of
+directories) before running your conversion.
+
+<hr />
+
+<h1>Command line vs. options file</h1>
+<a name="cmd-vs-options"></a>
+
+<p>Starting with cvs2svn version 1.5, there are two ways to specify
+the options that define a conversion: via the cvs2svn command line, or
+via an options file.  The command line is useful for simple
+conversions, but the options file method is recommended for nontrivial
+conversions as it gives the user more flexibility.</p>
+
+<h2>Command line method</h2>
+<a name="cmd-line-method"></a>
+
+<p>A command-line conversion allows the use of all of the command line
+options listed <a href="#cmd-ref">below</a> (except for
+<tt>--options</tt>).  This method allows almost all of the built-in
+conversion options to be selected, with the primary limitation that it
+does not support multiproject conversions.  However, it may require a
+<em>long</em> command line to specify all of the options for a
+complicated conversion.</p>
+
+<h2>Options file method</h2>
+<a name="options-file-method"></a>
+
+<p>The options file method allows full control of the conversion
+process, including multiproject conversions.  It also allows expert
+users to customize the conversion even more radically by writing
+Python code.  Finally, the options file used in the conversion can be
+retained as permanent record of the options used in a conversion.</p>
+
+<p>To use the options file method, you need to create a file defining
+all of the options that are to be used for the conversion.  A
+heavily-commented sample options file,
+<tt>cvs2svn-example.options</tt>, is included in the cvs2svn
+distribution.  The easiest way to create your own options file is to
+make a copy of the sample file and modify it as directed by the
+comments in the file.</p>
+
+<p>To start a conversion using an options file, invoke cvs2svn like
+this:</p>
+
+<pre>
+   $ cvs2svn --options=OPTIONSFILE
+</pre>
+
+<p>Only the following options are allowed in combination with
+<tt>--options</tt>: <tt>-h/--help</tt>, <tt>--help-passes</tt>,
+<tt>--version</tt>, <tt>-v/--verbose</tt>, <tt>-q/--quiet</tt>,
+<tt>-p</tt>, <tt>--dry-run</tt>, and <tt>--profile</tt>.</p>
+
+<hr />
+
+<h1>Command line reference</h1>
+<a name="cmd-ref"></a>
+
+
+<table border="1" cellpadding="10" cellspacing="3" width="80%">
+
+  <tr>
+    <td colspan="2">
+      USAGE:<br/>
+      <tt>cvs2svn [-s svn-repos-path|--dumpfile=PATH] cvs-repos-path</tt><br/>
+      <tt>cvs2svn --options=PATH</tt><br/>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--help</tt>, <tt>-h</tt></td>
+    <td>Print the usage message and exit with success.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--help-passes</tt></td>
+    <td>Print the numbers and names of the conversion passes and exit
+    with success.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--version</tt></td>
+    <td>Print the version number.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--verbose</tt>, <tt>-v</tt></td>
+    <td>Tell cvs2svn to print <i>tons</i> of information about what
+      it's doing to STDOUT.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--quiet</tt>, <tt>-q</tt></td>
+    <td>Tell cvs2svn to operate in quiet mode, printing little more
+      than pass starts and stops to STDOUT.  This option may be
+      specified twice to suppress all non-error output.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--options=PATH</tt></td>
+    <td>Read the conversion options from the specified file.  See
+      section <a href="#options-file-method">options file method</a>
+      for more information.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>-s PATH</tt></td>
+    <td>Load CVS repository into the Subversion repository located
+      at PATH.  If there is no Subversion repository at PATH, create a
+      new one.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>-p PASS</tt></td>
+    <td>Execute only pass PASS of the conversion.  PASS can be
+    specified by name or by number (see <tt>--help-passes</tt>)</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>-p [START]:[END]</tt></td>
+    <td>Execute passes START through END of the conversion
+    (inclusive).  START and END can be specified by name or by number
+    (see <tt>--help-passes</tt>).  If START or END is missing, it
+    defaults to the first or last pass, respectively.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--existing-svnrepos</tt></td>
+    <td>Load the converted CVS repository into an existing Subversion
+    repository, instead of creating a new repository.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--dumpfile=PATH</tt></td>
+    <td>Output the converted CVS repository into a Subversion dumpfile
+      instead of a Subversion repository (useful for importing a CVS
+      Repository into an existing Subversion repository).  PATH is the
+      filename in which to store the dumpfile.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--dry-run</tt></td>
+    <td>Do not create a repository or a dumpfile; just print the details
+      of what cvs2svn would do if it were really converting your
+      repository.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><a name="use-cvs"><tt>--use-cvs</tt></a></td>
+    <td>If RCS <b><tt>co</tt></b> is having trouble extracting certain
+      revisions, you may need to pass this flag, which causes cvs2svn
+      to use CVS instead of RCS to read the repository.  RCS is much
+      faster, so it's the default, but in certain rare cases it has
+      problems with data that CVS doesn't have problems with.
+      Specifically:
+      <ul>
+        <li>RCS can't handle spaces in author names:<br/>
+          <a href="http://cvs2svn.tigris.org/issues/show_bug.cgi?id=4"
+                  >http://cvs2svn.tigris.org/issues/show_bug.cgi?id=4</a>
+        </li>
+        <li>"Unterminated keyword" misread by RCS:<br/>
+          <a href="http://cvs2svn.tigris.org/issues/show_bug.cgi?id=11"
+                  >http://cvs2svn.tigris.org/issues/show_bug.cgi?id=11</a>
+        </li>
+        <li>RCS handles the "$Log$" keyword differently from CVS:<br/>
+          <a href="http://cvs2svn.tigris.org/issues/show_bug.cgi?id=29"
+                  >http://cvs2svn.tigris.org/issues/show_bug.cgi?id=29</a>
+        </li>
+      </ul>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--trunk-only</tt></td>
+    <td>Convert only the main line of development from the CVS
+      repository (commonly referred to in Subversion parlance as
+      "trunk"), ignoring all tags and branches.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--trunk=PATH</tt></td>
+    <td>The top-level path to use for trunk in the Subversion
+      repository.  The default value is "trunk".</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--branches=PATH</tt></td>
+    <td>The top-level path to use for branches in the Subversion
+      repository.  The default value is "branches".</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--tags=PATH</tt></td>
+    <td>The top-level path to use for tags in the Subversion
+      repository.  The default value is "tags".</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--no-prune</tt></td>
+    <td>When all files are deleted from a directory in the Subversion
+      repository, don't delete the empty directory (the default is to
+      delete any empty directories.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--encoding=ENC</tt></td>
+    <td>Use ENC as the encoding of log messages in CVS repos (default:
+      ascii)</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--force-branch=REGEXP</tt></td>
+    <td>Force symbols whose names match REGEXP to be branches.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--force-tag=REGEXP</tt></td>
+    <td>Force symbols whose names match REGEXP to be tags.  This will
+      cause an error if such a symbol has commits on it.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--exclude=REGEXP</tt></td>
+    <td>Exclude branches and tags whose names match REGEXP from
+      the conversion.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--symbol-default=OPT</tt></td>
+    <td>Specify how to convert ambiguous symbols (i.e., those that
+      appear in the CVS archive as both branches and tags).
+      <tt>OPT</tt> is one of the following:<ul>
+        <li>"<tt>branch</tt>": Treat every ambiguous symbol as
+          a branch.</li>
+
+        <li>"<tt>tag</tt>": Treat every ambiguous symbols as a
+          tag.</li>
+
+        <li>"<tt>heuristic</tt>": Decide how to treat each
+          ambiguous symbol based on whether it was used more often as
+          a branch or tag in CVS.</li>
+
+        <li>"<tt>strict</tt>": No default; every ambiguous
+          symbol has to be resolved manually using
+          <tt>--force-branch</tt>, <tt>--force-tag</tt>, or
+          <tt>--exclude</tt>.  (This is the default behavior.)</li>
+
+      </ul>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--symbol-transform=PAT:SUB</tt></td>
+    <td><p>Transform RCS/CVS symbol names before entering them into
+      Subversion.  PAT is a Python regexp pattern and SUB is a
+      replacement pattern using Python's reference syntax.  You may
+      specify any number of these options; they will be
+      applied in the order given on the command line.</p>
+
+      <p>This option can be useful if you're converting a repository in
+      which the developer used directory-wide symbol names like 1_0, 1_1
+      and 2_1 as a kludgy form of release tagging (the C-x v s command
+      in Emacs VC mode encourages this practice).  A command like</p>
+
+<pre>
+cvs2svn --symbol-transform='([0-9])-(.*):release-\1.\2' -q -s SVN RCS
+</pre>
+
+      <p>will transform a local CVS repository into a local SVN repository,
+      performing the following sort of mappings of RCS symbolic names to
+      SVN tags:</p>
+
+<pre>
+1-0 &rarr; release-1.0
+1-1 &rarr; release-1.1
+2-0 &rarr; release-2.0
+</pre>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--username=NAME</tt></td>
+    <td>Use NAME as the author for cvs2svn-synthesized commits (the
+      default value is no author at all.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--fs-type=TYPE</tt></td>
+    <td>Pass the <tt>--fs-type=TYPE</tt> option to "svnadmin
+      create" when creating a new repository.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--bdb-txn-nosync</tt></td>
+    <td>Pass the <tt>--bdb-txn-nosync</tt> switch to "svnadmin
+      create" when creating a new repository.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--cvs-revnums</tt></td>
+    <td>Record CVS revision numbers as file properties in the
+      Subversion repository.  (Note that unless it is removed
+      explicitly, the last CVS revision number will remain associated
+      with the file even after the file is changed within
+      Subversion.)</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--mime-types=FILE</tt></td>
+    <td>Specify an apache-style mime.types file for setting
+      <tt>svn:mime-type</tt> properties on files in the Subversion
+      repository.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--auto-props=FILE</tt></td>
+    <td>Specify a file in the format of Subversion's config file,
+      whose <tt>[auto-props]</tt> section can be used to set arbitrary
+      properties on files in the Subversion repository based on their
+      filenames.  (The <tt>[auto-props]</tt> section header must be
+      present; other sections of the config file, including the
+      <tt>enable-auto-props</tt> setting, are ignored.)  Filenames are
+      matched to the filename patterns case-sensitively unless the
+      <tt>--auto-props-ignore-case</tt> option is specified.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--auto-props-ignore-case</tt></td>
+    <td>Ignore case when pattern-matching auto-props patterns.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--eol-from-mime-type</tt></td>
+    <td>For files that don't have the <tt>kb</tt> expansion mode but
+      have a known mime type, set the eol-style based on the mime
+      type.  For such files, set the <tt>svn:eol-style</tt> property
+      to "native" if the mime type begins with "text/", and leave it
+      unset (i.e., no EOL translation) otherwise.  Files with unknown
+      mime types are not affected by this option.  This option has no
+      effect unless the <tt>--mime-types</tt> option is also
+      specified.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--no-default-eol</tt></td>
+    <td>Files that don't have the <tt>kb</tt> expansion mode and (if
+      <tt>--eol-from-mime-type</tt> is set) unknown mime type usually
+      have their <tt>svn:eol-style</tt> property to "native".  If this
+      option is specified, such files are left with no eol-style
+      (i.e., no EOL translation).</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--keywords-off</tt></td>
+    <td>By default, cvs2svn sets <tt>svn:keywords</tt> on CVS files to
+      "author id date" if the mode of the RCS file in question is
+      either kv, kvl or <b>not</b> kb.  If you use the
+      <tt>--keywords-off</tt> switch, cvs2svn will not set
+      <tt>svn:keywords</tt> for any file.  While this will not touch
+      the keywords in the contents of your files, Subversion will not
+      expand them.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--tmpdir=PATH</tt></td>
+    <td>Use the directory PATH for all of cvs2svn's temporary data
+      (which can be a <i>lot</i> of data).  The default value is the
+      current working directory.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--skip-cleanup</tt></td>
+    <td>Prevent the deletion of the temporary files that cvs2svn
+      creates in the process of conversion.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--profile</tt></td>
+    <td>Dump Python <a href="http://docs.python.org/lib/module-hotshot.html"
+        >Hotshot</a> profiling data to the file <tt>cvs2svn.hotshot</tt>.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--svnadmin=PATH</tt></td>
+    <td>If the svnadmin program is not in your $PATH you should
+      specify its absolute path with this switch.</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--co=PATH</tt></td>
+    <td>If the co program (a part of RCS) is not in your $PATH you should
+      specify its absolute path with this switch.  (co is needed if
+      <tt>--use-cvs</tt> is not specified.)</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--cvs=PATH</tt></td>
+    <td>If the cvs program is not in your $PATH you should
+      specify its absolute path with this switch.  (cvs is needed if
+      <tt>--use-cvs</tt> is specified.)</td>
+  </tr>
+
+  <tr>
+    <td align="right"><tt>--sort=PATH</tt></td>
+    <td>If the GNU sort program is not in your $PATH you should
+      specify its absolute path with this switch.  cvs2svn requires
+      GNU sort; Windows <tt>sort.exe</tt> is <b>not</b> adequate.</td>
+  </tr>
+
+</table>
+
+<hr />
+
+<h1>A Few Examples</h1>
+<a name="examples"></a>
+
+
+<p>To create a new Subversion repository by converting an existing CVS
+repository, run the script like this:</p>
+
+<pre>
+   $ cvs2svn -s NEW_SVNREPOS CVSREPOS
+</pre>
+
+<p>To create a new Subversion repository containing only trunk commits,
+and omitting all branches and tags from the CVS repository, do</p>
+
+<pre>
+   $ cvs2svn --trunk-only -s NEW_SVNREPOS CVSREPOS
+</pre>
+
+<p>To create a Subversion dumpfile (suitable for 'svnadmin load') from
+a CVS repository, run it like this:</p>
+
+<pre>
+   $ cvs2svn --dumpfile DUMPFILE CVSREPOS
+</pre>
+
+<p>To use an options file to define all of the conversion parameters,
+specify <tt>--options</tt>:</p>
+
+<pre>
+   $ cvs2svn --options OPTIONSFILE
+</pre>
+
+<p>As it works, cvs2svn will create many temporary files in the
+current directory (or the directory specified with <tt>--tmpdir</tt>).
+This is normal.  If the entire conversion is successful, however,
+those tempfiles will be automatically removed.  If the conversion is
+not successful, or if you specify the '--skip-cleanup' option, cvs2svn
+will leave the temporary files behind for possible debugging.</p>
+
+</div>
+</body>
+</html>
