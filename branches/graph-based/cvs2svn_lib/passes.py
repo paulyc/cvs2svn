@@ -255,18 +255,19 @@ class ResyncRevsPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_STORE)
 
   def update_symbols(self, cvs_rev):
-    """Update CVS_REV.branch_ids and tag_ids based on self.symbol_db."""
+    """Update CVS_REV.branch_symbol_ids and tag_symbol_ids based on
+    self.symbol_db."""
 
-    branch_ids = []
-    tag_ids = []
-    for id in cvs_rev.branch_ids + cvs_rev.tag_ids:
+    branch_symbol_ids = []
+    tag_symbol_ids = []
+    for id in cvs_rev.branch_symbol_ids + cvs_rev.tag_symbol_ids:
       symbol = self.symbol_db.get_symbol(id)
       if isinstance(symbol, BranchSymbol):
-        branch_ids.append(symbol.id)
+        branch_symbol_ids.append(symbol.id)
       elif isinstance(symbol, TagSymbol):
-        tag_ids.append(symbol.id)
-    cvs_rev.branch_ids = branch_ids
-    cvs_rev.tag_ids = tag_ids
+        tag_symbol_ids.append(symbol.id)
+    cvs_rev.branch_symbol_ids = branch_symbol_ids
+    cvs_rev.tag_symbol_ids = tag_symbol_ids
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)

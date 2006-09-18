@@ -54,7 +54,7 @@ class CVSRevision(CVSItem):
                prev_id, next_id,
                op, rev, deltatext_exists,
                lod, first_on_branch_id, default_branch_revision,
-               tag_ids, branch_ids, closed_symbol_ids):
+               tag_symbol_ids, branch_symbol_ids, closed_symbol_ids):
     """Initialize a new CVSRevision object.
 
     Arguments:
@@ -72,8 +72,8 @@ class CVSRevision(CVSItem):
                                the branch_id of that branch; else, None.
        DEFAULT_BRANCH_REVISION --> (bool) true iff this is a default branch
                                    revision
-       TAG_IDS         -->  (list of int) ids of all tags on this revision
-       BRANCH_IDS      -->  (list of int) ids of all branches rooted in this
+       TAG_SYMBOL_IDS  -->  (list of int) ids of all tags on this revision
+       BRANCH_SYMBOL_IDS -->  (list of int) ids of all branches rooted in this
                             revision
        CLOSED_SYMBOL_IDS --> (list of int) ids of all symbols closed by
                              this revision
@@ -91,8 +91,8 @@ class CVSRevision(CVSItem):
     self.lod = lod
     self.first_on_branch_id = first_on_branch_id
     self.default_branch_revision = default_branch_revision
-    self.tag_ids = tag_ids
-    self.branch_ids = branch_ids
+    self.tag_symbol_ids = tag_symbol_ids
+    self.branch_symbol_ids = branch_symbol_ids
     self.closed_symbol_ids = closed_symbol_ids
 
   def _get_cvs_path(self):
@@ -126,8 +126,8 @@ class CVSRevision(CVSItem):
         lod_id,
         self.first_on_branch_id,
         self.default_branch_revision,
-        ' '.join(['%x' % id for id in self.tag_ids]),
-        ' '.join(['%x' % id for id in self.branch_ids]),
+        ' '.join(['%x' % id for id in self.tag_symbol_ids]),
+        ' '.join(['%x' % id for id in self.branch_symbol_ids]),
         ' '.join(['%x' % id for id in self.closed_symbol_ids]),)
 
   def __setstate__(self, data):
@@ -135,23 +135,23 @@ class CVSRevision(CVSItem):
      self.prev_id, self.next_id, self.op, self.rev,
      self.deltatext_exists,
      lod_id, self.first_on_branch_id, self.default_branch_revision,
-     tag_ids, branch_ids, closed_symbol_ids) = data
+     tag_symbol_ids, branch_symbol_ids, closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     if lod_id is None:
       self.lod = Trunk()
     else:
       self.lod = Branch(Ctx()._symbol_db.get_symbol(lod_id))
-    self.tag_ids = [int(s, 16) for s in tag_ids.split()]
-    self.branch_ids = [int(s, 16) for s in branch_ids.split()]
+    self.tag_symbol_ids = [int(s, 16) for s in tag_symbol_ids.split()]
+    self.branch_symbol_ids = [int(s, 16) for s in branch_symbol_ids.split()]
     self.closed_symbol_ids = [int(s, 16) for s in closed_symbol_ids.split()]
 
   def opens_symbol(self, symbol_id):
     """Return True iff this CVSRevision is the opening CVSRevision for
     SYMBOL_ID (for this RCS file)."""
 
-    if symbol_id in self.tag_ids:
+    if symbol_id in self.tag_symbol_ids:
       return True
-    if symbol_id in self.branch_ids:
+    if symbol_id in self.branch_symbol_ids:
       # If this cvs_rev opens a branch and our op is OP_DELETE, then
       # that means that the file that this cvs_rev belongs to was
       # created on the branch, so for all intents and purposes, this

@@ -84,7 +84,8 @@ class SymbolingsLogger:
     else:
       branch_id = None
 
-    for symbol_id in cvs_rev.tag_ids + cvs_rev.branch_ids:
+    for symbol_id \
+            in cvs_rev.tag_symbol_ids + cvs_rev.branch_symbol_ids:
       self._note_default_branch_opening(cvs_rev, symbol_id)
       if cvs_rev.op != OP_DELETE:
         self._log(symbol_id, svn_revnum, cvs_rev.cvs_file, branch_id, OPENING)

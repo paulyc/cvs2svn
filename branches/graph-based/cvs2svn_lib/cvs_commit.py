@@ -255,15 +255,15 @@ class CVSCommit:
       if cvs_rev.prev_id is not None:
         return True
 
-      # cvs_rev.branch_ids may be empty if the originating branch
-      # has been excluded.
-      if not cvs_rev.branch_ids:
+      # cvs_rev.branch_symbol_ids may be empty if the originating
+      # branch has been excluded.
+      if not cvs_rev.branch_symbol_ids:
         return False
       # FIXME: This message will not match if the RCS file was renamed
       # manually after it was created.
       cvs_generated_msg = 'file %s was initially added on branch %s.\n' % (
           cvs_rev.cvs_file.basename,
-          Ctx()._symbol_db.get_symbol(cvs_rev.branch_ids[0]).name,)
+          Ctx()._symbol_db.get_symbol(cvs_rev.branch_symbol_ids[0]).name,)
       author, log_msg = Ctx()._metadata_db[cvs_rev.metadata_id]
       return log_msg != cvs_generated_msg
 

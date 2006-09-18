@@ -75,10 +75,10 @@ class StatsKeeper:
   def record_cvs_rev(self, cvs_rev):
     self._cvs_revs_count += 1
 
-    for tag_id in cvs_rev.tag_ids:
-      self._tag_ids.add(tag_id)
-    for branch_id in cvs_rev.branch_ids:
-      self._branch_ids.add(branch_id)
+    for tag_symbol_id in cvs_rev.tag_symbol_ids:
+      self._tag_ids.add(tag_symbol_id)
+    for branch_symbol_id in cvs_rev.branch_symbol_ids:
+      self._branch_ids.add(branch_symbol_id)
 
     if cvs_rev.timestamp < self._first_rev_date:
       self._first_rev_date = cvs_rev.timestamp
