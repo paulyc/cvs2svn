@@ -333,18 +333,6 @@ class CreateDatabasesPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.CVS_REVS_SORTED_DATAFILE)
 
-  def get_cvs_revs(self):
-    """Generator the CVSRevisions in CVS_REVS_SORTED_DATAFILE order."""
-
-    cvs_items_db = OldIndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
-    for line in file(
-            artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE)):
-      cvs_rev_id = int(line.strip().split()[-1], 16)
-      yield cvs_items_db[cvs_rev_id]
-    cvs_items_db.close()
-
   def run(self, stats_keeper):
     """If we're not doing a trunk-only conversion, generate the
     LastSymbolicNameDatabase, which contains the last CVSRevision that
@@ -354,18 +342,26 @@ class CreateDatabasesPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
 
+    cvs_items_db = OldIndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+
     if Ctx().trunk_only:
-      for cvs_rev in self.get_cvs_revs():
-        stats_keeper.record_cvs_rev(cvs_rev)
+      for cvs_item in cvs_items_db:
+        if isinstance(cvs_item, CVSRevision):
+          stats_keeper.record_cvs_rev(cvs_item)
     else:
       Log().quiet("Finding last CVS revisions for all symbolic names...")
       last_sym_name_db = LastSymbolicNameDatabase()
 
-      for cvs_rev in self.get_cvs_revs():
-        last_sym_name_db.log_revision(cvs_rev)
-        stats_keeper.record_cvs_rev(cvs_rev)
+      for cvs_item in cvs_items_db:
+        if isinstance(cvs_item, CVSRevision):
+          last_sym_name_db.log_revision(cvs_item)
+          stats_keeper.record_cvs_rev(cvs_item)
 
       last_sym_name_db.create_database()
+
+    cvs_items_db.close()
 
     stats_keeper.set_stats_reflect_exclude(True)
 
