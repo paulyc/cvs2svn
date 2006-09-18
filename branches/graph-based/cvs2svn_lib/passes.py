@@ -348,16 +348,15 @@ class CreateDatabasesPass(Pass):
 
     if Ctx().trunk_only:
       for cvs_item in cvs_items_db:
-        if isinstance(cvs_item, CVSRevision):
-          stats_keeper.record_cvs_rev(cvs_item)
+        stats_keeper.record_cvs_item(cvs_item)
     else:
       Log().quiet("Finding last CVS revisions for all symbolic names...")
       last_sym_name_db = LastSymbolicNameDatabase()
 
       for cvs_item in cvs_items_db:
+        stats_keeper.record_cvs_item(cvs_item)
         if isinstance(cvs_item, CVSRevision):
           last_sym_name_db.log_revision(cvs_item)
-          stats_keeper.record_cvs_rev(cvs_item)
 
       last_sym_name_db.create_database()
 

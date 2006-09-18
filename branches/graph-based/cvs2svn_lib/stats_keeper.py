@@ -27,6 +27,9 @@ from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib import config
 from cvs2svn_lib.artifact_manager import artifact_manager
+from cvs2svn_lib.cvs_item import CVSRevision
+from cvs2svn_lib.cvs_item import CVSBranch
+from cvs2svn_lib.cvs_item import CVSTag
 
 
 class StatsKeeper:
@@ -72,7 +75,7 @@ class StatsKeeper:
 
     self._repos_file_count = len(self._repos_files)
 
-  def record_cvs_rev(self, cvs_rev):
+  def _record_cvs_rev(self, cvs_rev):
     self._cvs_revs_count += 1
 
     for tag_symbol_id in cvs_rev.tag_symbol_ids:
@@ -87,6 +90,22 @@ class StatsKeeper:
       self._last_rev_date = cvs_rev.timestamp
 
     self._record_cvs_file(cvs_rev.cvs_file)
+
+  def _record_cvs_branch(self, cvs_branch):
+    pass
+
+  def _record_cvs_tag(self, cvs_tag):
+    pass
+
+  def record_cvs_item(self, cvs_item):
+    if isinstance(cvs_item, CVSRevision):
+      self._record_cvs_rev(cvs_item)
+    elif isinstance(cvs_item, CVSBranch):
+      self._record_cvs_branch(cvs_item)
+    elif isinstance(cvs_item, CVSTag):
+      self._record_cvs_tag(cvs_item)
+    else:
+      raise RuntimeError('Unknown CVSItem type')
 
   def set_svn_rev_count(self, count):
     self._svn_rev_count = count

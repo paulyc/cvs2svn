@@ -945,8 +945,7 @@ class CollectData:
 
   def add_cvs_item(self, cvs_item):
     self._cvs_item_store.add(cvs_item)
-    if isinstance(cvs_item, CVSRevision):
-      self.stats_keeper.record_cvs_rev(cvs_item)
+    self.stats_keeper.record_cvs_item(cvs_item)
 
   def flush(self):
     self._cvs_item_store.close()
