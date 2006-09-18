@@ -54,7 +54,8 @@ class CVSRevision(CVSItem):
                prev_id, next_id,
                op, rev, deltatext_exists,
                lod, first_on_branch_id, default_branch_revision,
-               tag_symbol_ids, branch_symbol_ids, closed_symbol_ids):
+               tag_ids, branch_ids, tag_symbol_ids, branch_symbol_ids,
+               closed_symbol_ids):
     """Initialize a new CVSRevision object.
 
     Arguments:
@@ -72,6 +73,10 @@ class CVSRevision(CVSItem):
                                the branch_id of that branch; else, None.
        DEFAULT_BRANCH_REVISION --> (bool) true iff this is a default branch
                                    revision
+       TAG_IDS         -->  (list of int) ids of CVSSymbols on this revision
+                            that should be treated as tags
+       BRANCH_IDS      -->  (list of int) ids of all CVSSymbols rooted in this
+                            revision that should be treated as branches
        TAG_SYMBOL_IDS  -->  (list of int) ids of all tags on this revision
        BRANCH_SYMBOL_IDS -->  (list of int) ids of all branches rooted in this
                             revision
@@ -91,6 +96,8 @@ class CVSRevision(CVSItem):
     self.lod = lod
     self.first_on_branch_id = first_on_branch_id
     self.default_branch_revision = default_branch_revision
+    self.tag_ids = tag_ids
+    self.branch_ids = branch_ids
     self.tag_symbol_ids = tag_symbol_ids
     self.branch_symbol_ids = branch_symbol_ids
     self.closed_symbol_ids = closed_symbol_ids
@@ -126,8 +133,8 @@ class CVSRevision(CVSItem):
         lod_id,
         self.first_on_branch_id,
         self.default_branch_revision,
-        self.tag_symbol_ids,
-        self.branch_symbol_ids,
+        self.tag_ids, self.branch_ids,
+        self.tag_symbol_ids, self.branch_symbol_ids,
         self.closed_symbol_ids,
         )
 
@@ -136,6 +143,7 @@ class CVSRevision(CVSItem):
      self.prev_id, self.next_id, self.op, self.rev,
      self.deltatext_exists,
      lod_id, self.first_on_branch_id, self.default_branch_revision,
+     self.tag_ids, self.branch_ids,
      self.tag_symbol_ids, self.branch_symbol_ids,
      self.closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)

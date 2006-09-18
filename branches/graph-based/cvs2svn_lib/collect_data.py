@@ -738,11 +738,21 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
       lod = Trunk()
 
     branch_ids = [
-        branch_data.symbol.id
+        branch_data.id
         for branch_data in rev_data.branches_data
         ]
 
     tag_ids = [
+        tag_data.id
+        for tag_data in rev_data.tags_data
+        ]
+
+    branch_symbol_ids = [
+        branch_data.symbol.id
+        for branch_data in rev_data.branches_data
+        ]
+
+    tag_symbol_ids = [
         tag_data.symbol.id
         for tag_data in rev_data.tags_data
         ]
@@ -763,7 +773,9 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         lod,
         rev_data.get_first_on_branch_id(),
         self._is_default_branch_revision(rev_data),
-        tag_ids, branch_ids, closed_symbol_ids)
+        tag_ids, branch_ids,
+        tag_symbol_ids, branch_symbol_ids,
+        closed_symbol_ids)
     rev_data.cvs_rev = cvs_rev
     self.collect_data.add_cvs_item(cvs_rev)
 
