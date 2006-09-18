@@ -77,9 +77,6 @@ class CVSRevision(CVSItem):
                             that should be treated as tags
        BRANCH_IDS      -->  (list of int) ids of all CVSSymbols rooted in this
                             revision that should be treated as branches
-       TAG_SYMBOL_IDS  -->  (list of int) ids of all tags on this revision
-       BRANCH_SYMBOL_IDS -->  (list of int) ids of all branches rooted in this
-                            revision
        CLOSED_SYMBOL_IDS --> (list of int) ids of all symbols closed by
                              this revision
     """
@@ -98,8 +95,6 @@ class CVSRevision(CVSItem):
     self.default_branch_revision = default_branch_revision
     self.tag_ids = tag_ids
     self.branch_ids = branch_ids
-    self.tag_symbol_ids = tag_symbol_ids
-    self.branch_symbol_ids = branch_symbol_ids
     self.closed_symbol_ids = closed_symbol_ids
 
   def _get_cvs_path(self):
@@ -134,7 +129,6 @@ class CVSRevision(CVSItem):
         self.first_on_branch_id,
         self.default_branch_revision,
         self.tag_ids, self.branch_ids,
-        self.tag_symbol_ids, self.branch_symbol_ids,
         self.closed_symbol_ids,
         )
 
@@ -144,7 +138,6 @@ class CVSRevision(CVSItem):
      self.deltatext_exists,
      lod_id, self.first_on_branch_id, self.default_branch_revision,
      self.tag_ids, self.branch_ids,
-     self.tag_symbol_ids, self.branch_symbol_ids,
      self.closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     if lod_id is None:
@@ -156,16 +149,21 @@ class CVSRevision(CVSItem):
     """Return True iff this CVSRevision is the opening CVSRevision for
     SYMBOL_ID (for this RCS file)."""
 
-    if symbol_id in self.tag_symbol_ids:
-      return True
-    if symbol_id in self.branch_symbol_ids:
-      # If this cvs_rev opens a branch and our op is OP_DELETE, then
-      # that means that the file that this cvs_rev belongs to was
-      # created on the branch, so for all intents and purposes, this
-      # cvs_rev is *technically* not an opening.  See Issue #62 for
-      # more information.
-      if self.op != OP_DELETE:
+    # FIXME: All these DB reads are going to be expensive!
+    for tag_id in self.tag_ids:
+      cvs_tag = Ctx()._cvs_items_db[tag_id]
+      if symbol_id == cvs_tag.symbol.id:
         return True
+    # If this cvs_rev opens a branch and our op is OP_DELETE, then
+    # that means that the file that this cvs_rev belongs to was
+    # created on the branch, so for all intents and purposes, this
+    # cvs_rev is *technically* not an opening.  See Issue #62 for
+    # more information.
+    if self.op != OP_DELETE:
+      for branch_id in self.branch_ids:
+        cvs_branch = Ctx()._cvs_items_db[branch_id]
+        if symbol_id == cvs_branch.symbol.id:
+          return True
     return False
 
   def __str__(self):
