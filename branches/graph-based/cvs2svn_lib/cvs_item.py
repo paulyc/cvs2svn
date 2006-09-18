@@ -126,24 +126,23 @@ class CVSRevision(CVSItem):
         lod_id,
         self.first_on_branch_id,
         self.default_branch_revision,
-        ' '.join(['%x' % id for id in self.tag_symbol_ids]),
-        ' '.join(['%x' % id for id in self.branch_symbol_ids]),
-        ' '.join(['%x' % id for id in self.closed_symbol_ids]),)
+        self.tag_symbol_ids,
+        self.branch_symbol_ids,
+        self.closed_symbol_ids,
+        )
 
   def __setstate__(self, data):
     (self.id, cvs_file_id, self.timestamp, self.metadata_id,
      self.prev_id, self.next_id, self.op, self.rev,
      self.deltatext_exists,
      lod_id, self.first_on_branch_id, self.default_branch_revision,
-     tag_symbol_ids, branch_symbol_ids, closed_symbol_ids) = data
+     self.tag_symbol_ids, self.branch_symbol_ids,
+     self.closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     if lod_id is None:
       self.lod = Trunk()
     else:
       self.lod = Branch(Ctx()._symbol_db.get_symbol(lod_id))
-    self.tag_symbol_ids = [int(s, 16) for s in tag_symbol_ids.split()]
-    self.branch_symbol_ids = [int(s, 16) for s in branch_symbol_ids.split()]
-    self.closed_symbol_ids = [int(s, 16) for s in closed_symbol_ids.split()]
 
   def opens_symbol(self, symbol_id):
     """Return True iff this CVSRevision is the opening CVSRevision for
