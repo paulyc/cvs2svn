@@ -35,6 +35,8 @@ from cvs2svn_lib.cvs_item import CVSTag
 class StatsKeeper:
   def __init__(self):
     self._cvs_revs_count = 0
+    self._cvs_branches_count = 0
+    self._cvs_tags_count = 0
     # A set of tag_ids seen:
     self._tag_ids = set()
     # A set of branch_ids seen:
@@ -64,6 +66,8 @@ class StatsKeeper:
 
   def reset_cvs_rev_info(self):
     self._cvs_revs_count = 0
+    self._cvs_branches_count = 0
+    self._cvs_tags_count = 0
     self._tag_ids = set()
     self._branch_ids = set()
 
@@ -78,11 +82,6 @@ class StatsKeeper:
   def _record_cvs_rev(self, cvs_rev):
     self._cvs_revs_count += 1
 
-    for tag_symbol_id in cvs_rev.tag_symbol_ids:
-      self._tag_ids.add(tag_symbol_id)
-    for branch_symbol_id in cvs_rev.branch_symbol_ids:
-      self._branch_ids.add(branch_symbol_id)
-
     if cvs_rev.timestamp < self._first_rev_date:
       self._first_rev_date = cvs_rev.timestamp
 
@@ -92,10 +91,12 @@ class StatsKeeper:
     self._record_cvs_file(cvs_rev.cvs_file)
 
   def _record_cvs_branch(self, cvs_branch):
-    pass
+    self._cvs_branches_count += 1
+    self._branch_ids.add(cvs_branch.symbol.id)
 
   def _record_cvs_tag(self, cvs_tag):
-    pass
+    self._cvs_tags_count += 1
+    self._tag_ids.add(cvs_tag.symbol.id)
 
   def record_cvs_item(self, cvs_item):
     if isinstance(cvs_item, CVSRevision):
@@ -140,6 +141,8 @@ class StatsKeeper:
             '------------------\n'              \
             'Total CVS Files:        %10i\n'    \
             'Total CVS Revisions:    %10i\n'    \
+            'Total CVS Branches:     %10i\n'    \
+            'Total CVS Tags:         %10i\n'    \
             'Total Unique Tags:      %10i\n'    \
             'Total Unique Branches:  %10i\n'    \
             'CVS Repos Size in KB:   %10i\n'    \
@@ -150,6 +153,8 @@ class StatsKeeper:
             '%s'
             % (self._repos_file_count,
                self._cvs_revs_count,
+               self._cvs_branches_count,
+               self._cvs_tags_count,
                len(self._tag_ids),
                len(self._branch_ids),
                (self._repos_size / 1024),
