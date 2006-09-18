@@ -255,25 +255,25 @@ class ResyncRevsPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_STORE)
 
   def update_symbols(self, cvs_rev):
-    """Update CVS_REV.branch_symbol_ids and tag_symbol_ids based on
-    self.symbol_db."""
+    """Update CVS_REV.branch_ids and tag_ids based on self.symbol_db."""
 
-    branch_symbol_ids = []
-    tag_symbol_ids = []
-    for id in cvs_rev.branch_symbol_ids + cvs_rev.tag_symbol_ids:
-      symbol = self.symbol_db.get_symbol(id)
+    branch_ids = []
+    tag_ids = []
+    for id in cvs_rev.branch_ids + cvs_rev.tag_ids:
+      cvs_symbol = self.cvs_item_store[id]
+      symbol = cvs_symbol.symbol
       if isinstance(symbol, BranchSymbol):
-        branch_symbol_ids.append(symbol.id)
+        branch_ids.append(cvs_symbol.id)
       elif isinstance(symbol, TagSymbol):
-        tag_symbol_ids.append(symbol.id)
-    cvs_rev.branch_symbol_ids = branch_symbol_ids
-    cvs_rev.tag_symbol_ids = tag_symbol_ids
+        tag_ids.append(cvs_symbol.id)
+    cvs_rev.branch_ids = branch_ids
+    cvs_rev.tag_ids = tag_ids
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
-    cvs_item_store = OldCVSItemStore(
+    self.cvs_item_store = OldCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
     cvs_items_resync_db = NewIndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
@@ -281,14 +281,14 @@ class ResyncRevsPass(Pass):
 
     Log().quiet("Re-synchronizing CVS revision timestamps...")
 
-    resynchronizer = CVSRevisionResynchronizer(cvs_item_store)
+    resynchronizer = CVSRevisionResynchronizer(self.cvs_item_store)
 
     # We may have recorded some changes in revisions' timestamp.  We need to
     # scan for any other files which may have had the same log message and
     # occurred at "the same time" and change their timestamps, too.
 
     # Process the revisions file, looking for items to clean up
-    for cvs_item in cvs_item_store:
+    for cvs_item in self.cvs_item_store:
       if isinstance(cvs_item, CVSRevision):
         # Skip this entire revision if it's on an excluded branch
         if isinstance(cvs_item.lod, Branch):
@@ -342,25 +342,25 @@ class CreateDatabasesPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
 
-    cvs_items_db = OldIndexedCVSItemStore(
+    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
 
     if Ctx().trunk_only:
-      for cvs_item in cvs_items_db:
+      for cvs_item in Ctx()._cvs_items_db:
         stats_keeper.record_cvs_item(cvs_item)
     else:
       Log().quiet("Finding last CVS revisions for all symbolic names...")
       last_sym_name_db = LastSymbolicNameDatabase()
 
-      for cvs_item in cvs_items_db:
+      for cvs_item in Ctx()._cvs_items_db:
         stats_keeper.record_cvs_item(cvs_item)
         if isinstance(cvs_item, CVSRevision):
           last_sym_name_db.log_revision(cvs_item)
 
       last_sym_name_db.create_database()
 
-    cvs_items_db.close()
+    Ctx()._cvs_items_db.close()
 
     stats_keeper.set_stats_reflect_exclude(True)
 

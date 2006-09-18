@@ -43,15 +43,17 @@ class LastSymbolicNameDatabase:
   def log_revision(self, cvs_rev):
     """Gather last CVS Revision for symbolic name info and tag info."""
 
-    for tag_symbol_id in cvs_rev.tag_symbol_ids:
-      old_cvs_rev = self._symbols.get(tag_symbol_id)
+    for tag_id in cvs_rev.tag_ids:
+      cvs_tag = Ctx()._cvs_items_db[tag_id]
+      old_cvs_rev = self._symbols.get(cvs_tag.symbol.id)
       if old_cvs_rev is None or old_cvs_rev.timestamp < cvs_rev.timestamp:
-        self._symbols[tag_symbol_id] = cvs_rev
+        self._symbols[cvs_tag.symbol.id] = cvs_rev
     if cvs_rev.op != OP_DELETE:
-      for branch_symbol_id in cvs_rev.branch_symbol_ids:
-        old_cvs_rev = self._symbols.get(branch_symbol_id)
+      for branch_id in cvs_rev.branch_ids:
+        cvs_branch = Ctx()._cvs_items_db[branch_id]
+        old_cvs_rev = self._symbols.get(cvs_branch.symbol.id)
         if old_cvs_rev is None or old_cvs_rev.timestamp < cvs_rev.timestamp:
-          self._symbols[branch_symbol_id] = cvs_rev
+          self._symbols[cvs_branch.symbol.id] = cvs_rev
 
   def create_database(self):
     """Create the SYMBOL_LAST_CVS_REVS_DB.
