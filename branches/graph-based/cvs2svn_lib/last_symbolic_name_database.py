@@ -37,7 +37,7 @@ class LastSymbolicNameDatabase:
     # CVSRevision that had the symbol as a tag or branch.  Once we've
     # gone through all the revs, symbols.keys() will be a list of all
     # tag and branch symbol_ids, and their corresponding values will
-    # be the id of the last CVS revision that they were used in.
+    # be the last CVS revision that the symbol was used in.
     self._symbols = {}
 
   def log_revision(self, cvs_rev):
