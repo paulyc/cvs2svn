@@ -18,6 +18,7 @@
 
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.set_support import *
 from cvs2svn_lib.common import OP_DELETE
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.line_of_development import Trunk
@@ -39,6 +40,22 @@ class CVSItem(object):
     raise NotImplementedError()
 
   def __setstate__(self, data):
+    raise NotImplementedError()
+
+  def get_pred_ids(self):
+    """Return the CVSItem.ids of direct predecessors of SELF.
+
+    A predecessor is defined to be a CVSItem that has to have been
+    committed before this one."""
+
+    raise NotImplementedError()
+
+  def get_succ_ids(self):
+    """Return the CVSItem.ids of direct successors of SELF.
+
+    A direct successor is defined to be a CVSItem that has this one as
+    a direct predecessor."""
+
     raise NotImplementedError()
 
 
@@ -166,6 +183,22 @@ class CVSRevision(CVSItem):
           return True
     return False
 
+  def get_pred_ids(self):
+    retval = set()
+    if self.first_on_branch_id is not None:
+      retval.add(self.first_on_branch_id)
+    elif self.prev_id is not None:
+      retval.add(self.prev_id)
+    return retval
+
+  def get_succ_ids(self):
+    retval = set()
+    if self.next_id is not None:
+      retval.add(self.next_id)
+    for id in self.branch_ids + self.tag_ids:
+      retval.add(id)
+    return retval
+
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
@@ -222,6 +255,15 @@ class CVSBranch(CVSSymbol):
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 
+  def get_pred_ids(self):
+    return set([self.rev_id])
+
+  def get_succ_ids(self):
+    retval = set()
+    if self.next_id is not None:
+      retval.add(self.next_id)
+    return retval
+
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
@@ -249,6 +291,12 @@ class CVSTag(CVSSymbol):
     (self.id, cvs_file_id, symbol_id, self.rev_id) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
+
+  def get_pred_ids(self):
+    return set([self.rev_id])
+
+  def get_succ_ids(self):
+    return set()
 
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
