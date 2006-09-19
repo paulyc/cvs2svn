@@ -236,9 +236,9 @@ class CVSCommit:
           and cvs_rev.lod.symbol.id not in accounted_for_symbol_ids \
           and cvs_rev.lod.symbol.id not in done_symbols \
           and fill_needed(cvs_rev):
-        symbol = Ctx()._symbol_db.get_symbol(cvs_rev.lod.symbol.id)
+        symbol = cvs_rev.lod.symbol
         self.secondary_commits.append(SVNPreCommit(symbol))
-        accounted_for_symbol_ids.add(cvs_rev.lod.symbol.id)
+        accounted_for_symbol_ids.add(symbol.id)
 
   def _commit(self):
     """Generates the primary SVNCommit that corresponds to this

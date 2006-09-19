@@ -231,7 +231,7 @@ class FilterSymbolsPass(Pass):
       if isinstance(cvs_item, CVSRevision):
         # Skip this entire revision if it's on an excluded branch
         if isinstance(cvs_item.lod, Branch):
-          symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
+          symbol = cvs_item.lod.symbol
           if isinstance(symbol, ExcludedSymbol):
             # Delete this item.  There are no references to this
             # item from outside of a to-be-deleted branch, so we
@@ -239,7 +239,7 @@ class FilterSymbolsPass(Pass):
             del file_item_map[cvs_item.id]
       elif isinstance(cvs_item, CVSSymbol):
         # Skip this symbol if it is to be excluded
-        symbol = self.symbol_db.get_symbol(cvs_item.symbol.id)
+        symbol = cvs_item.symbol
         if isinstance(symbol, ExcludedSymbol):
           del file_item_map[cvs_item.id]
           # A CVSSymbol is the successor of the CVSRevision that it
@@ -259,8 +259,7 @@ class FilterSymbolsPass(Pass):
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    self.symbol_db = SymbolDatabase()
-    Ctx()._symbol_db = self.symbol_db
+    Ctx()._symbol_db = SymbolDatabase()
     self.cvs_item_store = OldCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
     cvs_items_filtered_store = NewCVSItemStore(
