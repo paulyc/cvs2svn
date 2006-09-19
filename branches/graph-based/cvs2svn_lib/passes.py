@@ -44,6 +44,8 @@ from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.symbol_statistics import SymbolStatistics
 from cvs2svn_lib.cvs_item import CVSRevision
 from cvs2svn_lib.cvs_item import CVSSymbol
+from cvs2svn_lib.cvs_item import CVSBranch
+from cvs2svn_lib.cvs_item import CVSTag
 from cvs2svn_lib.cvs_item_database import NewCVSItemStore
 from cvs2svn_lib.cvs_item_database import NewIndexedCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldCVSItemStore
@@ -210,13 +212,76 @@ class CheckDependenciesPass(Pass):
     Log().quiet("Done")
 
 
+class FilterSymbolsPass(Pass):
+  """Delete any branches/tags that are to be excluded.
+
+  Also delete revisions on excluded branches, and delete other
+  references to the excluded symbols."""
+
+  def register_artifacts(self):
+    self._register_temp_file(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_STORE)
+
+  def run(self, stats_keeper):
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    self.symbol_db = SymbolDatabase()
+    Ctx()._symbol_db = self.symbol_db
+    self.cvs_item_store = OldCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
+    cvs_items_filtered_store = NewCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
+
+    Log().quiet("Filtering out excluded branches and tags...")
+
+    # Process the cvs items store one file at a time:
+    for file_item_map in self.cvs_item_store.iter_file_item_maps():
+      for cvs_item in file_item_map.values():
+        if isinstance(cvs_item, CVSRevision):
+          # Skip this entire revision if it's on an excluded branch
+          if isinstance(cvs_item.lod, Branch):
+            symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
+            if isinstance(symbol, ExcludedSymbol):
+              # Delete this item.  There are no references to this
+              # item from outside of a to-be-deleted branch, so we
+              # don't have to do anything else.
+              del file_item_map[cvs_item.id]
+        elif isinstance(cvs_item, CVSSymbol):
+          # Skip this symbol if it is to be excluded
+          symbol = self.symbol_db.get_symbol(cvs_item.symbol.id)
+          if isinstance(symbol, ExcludedSymbol):
+            del file_item_map[cvs_item.id]
+            # A CVSSymbol is the successor of the CVSRevision that it
+            # springs from.  If that revision still exists, delete
+            # this symbol from its branch_ids:
+            cvs_revision = file_item_map.get(cvs_item.rev_id)
+            if cvs_revision is None:
+              # It has already been deleted; do nothing:
+              pass
+            elif isinstance(cvs_item, CVSBranch):
+              cvs_revision.branch_ids.remove(cvs_item.id)
+            elif isinstance(cvs_item, CVSTag):
+              cvs_revision.tag_ids.remove(cvs_item.id)
+        else:
+          raise RuntimeError('Unknown cvs item type')
+
+      # Store whatever is left to the new file:
+      for cvs_item in file_item_map.values():
+        cvs_items_filtered_store.add(cvs_item)
+
+    cvs_items_filtered_store.close()
+
+    Log().quiet("Done")
+
+
 class InitializeChangesetsPass(Pass):
   """Create preliminary CommitSets."""
 
   def register_artifacts(self):
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
 
   def split_by_timestamp(self, cvs_items):
     changesets = []
@@ -236,7 +301,7 @@ class InitializeChangesetsPass(Pass):
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
     cvs_item_store = OldCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
     self.changeset_key_generator = KeyGenerator(1)
 
     Log().quiet("Creating preliminary commit sets...")
@@ -251,18 +316,9 @@ class InitializeChangesetsPass(Pass):
 
     for cvs_item in cvs_item_store:
       if isinstance(cvs_item, CVSRevision):
-        # Skip this entire revision if it's on an excluded branch
-        if isinstance(cvs_item.lod, Branch):
-          symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
-          if isinstance(symbol, ExcludedSymbol):
-            continue
         metadata_id_to_cvs_revs.setdefault(
             cvs_item.metadata_id, []).append(cvs_item)
       elif isinstance(cvs_item, CVSSymbol):
-        # Skip this symbol if it is to be excluded
-        symbol = self.symbol_db.get_symbol(cvs_item.symbol.id)
-        if isinstance(symbol, ExcludedSymbol):
-          continue
         symbol_id_to_cvs_symbols.setdefault(
             cvs_item.symbol.id, []).append(cvs_item)
       else:
@@ -297,7 +353,7 @@ class ResyncRevsPass(Pass):
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.RESYNC_DATAFILE)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
 
   def update_symbols(self, cvs_rev):
     """Update CVS_REV.branch_ids and tag_ids based on self.symbol_db."""
@@ -319,7 +375,7 @@ class ResyncRevsPass(Pass):
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
     self.cvs_item_store = OldCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
     cvs_items_resync_db = NewIndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
@@ -335,12 +391,6 @@ class ResyncRevsPass(Pass):
     # Process the revisions file, looking for items to clean up
     for cvs_item in self.cvs_item_store:
       if isinstance(cvs_item, CVSRevision):
-        # Skip this entire revision if it's on an excluded branch
-        if isinstance(cvs_item.lod, Branch):
-          symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
-          if isinstance(symbol, ExcludedSymbol):
-            continue
-
         self.update_symbols(cvs_item)
 
         resynchronizer.resynchronize(cvs_item)

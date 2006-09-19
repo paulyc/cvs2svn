@@ -87,6 +87,10 @@ CVS_FILES_DB = 'cvs2svn-cvs-files.db'
 # is lists of all CVSItems applying to a CVSFile.
 CVS_ITEMS_STORE = 'cvs2svn-cvs-items.pck'
 
+# The same as CVS_ITEMS_STORE except with excluded symbols discarded
+# (and the dependencies of the remaining CVSItems fixed up).
+CVS_ITEMS_FILTERED_STORE = 'cvs2svn-cvs-items-filtered.pck'
+
 # Maps CVSItem.id (in hex) to CVSRevision after resynchronization.
 # The index file contains id->offset, and the second contains the
 # pickled CVSItems at the specified offsets.

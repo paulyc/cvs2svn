@@ -157,6 +157,18 @@ class OldCVSItemStore:
       for item in self.current_file_items:
         yield item
 
+  def iter_file_item_maps(self):
+    """Iterate through the items, one file at a time.
+
+    Each time yield a map { id : CVSItem } for one CVSFile."""
+
+    while True:
+      try:
+        self._read_file_chunk()
+      except EOFError:
+        return
+      yield self.current_file_map.copy()
+
   def __getitem__(self, id):
     try:
       return self.current_file_map[id]
