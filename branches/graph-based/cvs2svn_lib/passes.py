@@ -26,6 +26,7 @@ import cPickle
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib import config
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib.common import FatalError
 from cvs2svn_lib.common import FatalException
 from cvs2svn_lib.log import Log
 from cvs2svn_lib.artifact_manager import artifact_manager
@@ -161,6 +162,50 @@ class CollateSymbolsPass(Pass):
       sys.exit(1)
 
     create_symbol_database(symbols)
+
+    Log().quiet("Done")
+
+
+class CheckDependenciesPass(Pass):
+  """Check that the dependencies are self-consistent."""
+
+  def __init__(self, cvs_items_store_file):
+    Pass.__init__(self)
+    self.cvs_items_store_file = cvs_items_store_file
+
+  def register_artifacts(self):
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(self.cvs_items_store_file)
+
+  def run(self, stats_keeper):
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    self.symbol_db = SymbolDatabase()
+    Ctx()._symbol_db = self.symbol_db
+    cvs_item_store = OldCVSItemStore(
+        artifact_manager.get_temp_file(self.cvs_items_store_file))
+
+    Log().quiet("Checking dependency consistency...")
+
+    fatal_errors = []
+    for cvs_item in cvs_item_store:
+      # Check that the pred_ids and succ_ids are mutually consistent:
+      for pred_id in cvs_item.get_pred_ids():
+        pred = cvs_item_store[pred_id]
+        if not cvs_item.id in pred.get_succ_ids():
+          fatal_errors.append(
+              '%s lists pred=%s, but not vice versa.' % (cvs_item, pred,))
+
+      for succ_id in cvs_item.get_succ_ids():
+        succ = cvs_item_store[succ_id]
+        if not cvs_item.id in succ.get_pred_ids():
+          fatal_errors.append(
+              '%s lists succ=%s, but not vice versa.' % (cvs_item, succ,))
+
+    if fatal_errors:
+      raise FatalException("Dependencies inconsistent:\n"
+                           + "\n".join(fatal_errors) + "\n"
+                           + "Exited due to fatal error(s).\n")
 
     Log().quiet("Done")
 
