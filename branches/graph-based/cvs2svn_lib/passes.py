@@ -224,6 +224,39 @@ class FilterSymbolsPass(Pass):
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_STORE)
 
+  def filter_excluded_symbols(self, file_item_map):
+    """Delete any excluded symbols and references to them."""
+
+    for cvs_item in file_item_map.values():
+      if isinstance(cvs_item, CVSRevision):
+        # Skip this entire revision if it's on an excluded branch
+        if isinstance(cvs_item.lod, Branch):
+          symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
+          if isinstance(symbol, ExcludedSymbol):
+            # Delete this item.  There are no references to this
+            # item from outside of a to-be-deleted branch, so we
+            # don't have to do anything else.
+            del file_item_map[cvs_item.id]
+      elif isinstance(cvs_item, CVSSymbol):
+        # Skip this symbol if it is to be excluded
+        symbol = self.symbol_db.get_symbol(cvs_item.symbol.id)
+        if isinstance(symbol, ExcludedSymbol):
+          del file_item_map[cvs_item.id]
+          # A CVSSymbol is the successor of the CVSRevision that it
+          # springs from.  If that revision still exists, delete
+          # this symbol from its branch_ids:
+          cvs_revision = file_item_map.get(cvs_item.rev_id)
+          if cvs_revision is None:
+            # It has already been deleted; do nothing:
+            pass
+          elif isinstance(cvs_item, CVSBranch):
+            cvs_revision.branch_ids.remove(cvs_item.id)
+          elif isinstance(cvs_item, CVSTag):
+            cvs_revision.tag_ids.remove(cvs_item.id)
+      else:
+        raise RuntimeError('Unknown cvs item type')
+
+
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     self.symbol_db = SymbolDatabase()
@@ -237,34 +270,7 @@ class FilterSymbolsPass(Pass):
 
     # Process the cvs items store one file at a time:
     for file_item_map in self.cvs_item_store.iter_file_item_maps():
-      for cvs_item in file_item_map.values():
-        if isinstance(cvs_item, CVSRevision):
-          # Skip this entire revision if it's on an excluded branch
-          if isinstance(cvs_item.lod, Branch):
-            symbol = self.symbol_db.get_symbol(cvs_item.lod.symbol.id)
-            if isinstance(symbol, ExcludedSymbol):
-              # Delete this item.  There are no references to this
-              # item from outside of a to-be-deleted branch, so we
-              # don't have to do anything else.
-              del file_item_map[cvs_item.id]
-        elif isinstance(cvs_item, CVSSymbol):
-          # Skip this symbol if it is to be excluded
-          symbol = self.symbol_db.get_symbol(cvs_item.symbol.id)
-          if isinstance(symbol, ExcludedSymbol):
-            del file_item_map[cvs_item.id]
-            # A CVSSymbol is the successor of the CVSRevision that it
-            # springs from.  If that revision still exists, delete
-            # this symbol from its branch_ids:
-            cvs_revision = file_item_map.get(cvs_item.rev_id)
-            if cvs_revision is None:
-              # It has already been deleted; do nothing:
-              pass
-            elif isinstance(cvs_item, CVSBranch):
-              cvs_revision.branch_ids.remove(cvs_item.id)
-            elif isinstance(cvs_item, CVSTag):
-              cvs_revision.tag_ids.remove(cvs_item.id)
-        else:
-          raise RuntimeError('Unknown cvs item type')
+      self.filter_excluded_symbols(file_item_map)
 
       # Store whatever is left to the new file:
       for cvs_item in file_item_map.values():
