@@ -256,6 +256,44 @@ class FilterSymbolsPass(Pass):
       else:
         raise RuntimeError('Unknown cvs item type')
 
+  def mutate_symbols(self, file_item_map):
+    """Force symbols to be tags/branches based on self.symbol_db."""
+
+    for cvs_item in file_item_map.values():
+      if isinstance(cvs_item, CVSRevision):
+        # This CVSRevision may be affected by the mutation of any
+        # CVSSymbols that it references, but there is nothing to do
+        # here directly.
+        pass
+      elif isinstance(cvs_item, CVSSymbol):
+        # Skip this symbol if it is to be excluded
+        symbol = cvs_item.symbol
+        if isinstance(cvs_item, CVSBranch) \
+               and isinstance(symbol, TagSymbol):
+          # Mutate the branch into a tag.
+          if cvs_item.next_id is not None:
+            # This shouldn't happen because it was checked in
+            # CollateSymbolsPass:
+            raise FatalError('Attempt to exclude a branch with commits.')
+          cvs_item = CVSTag(
+              cvs_item.id, cvs_item.cvs_file, cvs_item.symbol,
+              cvs_item.rev_id)
+          file_item_map[cvs_item.id] = cvs_item
+          cvs_revision = file_item_map[cvs_item.rev_id]
+          cvs_revision.branch_ids.remove(cvs_item.id)
+          cvs_revision.tag_ids.append(cvs_item.id)
+        elif isinstance(cvs_item, CVSTag) \
+               and isinstance(symbol, BranchSymbol):
+          # Mutate the tag into a branch.
+          cvs_item = CVSBranch(
+              cvs_item.id, cvs_item.cvs_file, cvs_item.symbol,
+              None, cvs_item.rev_id, None)
+          file_item_map[cvs_item.id] = cvs_item
+          cvs_revision = file_item_map[cvs_item.rev_id]
+          cvs_revision.tag_ids.remove(cvs_item.id)
+          cvs_revision.branch_ids.append(cvs_item.id)
+      else:
+        raise RuntimeError('Unknown cvs item type')
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
@@ -270,6 +308,7 @@ class FilterSymbolsPass(Pass):
     # Process the cvs items store one file at a time:
     for file_item_map in self.cvs_item_store.iter_file_item_maps():
       self.filter_excluded_symbols(file_item_map)
+      self.mutate_symbols(file_item_map)
 
       # Store whatever is left to the new file:
       for cvs_item in file_item_map.values():
@@ -360,21 +399,6 @@ class ResyncRevsPass(Pass):
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
 
-  def update_symbols(self, cvs_rev):
-    """Update CVS_REV.branch_ids and tag_ids based on self.symbol_db."""
-
-    branch_ids = []
-    tag_ids = []
-    for id in cvs_rev.branch_ids + cvs_rev.tag_ids:
-      cvs_symbol = self.cvs_item_store[id]
-      symbol = cvs_symbol.symbol
-      if isinstance(symbol, BranchSymbol):
-        branch_ids.append(cvs_symbol.id)
-      elif isinstance(symbol, TagSymbol):
-        tag_ids.append(cvs_symbol.id)
-    cvs_rev.branch_ids = branch_ids
-    cvs_rev.tag_ids = tag_ids
-
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     self.symbol_db = SymbolDatabase()
@@ -396,8 +420,6 @@ class ResyncRevsPass(Pass):
     # Process the revisions file, looking for items to clean up
     for cvs_item in self.cvs_item_store:
       if isinstance(cvs_item, CVSRevision):
-        self.update_symbols(cvs_item)
-
         resynchronizer.resynchronize(cvs_item)
 
       cvs_items_resync_db.add(cvs_item)

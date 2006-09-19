@@ -236,6 +236,7 @@ class CVSBranch(CVSSymbol):
        CVS_FILE        -->  (CVSFile) CVSFile affected by this revision
        SYMBOL          -->  (Symbol) the corresponding symbol
        BRANCH_NUMBER   -->  (string) the number of this branch (e.g., "1.3.4")
+                            or None if this is a converted tag
        REV_ID          -->  (int) id of CVSRevision from which this branch
                             sprouts
        NEXT_ID         -->  (int or None) id of first rev on this branch"""
