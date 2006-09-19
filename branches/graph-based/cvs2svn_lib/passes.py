@@ -401,8 +401,7 @@ class ResyncRevsPass(Pass):
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    self.symbol_db = SymbolDatabase()
-    Ctx()._symbol_db = self.symbol_db
+    Ctx()._symbol_db = SymbolDatabase()
     self.cvs_item_store = OldCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
     cvs_items_resync_db = NewIndexedCVSItemStore(
