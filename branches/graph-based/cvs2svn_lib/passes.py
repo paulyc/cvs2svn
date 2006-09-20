@@ -390,16 +390,8 @@ class InitializeChangesetsPass(Pass):
     self._register_temp_file_needed(
         config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE)
 
-  def run(self, stats_keeper):
-    Log().quiet("Creating preliminary commit sets...")
-
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    self.symbol_db = SymbolDatabase()
-    Ctx()._symbol_db = self.symbol_db
-    self.changeset_key_generator = KeyGenerator(1)
-
-    # Create a list of changesets:
-    changesets = []
+  def get_revision_changesets(self):
+    """Generate revision changesets, one at a time."""
 
     # Create changesets for CVSRevisions:
     old_metadata_id = None
@@ -415,8 +407,7 @@ class InitializeChangesetsPass(Pass):
         # Start a new changeset.  First finish up the old changeset,
         # if any:
         if changeset:
-          changesets.append(
-              Changeset(self.changeset_key_generator.gen_id(), changeset))
+          yield Changeset(self.changeset_key_generator.gen_id(), changeset)
           changeset = []
         old_metadata_id = metadata_id
       changeset.append(cvs_item_id)
@@ -424,12 +415,13 @@ class InitializeChangesetsPass(Pass):
 
     # Finish up the last changeset, if any:
     if changeset:
-      changesets.append(
-          Changeset(self.changeset_key_generator.gen_id(), changeset))
-      changeset = []
+      yield Changeset(self.changeset_key_generator.gen_id(), changeset)
 
-    # Now create changesets for CVSSymbols:
+  def get_symbol_changesets(self):
+    """Generate symbol changesets, one at a time."""
+
     old_symbol_id = None
+    changeset = []
     for l in open(
         artifact_manager.get_temp_file(
             config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE), 'r'):
@@ -438,17 +430,30 @@ class InitializeChangesetsPass(Pass):
         # Start a new changeset.  First finish up the old changeset,
         # if any:
         if changeset:
-          changesets.append(
-              Changeset(self.changeset_key_generator.gen_id(), changeset))
+          yield Changeset(self.changeset_key_generator.gen_id(), changeset)
           changeset = []
         old_symbol_id = symbol_id
       changeset.append(cvs_item_id)
 
     # Finish up the last changeset, if any:
     if changeset:
-      changesets.append(
-          Changeset(self.changeset_key_generator.gen_id(), changeset))
-      changeset = []
+      yield Changeset(self.changeset_key_generator.gen_id(), changeset)
+
+  def run(self, stats_keeper):
+    Log().quiet("Creating preliminary commit sets...")
+
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    self.symbol_db = SymbolDatabase()
+    Ctx()._symbol_db = self.symbol_db
+    self.changeset_key_generator = KeyGenerator(1)
+
+    changesets = []
+
+    for changeset in self.get_revision_changesets():
+      changesets.append(changeset)
+
+    for changeset in self.get_symbol_changesets():
+      changesets.append(changeset)
 
     for changeset in changesets:
       Log().verbose(repr(changeset))
