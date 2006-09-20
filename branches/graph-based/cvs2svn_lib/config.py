@@ -39,6 +39,18 @@ CVS_REVS_RESYNC_DATAFILE = 'cvs2svn-revs-resync.txt'
 CVS_REVS_SORTED_DATAFILE = 'cvs2svn-revs-resync-s.txt'
 RESYNC_DATAFILE = 'cvs2svn-resync.txt'
 
+# The first file contains enough information about each CVSRevision to
+# deduce preliminary Changesets.  The second file is a sorted version
+# of the first.
+CVS_REVS_SUMMARY_DATAFILE = 'cvs2svn-revs-summary.txt'
+CVS_REVS_SUMMARY_SORTED_DATAFILE = 'cvs2svn-revs-summary-s.txt'
+
+# The first file contains enough information about each CVSSymbol to
+# deduce preliminary Changesets.  The second file is a sorted version
+# of the first.
+CVS_SYMBOLS_SUMMARY_DATAFILE = 'cvs2svn-symbols-summary.txt'
+CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE = 'cvs2svn-symbols-summary-s.txt'
+
 # This file contains a marshalled copy of all the statistics that we
 # gather throughout the various runs of cvs2svn.  The data stored as a
 # marshalled dictionary.

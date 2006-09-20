@@ -24,17 +24,15 @@ from cvs2svn_lib.set_support import *
 class Changeset(object):
   """A set of cvs_items that might potentially form a single change set."""
 
-  def __init__(self, id, cvs_items):
+  def __init__(self, id, cvs_item_ids):
     self.id = id
-    self.cvs_items = set(cvs_items)
+    self.cvs_item_ids = set(cvs_item_ids)
 
   def __str__(self):
-    return 'Changeset<%d>' % (self.id,)
+    return 'Changeset<%x>' % (self.id,)
 
   def __repr__(self):
-    lines = ['%s\n' % self]
-    for cvs_item in self.cvs_items:
-      lines.append('  %s\n' % cvs_item)
-    return ''.join(lines)
+    return '%s [%s]' % (
+        self, ', '.join(['%x' % id for id in self.cvs_item_ids]),)
 
 
