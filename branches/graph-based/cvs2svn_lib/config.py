@@ -51,6 +51,9 @@ CVS_REVS_SUMMARY_SORTED_DATAFILE = 'cvs2svn-revs-summary-s.txt'
 CVS_SYMBOLS_SUMMARY_DATAFILE = 'cvs2svn-symbols-summary.txt'
 CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE = 'cvs2svn-symbols-summary-s.txt'
 
+# A mapping from CVSItem id to Changeset id.
+CVS_ITEM_TO_CHANGESET = 'cvs2svn-cvs-item-to-changeset.dat'
+
 # This file contains a marshalled copy of all the statistics that we
 # gather throughout the various runs of cvs2svn.  The data stored as a
 # marshalled dictionary.

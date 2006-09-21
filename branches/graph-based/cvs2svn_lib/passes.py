@@ -52,6 +52,7 @@ from cvs2svn_lib.cvs_item_database import OldCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldIndexedCVSItemStore
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.changeset import Changeset
+from cvs2svn_lib.changeset_database import NewCVSItemToChangesetTable
 from cvs2svn_lib.cvs_revision_resynchronizer import CVSRevisionResynchronizer
 from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
 from cvs2svn_lib.svn_commit import SVNCommit
@@ -384,6 +385,7 @@ class InitializeChangesetsPass(Pass):
   """Create preliminary CommitSets."""
 
   def register_artifacts(self):
+    self._register_temp_file(config.CVS_ITEM_TO_CHANGESET)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_REVS_SUMMARY_SORTED_DATAFILE)
@@ -439,21 +441,31 @@ class InitializeChangesetsPass(Pass):
     if changeset:
       yield Changeset(self.changeset_key_generator.gen_id(), changeset)
 
+  def store_changeset(self, changeset):
+    for cvs_item_id in changeset.cvs_item_ids:
+      self.cvs_item_to_changeset_id[cvs_item_id] = changeset.id
+
   def run(self, stats_keeper):
     Log().quiet("Creating preliminary commit sets...")
 
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
+    self.cvs_item_to_changeset_id = NewCVSItemToChangesetTable(
+        artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET))
     self.changeset_key_generator = KeyGenerator(1)
 
     changesets = []
 
     for changeset in self.get_revision_changesets():
+      self.store_changeset(changeset)
       changesets.append(changeset)
 
     for changeset in self.get_symbol_changesets():
+      self.store_changeset(changeset)
       changesets.append(changeset)
+
+    self.cvs_item_to_changeset_id.close()
 
     for changeset in changesets:
       Log().verbose(repr(changeset))
