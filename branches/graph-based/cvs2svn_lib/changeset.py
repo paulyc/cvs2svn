@@ -28,6 +28,12 @@ class Changeset(object):
     self.id = id
     self.cvs_item_ids = set(cvs_item_ids)
 
+  def __getstate__(self):
+    return (self.id, self.cvs_item_ids,)
+
+  def __setstate__(self, state):
+    (self.id, self.cvs_item_ids,) = state
+
   def __str__(self):
     return 'Changeset<%x>' % (self.id,)
 
