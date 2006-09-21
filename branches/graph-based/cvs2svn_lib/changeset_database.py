@@ -66,6 +66,9 @@ class ChangesetDatabase:
   def __delitem__(self, id):
     del self.db['%x' % id]
 
+  def keys(self):
+    return [int(key, 16) for key in self.db.keys()]
+
   def close(self):
     self.db.close()
 
