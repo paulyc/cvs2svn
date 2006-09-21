@@ -51,7 +51,8 @@ from cvs2svn_lib.cvs_item_database import NewIndexedCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldIndexedCVSItemStore
 from cvs2svn_lib.key_generator import KeyGenerator
-from cvs2svn_lib.changeset import Changeset
+from cvs2svn_lib.changeset import RevisionChangeset
+from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.changeset_database import ChangesetDatabase
 from cvs2svn_lib.changeset_database import NewCVSItemToChangesetTable
 from cvs2svn_lib.cvs_revision_resynchronizer import CVSRevisionResynchronizer
@@ -454,7 +455,8 @@ class InitializeChangesetsPass(Pass):
         # Start a new changeset.  First finish up the old changeset,
         # if any:
         if changeset:
-          yield Changeset(self.changeset_key_generator.gen_id(), changeset)
+          yield RevisionChangeset(
+              self.changeset_key_generator.gen_id(), changeset)
           changeset = []
         old_metadata_id = metadata_id
       changeset.append(cvs_item_id)
@@ -462,7 +464,8 @@ class InitializeChangesetsPass(Pass):
 
     # Finish up the last changeset, if any:
     if changeset:
-      yield Changeset(self.changeset_key_generator.gen_id(), changeset)
+      yield RevisionChangeset(
+          self.changeset_key_generator.gen_id(), changeset)
 
   def get_symbol_changesets(self):
     """Generate symbol changesets, one at a time."""
@@ -477,14 +480,15 @@ class InitializeChangesetsPass(Pass):
         # Start a new changeset.  First finish up the old changeset,
         # if any:
         if changeset:
-          yield Changeset(self.changeset_key_generator.gen_id(), changeset)
+          yield SymbolChangeset(
+              self.changeset_key_generator.gen_id(), changeset)
           changeset = []
         old_symbol_id = symbol_id
       changeset.append(cvs_item_id)
 
     # Finish up the last changeset, if any:
     if changeset:
-      yield Changeset(self.changeset_key_generator.gen_id(), changeset)
+      yield SymbolChangeset(self.changeset_key_generator.gen_id(), changeset)
 
   def store_changeset(self, changeset):
     for cvs_item_id in changeset.cvs_item_ids:
