@@ -148,6 +148,9 @@ class AbstractDatabase:
     except KeyError:
       return default
 
+  def close(self):
+    self.db.close()
+
 
 class SDatabase(AbstractDatabase):
   """A database that can only store strings."""
