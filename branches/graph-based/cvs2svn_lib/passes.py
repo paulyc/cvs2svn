@@ -382,6 +382,49 @@ class SortItemSummaryPass(Pass):
     Log().quiet("Done")
 
 
+class ResyncRevsPass(Pass):
+  """Clean up the revision information.
+
+  This pass was formerly known as pass2."""
+
+  def register_artifacts(self):
+    self._register_temp_file(config.CVS_REVS_RESYNC_DATAFILE)
+    self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
+    self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.RESYNC_DATAFILE)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+
+  def run(self, stats_keeper):
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    Ctx()._symbol_db = SymbolDatabase()
+    self.cvs_item_store = OldCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
+    cvs_items_resync_db = NewIndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+
+    Log().quiet("Re-synchronizing CVS revision timestamps...")
+
+    resynchronizer = CVSRevisionResynchronizer(self.cvs_item_store)
+
+    # We may have recorded some changes in revisions' timestamp.  We need to
+    # scan for any other files which may have had the same log message and
+    # occurred at "the same time" and change their timestamps, too.
+
+    # Process the revisions file, looking for items to clean up
+    for cvs_item in self.cvs_item_store:
+      if isinstance(cvs_item, CVSRevision):
+        resynchronizer.resynchronize(cvs_item)
+
+      cvs_items_resync_db.add(cvs_item)
+
+    cvs_items_resync_db.close()
+
+    Log().quiet("Done")
+
+
 class InitializeChangesetsPass(Pass):
   """Create preliminary CommitSets."""
 
@@ -475,49 +518,6 @@ class InitializeChangesetsPass(Pass):
 
     for changeset in changesets:
       Log().verbose(repr(changeset))
-
-    Log().quiet("Done")
-
-
-class ResyncRevsPass(Pass):
-  """Clean up the revision information.
-
-  This pass was formerly known as pass2."""
-
-  def register_artifacts(self):
-    self._register_temp_file(config.CVS_REVS_RESYNC_DATAFILE)
-    self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
-    self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.RESYNC_DATAFILE)
-    self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
-
-  def run(self, stats_keeper):
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    Ctx()._symbol_db = SymbolDatabase()
-    self.cvs_item_store = OldCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
-    cvs_items_resync_db = NewIndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
-
-    Log().quiet("Re-synchronizing CVS revision timestamps...")
-
-    resynchronizer = CVSRevisionResynchronizer(self.cvs_item_store)
-
-    # We may have recorded some changes in revisions' timestamp.  We need to
-    # scan for any other files which may have had the same log message and
-    # occurred at "the same time" and change their timestamps, too.
-
-    # Process the revisions file, looking for items to clean up
-    for cvs_item in self.cvs_item_store:
-      if isinstance(cvs_item, CVSRevision):
-        resynchronizer.resynchronize(cvs_item)
-
-      cvs_items_resync_db.add(cvs_item)
-
-    cvs_items_resync_db.close()
 
     Log().quiet("Done")
 
