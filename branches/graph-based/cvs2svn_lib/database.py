@@ -104,7 +104,7 @@ class AbstractDatabase:
     # *values*, because our derived classes define __getitem__ and
     # __setitem__ to override the storage of values, and grabbing
     # methods directly from the dbm object would bypass this.
-    for meth_name in ('__delitem__', 'keys',
+    for meth_name in ('__delitem__',
         '__iter__', 'has_key', '__contains__', 'iterkeys', 'clear'):
       meth_ref = getattr(self.db, meth_name, None)
       if meth_ref:
@@ -114,6 +114,9 @@ class AbstractDatabase:
     # gdbm defines a __delitem__ method, but it cannot be assigned.  So
     # this method provides a fallback definition via explicit delegation:
     del self.db[key]
+
+  def keys(self):
+    return self.db.keys()
 
   def __iter__(self):
     for key in self.keys():
@@ -224,5 +227,10 @@ class PrimedPDatabase(AbstractDatabase):
 
   def __setitem__(self, key, value):
     self.db[key] = self.primed_pickler.dumps(value)
+
+  def keys(self):
+    retval = self.db.keys()
+    retval.remove(self.primer_key)
+    return retval
 
 
