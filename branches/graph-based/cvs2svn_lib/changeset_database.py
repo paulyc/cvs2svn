@@ -22,8 +22,12 @@ from __future__ import generators
 import struct
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.changeset import Changeset
 from cvs2svn_lib.record_table import NewRecordTable
 from cvs2svn_lib.record_table import OldRecordTable
+from cvs2svn_lib.database import PrimedPDatabase
+from cvs2svn_lib.database import DB_OPEN_NEW
+from cvs2svn_lib.database import DB_OPEN_READ
 
 
 CHANGESET_ID_FORMAT = '=I'
@@ -44,5 +48,22 @@ class OldCVSItemToChangesetTable(OldRecordTable):
 
   def unpack(self, v):
     return struct.unpack(CHANGESET_ID_FORMAT, v)[0]
+
+
+class ChangesetDatabase:
+  def __init__(self, filename, mode):
+    self.db = PrimedPDatabase(filename, mode, (Changeset,))
+
+  def store(self, changeset):
+    self.db['%x' % changeset.id] = changeset
+
+  def __getitem__(self, id):
+    return self.db['%x' % id]
+
+  def __delitem__(self, id):
+    del self.db['%x' % id]
+
+  def close(self):
+    self.db.close()
 
 
