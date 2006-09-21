@@ -19,6 +19,7 @@
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
+from cvs2svn_lib.context import Ctx
 
 
 class Changeset(object):
@@ -27,6 +28,13 @@ class Changeset(object):
   def __init__(self, id, cvs_item_ids):
     self.id = id
     self.cvs_item_ids = set(cvs_item_ids)
+
+  def get_cvs_items(self):
+    """Return the set of CVSItems within this Changeset."""
+
+    return set([
+        Ctx()._cvs_items_db[cvs_item_id]
+        for cvs_item_id in self.cvs_item_ids])
 
   def __getstate__(self):
     return (self.id, self.cvs_item_ids,)
