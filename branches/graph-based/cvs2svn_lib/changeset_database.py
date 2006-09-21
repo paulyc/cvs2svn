@@ -23,6 +23,8 @@ import struct
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.changeset import Changeset
+from cvs2svn_lib.changeset import RevisionChangeset
+from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.record_table import NewRecordTable
 from cvs2svn_lib.record_table import OldRecordTable
 from cvs2svn_lib.database import PrimedPDatabase
@@ -52,7 +54,8 @@ class OldCVSItemToChangesetTable(OldRecordTable):
 
 class ChangesetDatabase:
   def __init__(self, filename, mode):
-    self.db = PrimedPDatabase(filename, mode, (Changeset,))
+    self.db = PrimedPDatabase(
+        filename, mode, (Changeset, RevisionChangeset, SymbolChangeset,))
 
   def store(self, changeset):
     self.db['%x' % changeset.id] = changeset

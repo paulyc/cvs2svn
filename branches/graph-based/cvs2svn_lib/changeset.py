@@ -42,3 +42,15 @@ class Changeset(object):
         self, ', '.join(['%x' % id for id in self.cvs_item_ids]),)
 
 
+class RevisionChangeset(Changeset):
+  """A Changeset consisting of CVSRevisions."""
+
+  pass
+
+
+class SymbolChangeset(Changeset):
+  """A Changeset consisting of CVSSymbols."""
+
+  pass
+
+
