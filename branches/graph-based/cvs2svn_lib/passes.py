@@ -434,6 +434,8 @@ class InitializeChangesetsPass(Pass):
     self._register_temp_file(config.CHANGESETS_DB)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.CVS_REVS_SUMMARY_SORTED_DATAFILE)
     self._register_temp_file_needed(
         config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE)
@@ -490,6 +492,83 @@ class InitializeChangesetsPass(Pass):
     if changeset:
       yield SymbolChangeset(self.changeset_key_generator.gen_id(), changeset)
 
+  def compare_items(a, b):
+      return (
+          cmp(a.timestamp, b.timestamp)
+          or cmp(a.cvs_file.cvs_path, b.cvs_file.cvs_path)
+          or cmp([int(x) for x in a.rev.split('.')],
+                 [int(x) for x in b.rev.split('.')])
+          or cmp(a.id, b.id))
+
+  compare_items = staticmethod(compare_items)
+
+  def break_internal_dependencies(self, changeset):
+    """Split up CHANGESET if necessary to break internal dependencies.
+
+    Return a list containing the resulting changesets.  Iff CHANGESET
+    did not have to be split, then the return value will contain a
+    single value, namely the original CHANGESET."""
+
+    cvs_items = changeset.get_cvs_items()
+    # We only look for succ dependencies, since by doing so we
+    # automatically cover pred dependencies as well.  First create a
+    # list of tuples (pred, succ) of id pairs for CVSItems that depend
+    # on each other.
+    dependencies = []
+    for cvs_item in cvs_items:
+      for next_id in cvs_item.get_succ_ids():
+        if next_id in changeset.cvs_item_ids:
+          Log().verbose(
+              'Found an internal dependency: %x -> %x' \
+              % (cvs_item.id, next_id,)) # @@@
+          dependencies.append((cvs_item.id, next_id,))
+    if dependencies:
+      # Sort the cvs_items in a defined order (chronological to the
+      # extent that the timestamps are correct and unique).
+      cvs_items = list(cvs_items)
+      cvs_items.sort(self.compare_items)
+      indexes = {}
+      for i in range(len(cvs_items)):
+        indexes[cvs_items[i].id] = i
+      # How many internal dependencies would be broken by breaking the
+      # Changeset after a particular index?
+      breaks = [0] * len(cvs_items)
+      for (pred, succ,) in dependencies:
+        pred_index = indexes[pred]
+        succ_index = indexes[succ]
+        breaks[min(pred_index, succ_index)] += 1
+        breaks[max(pred_index, succ_index)] -= 1
+      best_i = None
+      best_count = -1
+      best_time = 0
+      for i in range(1, len(breaks)):
+        breaks[i] += breaks[i - 1]
+      for i in range(0, len(breaks) - 1):
+        Log().verbose('%x: %d' % (cvs_items[i].id, breaks[i],)) # @@@
+        if breaks[i] > best_count:
+          best_i = i
+          best_count = breaks[i]
+          best_time = cvs_items[i + 1].timestamp - cvs_items[i].timestamp
+        elif breaks[i] == best_count \
+             and cvs_items[i + 1].timestamp - cvs_items[i].timestamp \
+                 < best_time:
+          best_i = i
+          best_count = breaks[i]
+          best_time = cvs_items[i + 1].timestamp - cvs_items[i].timestamp
+      Log().verbose('%x: %d' % (cvs_items[-1].id, breaks[-1],)) # @@@
+      # Reuse the old changeset.id for the first of the split changesets.
+      return (
+          self.break_internal_dependencies(
+              RevisionChangeset(
+                  changeset.id,
+                  [cvs_item.id for cvs_item in cvs_items[:best_i + 1]]))
+          + self.break_internal_dependencies(
+              RevisionChangeset(
+                  self.changeset_key_generator.gen_id(),
+                  [cvs_item.id for cvs_item in cvs_items[best_i + 1:]])))
+    else:
+      return [changeset]
+
   def store_changeset(self, changeset):
     for cvs_item_id in changeset.cvs_item_ids:
       self.cvs_item_to_changeset_id[cvs_item_id] = changeset.id
@@ -501,27 +580,27 @@ class InitializeChangesetsPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
+    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+
     self.cvs_item_to_changeset_id = NewCVSItemToChangesetTable(
         artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET))
     self.changesets_db = ChangesetDatabase(
         artifact_manager.get_temp_file(config.CHANGESETS_DB), DB_OPEN_NEW)
     self.changeset_key_generator = KeyGenerator(1)
 
-    changesets = []
-
     for changeset in self.get_revision_changesets():
-      self.store_changeset(changeset)
-      changesets.append(changeset)
+      for split_changeset in self.break_internal_dependencies(changeset):
+        Log().verbose(repr(changeset))
+        self.store_changeset(split_changeset)
 
     for changeset in self.get_symbol_changesets():
+      Log().verbose(repr(changeset))
       self.store_changeset(changeset)
-      changesets.append(changeset)
 
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
-
-    for changeset in changesets:
-      Log().verbose(repr(changeset))
 
     Log().quiet("Done")
 
