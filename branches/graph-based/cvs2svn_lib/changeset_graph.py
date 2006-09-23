@@ -77,11 +77,9 @@ class ChangesetGraph(object):
     while nopred_nodes:
       node = nopred_nodes.pop()
       self.extract(node)
-      print 'Extracting %r' % node # @@@
       # See if any successors are now ready for extraction:
       for succ_id in node.succ_ids:
         succ = self[succ_id]
-        print 'succ=%r' % succ # @@@
         if not succ.pred_ids:
           nopred_nodes.append(succ)
       yield node
@@ -96,16 +94,8 @@ class ChangesetGraph(object):
     time this can happen, all of the nodes in the graph will have been
     removed."""
 
-    print 'Graph:' # @@@
-    for node in self:
-      print '  %r' % node # @@@
-
     for node in self.remove_nopred_nodes():
       pass
-
-    print 'Graph with no nopred nodes:' # @@@
-    for node in self:
-      print '  %r' % node # @@@
 
     if not self.nodes:
       return None
@@ -113,7 +103,6 @@ class ChangesetGraph(object):
     # arbitrary node and follow it backwards until a node is seen a
     # second time, then we have our cycle.
     node = self.nodes.itervalues().next()
-    print repr(node) # @@@
     seen_nodes = [node]
     while True:
       node_id = node.pred_ids.__iter__().next()
