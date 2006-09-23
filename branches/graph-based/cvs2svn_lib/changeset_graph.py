@@ -22,6 +22,8 @@ from __future__ import generators
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib.time_range import TimeRange
+from cvs2svn_lib.changeset import RevisionChangeset
 
 
 class ChangesetGraph(object):
@@ -53,6 +55,9 @@ class ChangesetGraph(object):
           node.pred_ids.add(pred_node.id)
           pred_node.succ_ids.add(node.id)
 
+      if isinstance(changeset, RevisionChangeset):
+        node.time_range.add(cvs_item.timestamp)
+
     self.nodes[node.id] = node
 
   def __getitem__(self, id):
@@ -83,25 +88,46 @@ class ChangesetGraph(object):
     return self.nodes.itervalues()
 
   def remove_nopred_nodes(self):
-    """Remove and yield any nodes that do not have predecessors.
+    """Remove and yield changesets in dependency order.
 
-    This can be continued until there are no more nopred nodes.  The
-    graph should not be altered while this generator is running."""
+    Each iteration, this generator yields a (changeset_id, time_range)
+    tuple for the oldest changeset in the graph that doesn't have any
+    predecessor nodes (i.e., it is ready to be committed).  This is
+    continued until there are no more nodes without predecessors
+    (either because the graph has been emptied, or because of cycles
+    in the graph).
+
+    Among the changesets that are ready to be processed, the earliest
+    one (according to the sorting of the TimeRange class) is yielded
+    each time.  (This is the order in which the changesets should be
+    committed.)
+
+    The graph should not be otherwise altered while this generator is
+    running."""
 
     # Find a list of nodes with no predecessors:
     nopred_nodes = [
         node
         for node in self.nodes.itervalues()
         if not node.pred_ids]
+    nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
     while nopred_nodes:
       node = nopred_nodes.pop()
       del self[node.id]
       # See if any successors are now ready for extraction:
+      new_nodes_found = False
       for succ_id in node.succ_ids:
         succ = self[succ_id]
         if not succ.pred_ids:
           nopred_nodes.append(succ)
-      yield node
+          new_nodes_found = True
+      if new_nodes_found:
+        # All this repeated sorting is very wasteful.  We should
+        # instead use a heap to keep things coming out in order.  But
+        # I highly doubt that this will be a bottleneck, so here we
+        # go.
+        nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
+      yield (node.id, node.time_range)
 
   def find_cycle(self):
     """Return a cycle in this graph as a lists of Changesets.
@@ -115,7 +141,7 @@ class ChangesetGraph(object):
     time this can happen, all of the nodes in the graph will have been
     removed."""
 
-    for node in self.remove_nopred_nodes():
+    for (changeset_id, time_range) in self.remove_nopred_nodes():
       pass
 
     if not self.nodes:
@@ -150,16 +176,11 @@ class ChangesetGraph(object):
 class _ChangesetGraphNode(object):
   """A node in the changeset dependency graph."""
 
-  def __init__(self, id, pred_ids=None, succ_ids=None):
+  def __init__(self, id):
     self.id = id
-    if pred_ids is None:
-      self.pred_ids = set()
-    else:
-      self.pred_ids = set(pred_ids)
-    if succ_ids is None:
-      self.succ_ids = set()
-    else:
-      self.succ_ids = set(succ_ids)
+    self.time_range = TimeRange()
+    self.pred_ids = set()
+    self.succ_ids = set()
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
