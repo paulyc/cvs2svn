@@ -695,10 +695,11 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     del self.changeset_graph[changeset.id]
     del self.changesets_db[changeset.id]
 
+    # Create new changesets of the same type as the old one:
     new_changesets = [
-        RevisionChangeset(
+        changeset.__class__(
             self.changeset_key_generator.gen_id(), items_to_keep),
-        RevisionChangeset(
+        changeset.__class__(
             self.changeset_key_generator.gen_id(), items_to_move),
         ]
 
