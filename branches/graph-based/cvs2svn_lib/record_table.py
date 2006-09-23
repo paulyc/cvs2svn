@@ -47,7 +47,7 @@ class Packer(object):
     self.record_len = record_len
 
   def pack(self, v):
-    """Pack record v into a string of length self.record_len."""
+    """Pack record V into a string of length self.record_len."""
 
     raise NotImplementedError()
 
