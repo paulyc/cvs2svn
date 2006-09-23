@@ -64,9 +64,7 @@ class CVSRevisionAggregator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CVS_REVS_DB),
           DB_OPEN_READ)
 
-    # Map of CVSRevision metadata_ids to arrays of open CVSCommits.
-    # In each such array, every element has direct or indirect
-    # dependencies on all the preceding elements in the same array.
+    # Map of CVSRevision metadata_ids to open CVSCommits.
     self.cvs_commits = {}
 
     # Map of CVSRevision ids to the CVSCommits they are part of.
@@ -106,12 +104,9 @@ class CVSRevisionAggregator:
     TIMESTAMP is not specified, then extract all commits."""
 
     # First take all expired commits out of the pool of available commits.
-    for metadata_id, cvs_commits in self.cvs_commits.items():
-      for cvs_commit in cvs_commits[:]:
-        if timestamp is None or cvs_commit.time_range.t_max < timestamp:
-          self.expired_queue.append(cvs_commit)
-          cvs_commits.remove(cvs_commit)
-      if not cvs_commits:
+    for metadata_id, cvs_commit in self.cvs_commits.items():
+      if timestamp is None or cvs_commit.time_range.t_max < timestamp:
+        self.expired_queue.append(cvs_commit)
         del self.cvs_commits[metadata_id]
 
     # Then queue all closed commits with resolved dependencies for
@@ -162,17 +157,15 @@ class CVSRevisionAggregator:
       cvs_rev.timestamp = timestamp
 
       # Add this item into the set of still-available commits.
-      cvs_commits = self.cvs_commits.setdefault(cvs_rev.metadata_id, [])
+      cvs_commit = self.cvs_commits.get(cvs_rev.metadata_id)
 
       # This is pretty silly; it will add the revision to the oldest
       # pending commit. It might be wiser to do time range matching to
       # avoid stretching commits more than necessary.
-      if cvs_commits:
-        cvs_commit = cvs_commits[0]
-      else:
+      if cvs_commit is None:
         author, log = Ctx()._metadata_db[cvs_rev.metadata_id]
         cvs_commit = CVSCommit(cvs_rev.metadata_id, author, log)
-        cvs_commits.append(cvs_commit)
+        self.cvs_commits[cvs_rev.metadata_id] = cvs_commit
       cvs_commit.add_revision(cvs_rev)
       self.pending_revs[cvs_rev.id] = cvs_commit
 
@@ -216,8 +209,8 @@ class CVSRevisionAggregator:
     # self.ready_queue):
     closeable_symbols = []
     pending_commits = self.expired_queue + self.ready_queue
-    for commits in self.cvs_commits.itervalues():
-      pending_commits.extend(commits)
+    for commit in self.cvs_commits.itervalues():
+      pending_commits.append(commit)
     for symbol_id in self._pending_symbols:
       for cvs_commit in pending_commits:
         if cvs_commit.opens_symbol(symbol_id):
