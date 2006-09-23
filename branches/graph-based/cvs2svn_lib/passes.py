@@ -724,10 +724,6 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     best_simple_links = None
     for i in range(len(changeset_cycle)):
       # It's OK if this index wraps to -1:
-      pred = changeset_cycle[i - 1]
-      changeset = changeset_cycle[i]
-      succ = changeset_cycle[(i + 1) % len(changeset_cycle)]
-
       link_counts = self.get_link_counts(
           changeset_cycle[i - 1],
           changeset_cycle[i],
