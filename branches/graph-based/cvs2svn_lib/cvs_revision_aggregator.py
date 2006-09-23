@@ -67,9 +67,6 @@ class CVSRevisionAggregator:
     # Map of CVSRevision metadata_ids to open CVSCommits.
     self.cvs_commit = None
 
-    # Map of CVSRevision ids to the CVSCommits they are part of.
-    self.pending_revs = {}
-
     # List of closed CVSCommits which might still have pending
     # dependencies.
     self.expired_queue = []
@@ -132,7 +129,6 @@ class CVSRevisionAggregator:
       cvs_rev.timestamp = timestamp
 
       cvs_commit.add_revision(cvs_rev)
-      self.pending_revs[cvs_rev.id] = cvs_commit
 
       # If there are any elements in the ready_queue at this point, they
       # need to be processed, because this latest rev couldn't possibly
@@ -160,8 +156,6 @@ class CVSRevisionAggregator:
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
-        for r in cvs_commit.revisions():
-          del self.pending_revs[r.id]
         self.expired_queue.remove(cvs_commit)
         self.ready_queue.append(cvs_commit)
         chg = True
