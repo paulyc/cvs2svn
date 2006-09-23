@@ -129,10 +129,16 @@ class ChangesetGraph(object):
 class ChangesetGraphNode(object):
   """A node in the changeset dependency graph."""
 
-  def __init__(self, id, pred_ids, succ_ids):
+  def __init__(self, id, pred_ids=None, succ_ids=None):
     self.id = id
-    self.pred_ids = set(pred_ids)
-    self.succ_ids = set(succ_ids)
+    if pred_ids is None:
+      self.pred_ids = set()
+    else:
+      self.pred_ids = set(pred_ids)
+    if succ_ids is None:
+      self.succ_ids = set()
+    else:
+      self.succ_ids = set(succ_ids)
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
