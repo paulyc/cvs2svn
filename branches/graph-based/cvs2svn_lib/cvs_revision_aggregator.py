@@ -24,6 +24,7 @@ from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib import config
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.artifact_manager import artifact_manager
+from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.database import Database
 from cvs2svn_lib.database import SDatabase
 from cvs2svn_lib.persistence_manager import PersistenceManager
@@ -201,6 +202,16 @@ class CVSRevisionAggregator:
     self._commit_ready_commits(cvs_rev.timestamp)
 
     self._add_pending_symbols(cvs_rev)
+
+  def process_changeset(self, changeset, timestamp):
+    """Process CHANGESET, using TIMESTAMP for all of its entries."""
+
+    for cvs_rev in changeset.get_cvs_items():
+      if not (Ctx().trunk_only and isinstance(cvs_rev.lod, Branch)):
+        # This is a kludge to force aggregator to use the changesets
+        # in the form that we feed it: @@@
+        cvs_rev.timestamp = timestamp
+        self.process_revision(cvs_rev)
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the

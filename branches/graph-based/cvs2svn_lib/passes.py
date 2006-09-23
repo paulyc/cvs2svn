@@ -950,13 +950,7 @@ class AggregateRevsPass(Pass):
     for line in file(
             artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE)):
       [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
-      changeset = changesets_db[changeset_id]
-      for cvs_rev in changeset.get_cvs_items():
-        if not (Ctx().trunk_only and isinstance(cvs_rev.lod, Branch)):
-          # This is a kludge to force aggregator to use the changesets
-          # in the form that we feed it: @@@
-          cvs_rev.timestamp = timestamp
-          aggregator.process_revision(cvs_rev)
+      aggregator.process_changeset(changesets_db[changeset_id], timestamp)
     aggregator.flush()
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
