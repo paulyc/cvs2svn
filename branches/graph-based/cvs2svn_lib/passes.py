@@ -690,13 +690,17 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
       else:
         items_to_keep.append(cvs_item.id)
     del self.changeset_graph[changeset.id]
+
     # @@@ Have to update the changeset and item_to_changeset databases here @@@
-    self.changeset_graph.add_changeset(
+    new_changesets = [
         RevisionChangeset(
-            self.changeset_key_generator.gen_id(), items_to_keep))
-    self.changeset_graph.add_changeset(
+            self.changeset_key_generator.gen_id(), items_to_keep),
         RevisionChangeset(
-            self.changeset_key_generator.gen_id(), items_to_move))
+            self.changeset_key_generator.gen_id(), items_to_move),
+        ]
+
+    for changeset in new_changesets:
+      self.changeset_graph.add_changeset(changeset)
 
   def break_cycle(self, cycle):
     """Break up one or more changesets in CYCLE to help break the cycle.
