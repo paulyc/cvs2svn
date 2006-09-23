@@ -116,6 +116,13 @@ class CVSRevisionAggregator:
     """Process CHANGESET, using TIMESTAMP for all of its entries."""
 
     cvs_revs = list(changeset.get_cvs_items())
+
+    metadata_id = cvs_revs[0].metadata_id
+
+    author, log = Ctx()._metadata_db[metadata_id]
+    cvs_commit = CVSCommit(metadata_id, author, log)
+    self.cvs_commits[metadata_id] = cvs_commit
+
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
         continue
@@ -124,16 +131,6 @@ class CVSRevisionAggregator:
       # in the form that we feed it: @@@
       cvs_rev.timestamp = timestamp
 
-      # Add this item into the set of still-available commits.
-      cvs_commit = self.cvs_commits.get(cvs_rev.metadata_id)
-
-      # This is pretty silly; it will add the revision to the oldest
-      # pending commit. It might be wiser to do time range matching to
-      # avoid stretching commits more than necessary.
-      if cvs_commit is None:
-        author, log = Ctx()._metadata_db[cvs_rev.metadata_id]
-        cvs_commit = CVSCommit(cvs_rev.metadata_id, author, log)
-        self.cvs_commits[cvs_rev.metadata_id] = cvs_commit
       cvs_commit.add_revision(cvs_rev)
       self.pending_revs[cvs_rev.id] = cvs_commit
 
