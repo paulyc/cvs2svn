@@ -104,10 +104,12 @@ class ChangesetGraph(object):
       yield node
 
   def find_cycle(self):
-    """Return a cycle in this graph as lists of nodes.
+    """Return a cycle in this graph as a lists of Changesets.
 
-    The cycle is left in the graph.  This method destroys the graph:
-    it extracts and discards nodes that have no predecessors.
+    The cycle is left in the graph.
+
+    This method gradually consumes and destroys the graph: it extracts
+    and discards nodes that have no predecessors.
 
     If there are no cycles left in the graph, return None.  By the
     time this can happen, all of the nodes in the graph will have been
@@ -133,7 +135,7 @@ class ChangesetGraph(object):
       else:
         seen_nodes = seen_nodes[i:]
         seen_nodes.reverse()
-        return seen_nodes
+        return [Ctx()._changesets_db[node.id] for node in seen_nodes]
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""

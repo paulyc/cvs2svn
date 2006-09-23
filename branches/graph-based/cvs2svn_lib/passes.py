@@ -711,9 +711,9 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
   def break_cycle(self, cycle):
     """Break up one or more changesets in CYCLE to help break the cycle.
 
-    CYCLE is a list of ChangesetGraphNodes where
+    CYCLE is a list of Changesets where
 
-        cycle[(i + 1) % len(cycle)].id in cycle[i].succ_ids
+        cycle[i] depends on cycle[i - 1]
 
     Break up one or more changesets in CYCLE to make progress towards
     breaking the cycle.  Update self.changeset_graph accordingly.
@@ -724,21 +724,13 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     #print 'Breaking cycle:', ' -> '.join([
     #    '%x' % node.id for node in (cycle + [cycle[0]])]) # @@@
 
-    changeset_cycle = [self.changesets_db[node.id] for node in cycle]
-
-    print 'Breaking cycle:' # @@@
-    for node in cycle:
-      print '  %r' % node # @@@
-
     best_i = None
     best_link_counts = None
     best_simple_links = None
-    for i in range(len(changeset_cycle)):
+    for i in range(len(cycle)):
       # It's OK if this index wraps to -1:
       link_counts = self.get_link_counts(
-          changeset_cycle[i - 1],
-          changeset_cycle[i],
-          changeset_cycle[i + 1 - len(changeset_cycle)])
+          cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
 
       simple_links = min(link_counts[self.LINK_PRED],
                          link_counts[self.LINK_SUCC])
@@ -752,9 +744,7 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     print best_i, best_link_counts # @@@
 
     self.break_changeset(
-        changeset_cycle[i - 1],
-        changeset_cycle[i],
-        changeset_cycle[i + 1 - len(changeset_cycle)])
+        cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
 
   def run(self, stats_keeper):
     Log().quiet("Breaking CVSRevision dependency loops...")
