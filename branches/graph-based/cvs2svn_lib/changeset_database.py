@@ -35,14 +35,8 @@ from cvs2svn_lib.database import DB_OPEN_READ
 CHANGESET_ID_FORMAT = '=I'
 
 
-def NewCVSItemToChangesetTable(filename):
-  return RecordTable(
-      filename, DB_OPEN_NEW, StructPacker(CHANGESET_ID_FORMAT))
-
-
-def OldCVSItemToChangesetTable(filename):
-  return RecordTable(
-      filename, DB_OPEN_READ, StructPacker(CHANGESET_ID_FORMAT))
+def CVSItemToChangesetTable(filename, mode):
+  return RecordTable(filename, mode, StructPacker(CHANGESET_ID_FORMAT))
 
 
 class ChangesetDatabase:

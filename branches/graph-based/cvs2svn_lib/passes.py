@@ -57,8 +57,7 @@ from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.changeset_graph import ChangesetGraph
 from cvs2svn_lib.changeset_graph import ChangesetGraphNode
 from cvs2svn_lib.changeset_database import ChangesetDatabase
-from cvs2svn_lib.changeset_database import NewCVSItemToChangesetTable
-from cvs2svn_lib.changeset_database import OldCVSItemToChangesetTable
+from cvs2svn_lib.changeset_database import CVSItemToChangesetTable
 from cvs2svn_lib.cvs_revision_resynchronizer import CVSRevisionResynchronizer
 from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
 from cvs2svn_lib.svn_commit import SVNCommit
@@ -588,8 +587,9 @@ class InitializeChangesetsPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
 
-    self.cvs_item_to_changeset_id = NewCVSItemToChangesetTable(
-        artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET))
+    self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
+        artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET),
+        DB_OPEN_NEW)
     self.changesets_db = ChangesetDatabase(
         artifact_manager.get_temp_file(config.CHANGESETS_DB), DB_OPEN_NEW)
     self.changeset_key_generator = KeyGenerator(1)
@@ -754,8 +754,9 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
 
-    self.cvs_item_to_changeset_id = OldCVSItemToChangesetTable(
-        artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET))
+    self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
+        artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET),
+        DB_OPEN_READ)
     Ctx()._cvs_item_to_changeset_id = self.cvs_item_to_changeset_id
     self.changesets_db = ChangesetDatabase(
         artifact_manager.get_temp_file(config.CHANGESETS_DB), DB_OPEN_READ)
