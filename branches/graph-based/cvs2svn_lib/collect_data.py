@@ -747,16 +747,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         for tag_data in rev_data.tags_data
         ]
 
-    branch_symbol_ids = [
-        branch_data.symbol.id
-        for branch_data in rev_data.branches_data
-        ]
-
-    tag_symbol_ids = [
-        tag_data.symbol.id
-        for tag_data in rev_data.tags_data
-        ]
-
     closed_symbol_ids = [
         closed_symbol_data.symbol.id
         for closed_symbol_data in rev_data.closed_symbols_data
@@ -774,7 +764,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         rev_data.get_first_on_branch_id(),
         self._is_default_branch_revision(rev_data),
         tag_ids, branch_ids,
-        tag_symbol_ids, branch_symbol_ids,
         closed_symbol_ids)
     rev_data.cvs_rev = cvs_rev
     self.collect_data.add_cvs_item(cvs_rev)

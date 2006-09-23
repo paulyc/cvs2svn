@@ -71,7 +71,7 @@ class CVSRevision(CVSItem):
                prev_id, next_id,
                op, rev, deltatext_exists,
                lod, first_on_branch_id, default_branch_revision,
-               tag_ids, branch_ids, tag_symbol_ids, branch_symbol_ids,
+               tag_ids, branch_ids,
                closed_symbol_ids):
     """Initialize a new CVSRevision object.
 
