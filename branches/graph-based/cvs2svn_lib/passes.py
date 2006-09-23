@@ -844,7 +844,6 @@ class CreateDatabasesPass(Pass):
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
-    self._register_temp_file_needed(config.CVS_REVS_SORTED_DATAFILE)
 
   def run(self, stats_keeper):
     """If we're not doing a trunk-only conversion, generate the
