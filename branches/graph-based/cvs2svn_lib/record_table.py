@@ -105,10 +105,14 @@ class RecordTableAccessError(RuntimeError):
 class RecordTable:
   def __init__(self, filename, mode, packer):
     self.mode = mode
-    if self.mode in [DB_OPEN_NEW, DB_OPEN_WRITE]:
+    if self.mode == DB_OPEN_NEW:
       self.f = open(filename, 'wb+')
-    else:
+    elif self.mode == DB_OPEN_WRITE:
+      self.f = open(filename, 'rb+')
+    elif self.mode == DB_OPEN_READ:
       self.f = open(filename, 'rb')
+    else:
+      raise RuntimeError('Invalid mode %r' % self.mode)
     self.packer = packer
     # Number of items that can be stored in the write cache:
     self.max_memory_cache = 128 * 1024 / self.packer.record_len

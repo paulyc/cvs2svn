@@ -262,10 +262,14 @@ class IndexedStore:
     is read from the file."""
 
     self.mode = mode
-    if self.mode in [DB_OPEN_NEW, DB_OPEN_WRITE]:
+    if self.mode == DB_OPEN_NEW:
       self.f = open(filename, 'wb+')
-    else:
+    elif self.mode == DB_OPEN_WRITE:
+      self.f = open(filename, 'rb+')
+    elif self.mode == DB_OPEN_READ:
       self.f = open(filename, 'rb')
+    else:
+      raise RuntimeError('Invalid mode %r' % self.mode)
 
     self.index_table = RecordTable(
         index_filename, self.mode, FileOffsetPacker())
