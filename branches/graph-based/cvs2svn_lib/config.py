@@ -36,7 +36,6 @@ SORT_EXECUTABLE = 'sort'
 # These files are related to the cleaning and sorting of CVS revisions,
 # for commit grouping.  See design-notes.txt for details.
 CVS_REVS_RESYNC_DATAFILE = 'cvs2svn-revs-resync.txt'
-CVS_REVS_SORTED_DATAFILE = 'cvs2svn-revs-resync-s.txt'
 RESYNC_DATAFILE = 'cvs2svn-resync.txt'
 
 # The first file contains enough information about each CVSRevision to
@@ -65,6 +64,11 @@ CHANGESETS_DB = 'cvs2svn-changesets.db'
 # A mapping from id to Changeset, after the RevisionChangeset loops
 # have been broken.
 CHANGESETS_REVBROKEN_DB = 'cvs2svn-changesets-revbroken.db'
+
+# The RevisionChangesets in commit order.  Each line contains the
+# changeset id and timestamp of one changeset, in hexadecimal, in the
+# order that the changesets should be committed to svn.
+CHANGESETS_SORTED_DATAFILE = 'cvs2svn-changesets-s.txt'
 
 # This file contains a marshalled copy of all the statistics that we
 # gather throughout the various runs of cvs2svn.  The data stored as a

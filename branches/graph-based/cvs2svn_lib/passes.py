@@ -804,7 +804,7 @@ class TopologicalSortPass(Pass):
   """Sort changesets into commit order."""
 
   def register_artifacts(self):
-    self._register_temp_file(config.CVS_REVS_SORTED_DATAFILE)
+    self._register_temp_file(config.CHANGESETS_SORTED_DATAFILE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
@@ -843,25 +843,19 @@ class TopologicalSortPass(Pass):
 
     del changeset_ids
 
-    sorted_revs = open(
-        artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE), 'w')
+    sorted_changesets = open(
+        artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE), 'w')
 
     # Ensure a monotonically-increasing timestamp series by keeping
-    # track of the previous timestampe and ensuring that the following
+    # track of the previous timestamp and ensuring that the following
     # one is larger.
     timestamp = 0
 
     for (changeset_id, time_range) in changeset_graph.remove_nopred_nodes():
-      changeset = changesets_db[changeset_id]
-      print repr(changeset) # @@@
       timestamp = max(time_range.t_max, timestamp + 1)
-      for cvs_item_id in changeset.cvs_item_ids:
-        cvs_item = Ctx()._cvs_items_db[cvs_item_id]
-        print '  %s' % cvs_item # @@@
-        sorted_revs.write(
-            '%08x %x %x\n' % (timestamp, cvs_item.metadata_id, cvs_item_id))
+      sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
 
-    sorted_revs.close()
+    sorted_changesets.close()
 
     Log().quiet("Done")
 
@@ -933,7 +927,8 @@ class AggregateRevsPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.METADATA_DB)
-    self._register_temp_file_needed(config.CVS_REVS_SORTED_DATAFILE)
+    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
 
   def run(self, stats_keeper):
     Log().quiet("Mapping CVS revisions to Subversion commits...")
@@ -947,17 +942,21 @@ class AggregateRevsPass(Pass):
         DB_OPEN_READ)
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
+    changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(
+            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_READ)
+
     aggregator = CVSRevisionAggregator()
     for line in file(
-            artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE)):
-      [timestamp, metadata_id, cvs_rev_id] = \
-          [int(s, 16) for s in line.strip().split()]
-      cvs_rev = Ctx()._cvs_items_db[cvs_rev_id]
-      if not (Ctx().trunk_only and isinstance(cvs_rev.lod, Branch)):
-        # This is a kludge to force aggregator to use the changesets
-        # in the form that we feed it: @@@
-        cvs_rev.timestamp = timestamp
-        aggregator.process_revision(cvs_rev)
+            artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE)):
+      [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
+      changeset = changesets_db[changeset_id]
+      for cvs_rev in changeset.get_cvs_items():
+        if not (Ctx().trunk_only and isinstance(cvs_rev.lod, Branch)):
+          # This is a kludge to force aggregator to use the changesets
+          # in the form that we feed it: @@@
+          cvs_rev.timestamp = timestamp
+          aggregator.process_revision(cvs_rev)
     aggregator.flush()
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
