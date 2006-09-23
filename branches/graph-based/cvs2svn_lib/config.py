@@ -54,8 +54,17 @@ CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE = 'cvs2svn-symbols-summary-s.txt'
 # A mapping from CVSItem id to Changeset id.
 CVS_ITEM_TO_CHANGESET = 'cvs2svn-cvs-item-to-changeset.dat'
 
+# A mapping from CVSItem id to Changeset id, after the
+# RevisionChangeset loops have been broken.
+CVS_ITEM_TO_CHANGESET_REVBROKEN = \
+    'cvs2svn-cvs-item-to-changeset-revbroken.dat'
+
 # A mapping from id to Changeset.
 CHANGESETS_DB = 'cvs2svn-changesets.db'
+
+# A mapping from id to Changeset, after the RevisionChangeset loops
+# have been broken.
+CHANGESETS_REVBROKEN_DB = 'cvs2svn-changesets-revbroken.db'
 
 # This file contains a marshalled copy of all the statistics that we
 # gather throughout the various runs of cvs2svn.  The data stored as a

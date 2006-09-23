@@ -21,6 +21,7 @@ from __future__ import generators
 
 import sys
 import os
+import shutil
 import cPickle
 
 from cvs2svn_lib.boolean import *
@@ -626,6 +627,8 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
   LINK_PASSTHRU = LINK_PRED | LINK_SUCC
 
   def register_artifacts(self):
+    self._register_temp_file(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
@@ -690,8 +693,8 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
       else:
         items_to_keep.append(cvs_item.id)
     del self.changeset_graph[changeset.id]
+    del self.changesets_db[changeset.id]
 
-    # @@@ Have to update the changeset and item_to_changeset databases here @@@
     new_changesets = [
         RevisionChangeset(
             self.changeset_key_generator.gen_id(), items_to_keep),
@@ -701,6 +704,9 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
 
     for changeset in new_changesets:
       self.changeset_graph.add_changeset(changeset)
+      self.changesets_db.store(changeset)
+      for item_id in changeset.cvs_item_ids:
+        self.cvs_item_to_changeset_id[item_id] = changeset.id
 
   def break_cycle(self, cycle):
     """Break up one or more changesets in CYCLE to help break the cycle.
@@ -760,25 +766,43 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
         DB_OPEN_READ)
 
+    shutil.copyfile(
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET),
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_REVBROKEN))
     self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
-        artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET),
-        DB_OPEN_READ)
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
+        DB_OPEN_WRITE)
     Ctx()._cvs_item_to_changeset_id = self.cvs_item_to_changeset_id
-    self.changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_DB), DB_OPEN_READ)
-    Ctx()._changesets_db = self.changesets_db
 
-    changeset_ids = self.changesets_db.keys()
+    old_changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(config.CHANGESETS_DB), DB_OPEN_READ)
+    Ctx()._changesets_db = old_changesets_db
+    self.changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(
+            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_NEW)
+
+    changeset_ids = old_changesets_db.keys()
     changeset_ids.sort()
 
     self.changeset_graph = ChangesetGraph()
 
-    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
     for changeset_id in changeset_ids:
-      changeset = self.changesets_db[changeset_id]
+      changeset = old_changesets_db[changeset_id]
       print repr(changeset) # @@@
-      if True or isinstance(changeset, RevisionChangeset): # @@@@@@
+      self.changesets_db.store(changeset)
+      if isinstance(changeset, RevisionChangeset):
         self.changeset_graph.add_changeset(changeset)
+
+    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
+    del changeset_ids
+
+    old_changesets_db.close()
+    del old_changesets_db
+
+    Ctx()._changesets_db = self.changesets_db
 
     print repr(self.changeset_graph) # @@@
 
