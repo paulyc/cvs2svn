@@ -635,15 +635,6 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET)
     self._register_temp_file_needed(config.CHANGESETS_DB)
 
-  def get_succ_changeset_ids(self, changeset):
-    """Return the changeset ids of changesets that depend on CHANGESET."""
-
-    retval = set()
-    for cvs_item in changeset.get_cvs_items():
-      for succ_id in cvs_item.get_succ_ids():
-        retval.add(self.cvs_item_to_changeset_id[succ_id])
-    return retval
-
   def get_link_type(self, pred, cvs_item, succ):
     """Return the type of links from CVS_ITEM to nodes PRED and SUCC.
 
