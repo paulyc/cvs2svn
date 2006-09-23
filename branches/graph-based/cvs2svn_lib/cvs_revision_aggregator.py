@@ -142,10 +142,6 @@ class CVSRevisionAggregator:
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries."""
 
-    # Scan the accumulating commits to see if any are ready for
-    # processing:
-    self._extract_ready_commits()
-
     cvs_revs = list(changeset.get_cvs_items())
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
@@ -177,11 +173,14 @@ class CVSRevisionAggregator:
 
       self._add_pending_symbols(cvs_rev)
 
+    # Scan the accumulating commits to see if any are ready for
+    # processing:
+    self._extract_ready_commits()
+
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
     SymbolingsLogger that all commits are done."""
 
-    self._extract_ready_commits()
     self._commit_ready_commits()
 
   def _add_pending_symbols(self, cvs_rev):
