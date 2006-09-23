@@ -98,16 +98,15 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _extract_ready_commits(self, timestamp=None):
+  def _extract_ready_commits(self):
     """Extract any active commits that expire by TIMESTAMP from
     self.cvs_commits and append them to self.ready_queue.  If
     TIMESTAMP is not specified, then extract all commits."""
 
     # First take all expired commits out of the pool of available commits.
     for metadata_id, cvs_commit in self.cvs_commits.items():
-      if timestamp is None or cvs_commit.time_range.t_max < timestamp:
-        self.expired_queue.append(cvs_commit)
-        del self.cvs_commits[metadata_id]
+      self.expired_queue.append(cvs_commit)
+      del self.cvs_commits[metadata_id]
 
     # Then queue all closed commits with resolved dependencies for
     # commit.  We do this here instead of in _commit_ready_commits to
