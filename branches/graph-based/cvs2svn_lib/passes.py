@@ -91,7 +91,7 @@ def sort_file(infilename, outfilename, options=''):
       os.environ['LC_ALL'] = lc_all_tmp
 
 
-class Pass:
+class Pass(object):
   """Base class for one step of the conversion."""
 
   def __init__(self):
