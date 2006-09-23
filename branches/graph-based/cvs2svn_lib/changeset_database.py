@@ -25,6 +25,7 @@ from cvs2svn_lib.boolean import *
 from cvs2svn_lib.changeset import Changeset
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
+from cvs2svn_lib.record_table import StructPacker
 from cvs2svn_lib.record_table import NewRecordTable
 from cvs2svn_lib.record_table import OldRecordTable
 from cvs2svn_lib.database import PrimedPDatabase
@@ -33,23 +34,14 @@ from cvs2svn_lib.database import DB_OPEN_READ
 
 
 CHANGESET_ID_FORMAT = '=I'
-CHANGESET_ID_FORMAT_LEN = struct.calcsize(CHANGESET_ID_FORMAT)
 
 
-class NewCVSItemToChangesetTable(NewRecordTable):
-  def __init__(self, filename):
-    NewRecordTable.__init__(self, filename, CHANGESET_ID_FORMAT_LEN)
-
-  def pack(self, v):
-    return struct.pack(CHANGESET_ID_FORMAT, v)
+def NewCVSItemToChangesetTable(filename):
+  return NewRecordTable(filename, StructPacker(CHANGESET_ID_FORMAT))
 
 
-class OldCVSItemToChangesetTable(OldRecordTable):
-  def __init__(self, filename):
-    OldRecordTable.__init__(self, filename, CHANGESET_ID_FORMAT_LEN)
-
-  def unpack(self, v):
-    return struct.unpack(CHANGESET_ID_FORMAT, v)[0]
+def OldCVSItemToChangesetTable(filename):
+  return OldRecordTable(filename, StructPacker(CHANGESET_ID_FORMAT))
 
 
 class ChangesetDatabase:

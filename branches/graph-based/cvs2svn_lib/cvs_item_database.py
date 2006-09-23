@@ -30,6 +30,8 @@ from cvs2svn_lib.cvs_item import CVSTag
 from cvs2svn_lib.primed_pickle import get_memos
 from cvs2svn_lib.primed_pickle import PrimedPickler
 from cvs2svn_lib.primed_pickle import PrimedUnpickler
+from cvs2svn_lib.record_table import Packer
+from cvs2svn_lib.record_table import FileOffsetPacker
 from cvs2svn_lib.record_table import NewRecordTable
 from cvs2svn_lib.record_table import OldRecordTable
 
@@ -79,21 +81,6 @@ class NewCVSItemStore:
     self.f.close()
 
 
-# Convert file offsets to 8-bit little-endian unsigned longs...
-INDEX_FORMAT = '<Q'
-# ...but then truncate to 5 bytes.  (This is big enough to represent a
-# terabyte.)
-INDEX_FORMAT_LEN = 5
-
-
-class NewIndexTable(NewRecordTable):
-  def __init__(self, filename):
-    NewRecordTable.__init__(self, filename, INDEX_FORMAT_LEN)
-
-  def pack(self, v):
-    return struct.pack(INDEX_FORMAT, v)[:INDEX_FORMAT_LEN]
-
-
 class NewIndexedCVSItemStore:
   """A file of CVSItems that is written sequentially.
 
@@ -108,7 +95,7 @@ class NewIndexedCVSItemStore:
     """Initialize an instance, creating the files and writing the primer."""
 
     self.f = open(filename, 'wb')
-    self.index_table = NewIndexTable(index_filename)
+    self.index_table = NewRecordTable(index_filename, FileOffsetPacker())
 
     primer = (CVSRevision, CVSBranch, CVSTag,)
     (pickler_memo, unpickler_memo,) = get_memos(primer)
@@ -177,17 +164,6 @@ class OldCVSItemStore:
           'Key %r not found within items currently accessible.' % (id,))
 
 
-class OldIndexTable(OldRecordTable):
-  PAD = '\0' * (struct.calcsize(INDEX_FORMAT) - INDEX_FORMAT_LEN)
-
-  def __init__(self, filename):
-    OldRecordTable.__init__(self, filename, INDEX_FORMAT_LEN)
-
-  def unpack(self, s):
-    (v,) = struct.unpack(INDEX_FORMAT, s + self.PAD)
-    return v
-
-
 class OldIndexedCVSItemStore:
   """Read a pair of files created by NewIndexedCVSItemStore.
 
@@ -195,7 +171,7 @@ class OldIndexedCVSItemStore:
 
   def __init__(self, filename, index_filename):
     self.f = open(filename, 'rb')
-    self.index_table = OldIndexTable(index_filename)
+    self.index_table = OldRecordTable(index_filename, FileOffsetPacker())
 
     # Read the memo from the first pickle:
     (pickler_memo, unpickler_memo,) = cPickle.load(self.f)
