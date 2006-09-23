@@ -303,7 +303,7 @@ class RunOptions:
         try:
           # Verify that the pattern is valid:
           re.compile(pattern)
-        except re.error, e:
+        except re.error:
           raise FatalError("'%s' is not a valid regexp." % (pattern,))
         symbol_transforms.append((pattern, replacement,))
       elif opt == '--username':
