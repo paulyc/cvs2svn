@@ -163,7 +163,6 @@ class CVSRevisionAggregator:
         for r in cvs_commit.revisions():
           del self.pending_revs[r.id]
         self.expired_queue.remove(cvs_commit)
-        cvs_commit.pending = False
         self.ready_queue.append(cvs_commit)
         chg = True
       if not chg:

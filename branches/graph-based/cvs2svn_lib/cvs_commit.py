@@ -47,11 +47,6 @@ class CVSCommit:
     self.author = author
     self.log = log
 
-    # This field remains True until this CVSCommit is moved from the
-    # expired queue to the ready queue.  At that point we stop blocking
-    # other commits.
-    self.pending = True
-
     # Lists of CVSRevisions
     self.changes = [ ]
     self.deletes = [ ]
