@@ -39,15 +39,6 @@ class ChangesetGraph(object):
   def get(self, id):
     return self.nodes.get(id)
 
-  def remove(self, node):
-    del self.nodes[node.id]
-
-  def __iter__(self):
-    return self.nodes.itervalues()
-
-  def get_nodes(self):
-    return self.nodes.values()
-
   def __delitem__(self, id):
     """Remove the node corresponding to ID.
 
@@ -65,6 +56,15 @@ class ChangesetGraph(object):
       pred.succ_ids.remove(node.id)
 
     del self.nodes[node.id]
+
+  def remove(self, node):
+    del self.nodes[node.id]
+
+  def __iter__(self):
+    return self.nodes.itervalues()
+
+  def get_nodes(self):
+    return self.nodes.values()
 
   def remove_nopred_nodes(self):
     """Remove and yield any nodes that do not have predecessors.
