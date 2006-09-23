@@ -153,14 +153,8 @@ class CVSRevisionAggregator:
     # commit.  We do this here instead of in _commit_ready_commits to
     # avoid building deps on revisions that will be flushed
     # immediately afterwards.
-    while self.expired_queue:
-      chg = False
-      for cvs_commit in self.expired_queue[:]:
-        self.expired_queue.remove(cvs_commit)
-        self.ready_queue.append(cvs_commit)
-        chg = True
-      if not chg:
-        break
+    self.ready_queue.extend(self.expired_queue)
+    self.expired_queue = []
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
