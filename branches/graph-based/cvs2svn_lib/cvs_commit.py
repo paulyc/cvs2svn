@@ -47,9 +47,6 @@ class CVSCommit:
     self.author = author
     self.log = log
 
-    # Set of other CVSCommits we depend directly upon.
-    self._deps = set()
-
     # This field remains True until this CVSCommit is moved from the
     # expired queue to the ready queue.  At that point we stop blocking
     # other commits.
@@ -150,22 +147,6 @@ class CVSCommit:
     else:
       # OP_CHANGE or OP_ADD
       self.changes.append(cvs_rev)
-
-  def add_dependency(self, dep):
-    self._deps.add(dep)
-
-  def resolve_dependencies(self):
-    """Resolve any dependencies that are no longer pending.
-    Return True iff this commit has no remaining unresolved dependencies."""
-
-    for dep in list(self._deps):
-      if dep.pending:
-        return False
-      self.time_range.t_max = max(self.time_range.t_max,
-                                  dep.time_range.t_max + 1)
-      self._deps.remove(dep)
-
-    return True
 
   def _pre_commit(self, done_symbols):
     """Generate any SVNCommits that must exist before the main commit.

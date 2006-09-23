@@ -160,13 +160,12 @@ class CVSRevisionAggregator:
     while self.expired_queue:
       chg = False
       for cvs_commit in self.expired_queue[:]:
-        if cvs_commit.resolve_dependencies():
-          for r in cvs_commit.revisions():
-            del self.pending_revs[r.id]
-          self.expired_queue.remove(cvs_commit)
-          cvs_commit.pending = False
-          self.ready_queue.append(cvs_commit)
-          chg = True
+        for r in cvs_commit.revisions():
+          del self.pending_revs[r.id]
+        self.expired_queue.remove(cvs_commit)
+        cvs_commit.pending = False
+        self.ready_queue.append(cvs_commit)
+        chg = True
       if not chg:
         break
 
@@ -179,7 +178,7 @@ class CVSRevisionAggregator:
   def _attempt_to_commit_symbols(self):
     """Generate one SVNCommit for each symbol in self._pending_symbols
     that doesn't have an opening CVSRevision in either
-    self.cvs_commits, self.expired_queue or self.ready_queue."""
+    self.cvs_commit, self.expired_queue or self.ready_queue."""
 
     # Make a list of tuples (symbol_name, symbol) for all symbols from
     # self._pending_symbols that do not have *source* CVSRevisions in
