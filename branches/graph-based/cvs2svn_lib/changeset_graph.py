@@ -112,7 +112,7 @@ class ChangesetGraph(object):
         if not node.pred_ids]
     nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
     while nopred_nodes:
-      node = nopred_nodes.pop()
+      node = nopred_nodes.pop(0)
       del self[node.id]
       # See if any successors are now ready for extraction:
       new_nodes_found = False
