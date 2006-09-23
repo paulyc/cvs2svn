@@ -65,7 +65,7 @@ class CVSRevisionAggregator:
           DB_OPEN_READ)
 
     # Map of CVSRevision metadata_ids to open CVSCommits.
-    self.cvs_commits = {}
+    self.cvs_commit = None
 
     # Map of CVSRevision ids to the CVSCommits they are part of.
     self.pending_revs = {}
@@ -121,7 +121,7 @@ class CVSRevisionAggregator:
 
     author, log = Ctx()._metadata_db[metadata_id]
     cvs_commit = CVSCommit(metadata_id, author, log)
-    self.cvs_commits[metadata_id] = cvs_commit
+    self.cvs_commit = cvs_commit
 
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
@@ -146,9 +146,8 @@ class CVSRevisionAggregator:
     # Scan the accumulating commits to see if any are ready for
     # processing:
     # First take all expired commits out of the pool of available commits.
-    for metadata_id, cvs_commit in self.cvs_commits.items():
-      self.expired_queue.append(cvs_commit)
-      del self.cvs_commits[metadata_id]
+    self.expired_queue.append(self.cvs_commit)
+    self.cvs_commit = None
 
     # Then queue all closed commits with resolved dependencies for
     # commit.  We do this here instead of in _commit_ready_commits to
@@ -197,8 +196,8 @@ class CVSRevisionAggregator:
     # self.ready_queue):
     closeable_symbols = []
     pending_commits = self.expired_queue + self.ready_queue
-    for commit in self.cvs_commits.itervalues():
-      pending_commits.append(commit)
+    if self.cvs_commit is not None:
+      pending_commits.append(self.cvs_commit)
     for symbol_id in self._pending_symbols:
       for cvs_commit in pending_commits:
         if cvs_commit.opens_symbol(symbol_id):
