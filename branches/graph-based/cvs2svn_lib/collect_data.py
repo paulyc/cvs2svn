@@ -27,6 +27,7 @@ import time
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib import config
+from cvs2svn_lib.common import DB_OPEN_NEW
 from cvs2svn_lib.common import FatalError
 from cvs2svn_lib.common import warning_prefix
 from cvs2svn_lib.common import error_prefix
@@ -45,7 +46,6 @@ from cvs2svn_lib.cvs_item import CVSTag
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.database import Database
 from cvs2svn_lib.database import SDatabase
-from cvs2svn_lib.database import DB_OPEN_NEW
 from cvs2svn_lib.cvs_file_database import CVSFileDatabase
 from cvs2svn_lib.cvs_item_database import NewCVSItemStore
 from cvs2svn_lib.symbol import Symbol

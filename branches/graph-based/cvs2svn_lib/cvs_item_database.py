@@ -23,6 +23,9 @@ import struct
 import cPickle
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.common import DB_OPEN_NEW
+from cvs2svn_lib.common import DB_OPEN_READ
+from cvs2svn_lib.common import DB_OPEN_WRITE
 from cvs2svn_lib.common import FatalError
 from cvs2svn_lib.cvs_item import CVSRevision
 from cvs2svn_lib.cvs_item import CVSBranch
@@ -33,9 +36,6 @@ from cvs2svn_lib.primed_pickle import PrimedUnpickler
 from cvs2svn_lib.record_table import Packer
 from cvs2svn_lib.record_table import FileOffsetPacker
 from cvs2svn_lib.record_table import RecordTable
-from cvs2svn_lib.database import DB_OPEN_NEW
-from cvs2svn_lib.database import DB_OPEN_READ
-from cvs2svn_lib.database import DB_OPEN_WRITE
 
 
 class NewCVSItemStore:

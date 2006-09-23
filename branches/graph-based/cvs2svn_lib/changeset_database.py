@@ -22,14 +22,14 @@ from __future__ import generators
 import struct
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.common import DB_OPEN_NEW
+from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib.changeset import Changeset
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.record_table import StructPacker
 from cvs2svn_lib.record_table import RecordTable
 from cvs2svn_lib.database import PrimedPDatabase
-from cvs2svn_lib.database import DB_OPEN_NEW
-from cvs2svn_lib.database import DB_OPEN_READ
 
 
 CHANGESET_ID_FORMAT = '=I'

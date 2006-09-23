@@ -41,9 +41,9 @@ import os
 import struct
 
 from cvs2svn_lib.boolean import *
-from cvs2svn_lib.database import DB_OPEN_READ
-from cvs2svn_lib.database import DB_OPEN_WRITE
-from cvs2svn_lib.database import DB_OPEN_NEW
+from cvs2svn_lib.common import DB_OPEN_READ
+from cvs2svn_lib.common import DB_OPEN_WRITE
+from cvs2svn_lib.common import DB_OPEN_NEW
 
 
 class Packer(object):

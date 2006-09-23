@@ -19,10 +19,10 @@
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib import config
+from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib.common import OP_DELETE
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.artifact_manager import artifact_manager
-from cvs2svn_lib.database import DB_OPEN_READ
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.svn_revision_range import SVNRevisionRange
 

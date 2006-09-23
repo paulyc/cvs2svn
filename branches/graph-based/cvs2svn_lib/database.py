@@ -26,6 +26,9 @@ import cStringIO
 import cPickle
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.common import DB_OPEN_READ
+from cvs2svn_lib.common import DB_OPEN_WRITE
+from cvs2svn_lib.common import DB_OPEN_NEW
 from cvs2svn_lib.common import warning_prefix
 from cvs2svn_lib.common import error_prefix
 from cvs2svn_lib.primed_pickle import get_memos
@@ -68,12 +71,6 @@ if hasattr(anydbm._defaultmod, 'bsddb') \
         'version 2.3 or later.\n')
   else:
     anydbm._defaultmod = gdbm
-
-
-# Always use these constants for opening databases.
-DB_OPEN_READ = 'r'
-DB_OPEN_WRITE = 'w'
-DB_OPEN_NEW = 'n'
 
 
 class AbstractDatabase:
