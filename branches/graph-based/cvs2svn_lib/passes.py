@@ -55,7 +55,6 @@ from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.changeset_graph import ChangesetGraph
-from cvs2svn_lib.changeset_graph import ChangesetGraphNode
 from cvs2svn_lib.changeset_database import ChangesetDatabase
 from cvs2svn_lib.changeset_database import CVSItemToChangesetTable
 from cvs2svn_lib.cvs_revision_resynchronizer import CVSRevisionResynchronizer
