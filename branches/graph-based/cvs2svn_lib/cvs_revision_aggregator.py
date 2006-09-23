@@ -100,32 +100,6 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _get_deps(self, cvs_rev):
-    """Return the dependencies of CVS_REV.
-
-    Return the tuple (MAIN_DEP, DEPS), where MAIN_DEP is the main
-    CVSCommit on which CVS_REV depends (or None if there is no main
-    dependency) and DEPS is the complete set of CVSCommit objects that
-    CVS_REV depends on directly or indirectly.  (The result includes
-    both direct and indirect dependencies because it is used to
-    determine what CVSCommit CVS_REV can be added to.)"""
-
-    main_dep = self.pending_revs.get(cvs_rev.prev_id)
-    if main_dep is None:
-      return (None, set(),)
-    deps = set([main_dep])
-    # CVSCommits whose revisions' dependencies still have to be examined:
-    todo = set([main_dep])
-    while todo:
-      dep = todo.pop()
-      for r in dep.revisions():
-        dep2 = self.pending_revs.get(r.prev_id)
-        if dep2 is not None and dep2 not in deps:
-          deps.add(dep2)
-          todo.add(dep2)
-
-    return (main_dep, deps,)
-
   def _extract_ready_commits(self, timestamp=None):
     """Extract any active commits that expire by TIMESTAMP from
     self.cvs_commits and append them to self.ready_queue.  If
@@ -171,47 +145,45 @@ class CVSRevisionAggregator:
           cvs_commit.process_revisions(self._done_symbols)
       self._attempt_to_commit_symbols()
 
-  def process_revision(self, cvs_rev):
-    # Each time we read a new line, scan the accumulating commits to
-    # see if any are ready for processing.
-    self._extract_ready_commits(cvs_rev.timestamp)
-
-    # Add this item into the set of still-available commits.
-    (dep, deps) = self._get_deps(cvs_rev)
-    cvs_commits = self.cvs_commits.setdefault(cvs_rev.metadata_id, [])
-    # This is pretty silly; it will add the revision to the oldest
-    # pending commit. It might be wiser to do time range matching to
-    # avoid stretching commits more than necessary.
-    for cvs_commit in cvs_commits:
-      if cvs_commit not in deps:
-        break
-    else:
-      author, log = Ctx()._metadata_db[cvs_rev.metadata_id]
-      cvs_commit = CVSCommit(cvs_rev.metadata_id, author, log)
-      cvs_commits.append(cvs_commit)
-    if dep is not None:
-      cvs_commit.add_dependency(dep)
-    cvs_commit.add_revision(cvs_rev)
-    self.pending_revs[cvs_rev.id] = cvs_commit
-
-    # If there are any elements in the ready_queue at this point, they
-    # need to be processed, because this latest rev couldn't possibly
-    # be part of any of them.  Limit the timestamp of commits to be
-    # processed, because re-stamping according to a commit's
-    # dependencies can alter the commit's timestamp.
-    self._commit_ready_commits(cvs_rev.timestamp)
-
-    self._add_pending_symbols(cvs_rev)
-
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries."""
 
-    for cvs_rev in changeset.get_cvs_items():
-      if not (Ctx().trunk_only and isinstance(cvs_rev.lod, Branch)):
-        # This is a kludge to force aggregator to use the changesets
-        # in the form that we feed it: @@@
-        cvs_rev.timestamp = timestamp
-        self.process_revision(cvs_rev)
+    # Scan the accumulating commits to see if any are ready for
+    # processing:
+    self._extract_ready_commits()
+
+    cvs_revs = list(changeset.get_cvs_items())
+    for cvs_rev in cvs_revs:
+      if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
+        continue
+
+      # This is a kludge to force aggregator to use the changesets
+      # in the form that we feed it: @@@
+      cvs_rev.timestamp = timestamp
+
+      # Add this item into the set of still-available commits.
+      cvs_commits = self.cvs_commits.setdefault(cvs_rev.metadata_id, [])
+
+      # This is pretty silly; it will add the revision to the oldest
+      # pending commit. It might be wiser to do time range matching to
+      # avoid stretching commits more than necessary.
+      if cvs_commits:
+        cvs_commit = cvs_commits[0]
+      else:
+        author, log = Ctx()._metadata_db[cvs_rev.metadata_id]
+        cvs_commit = CVSCommit(cvs_rev.metadata_id, author, log)
+        cvs_commits.append(cvs_commit)
+      cvs_commit.add_revision(cvs_rev)
+      self.pending_revs[cvs_rev.id] = cvs_commit
+
+      # If there are any elements in the ready_queue at this point, they
+      # need to be processed, because this latest rev couldn't possibly
+      # be part of any of them.  Limit the timestamp of commits to be
+      # processed, because re-stamping according to a commit's
+      # dependencies can alter the commit's timestamp.
+      self._commit_ready_commits(cvs_rev.timestamp)
+
+      self._add_pending_symbols(cvs_rev)
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
