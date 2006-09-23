@@ -21,6 +21,7 @@ from __future__ import generators
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
+from cvs2svn_lib.context import Ctx
 
 
 class ChangesetGraph(object):
@@ -32,6 +33,30 @@ class ChangesetGraph(object):
 
   def add(self, node):
     self.nodes[node.id] = node
+
+  def add_changeset(self, changeset):
+    """Add CHANGESET to this graph.
+
+    Determine and record any dependencies to changesets that are
+    already in the graph."""
+
+    node = ChangesetGraphNode(changeset.id)
+    for cvs_item in changeset.get_cvs_items():
+      for succ_id in cvs_item.get_succ_ids():
+        changeset_id = Ctx()._cvs_item_to_changeset_id[succ_id]
+        succ_node = self.nodes.get(changeset_id)
+        if succ_node is not None:
+          node.succ_ids.add(succ_node.id)
+          succ_node.pred_ids.add(node.id)
+
+      for pred_id in cvs_item.get_pred_ids():
+        changeset_id = Ctx()._cvs_item_to_changeset_id[pred_id]
+        pred_node = self.nodes.get(changeset_id)
+        if pred_node is not None:
+          node.pred_ids.add(pred_node.id)
+          pred_node.succ_ids.add(node.id)
+
+    self.add(node)
 
   def __getitem__(self, id):
     return self.nodes[id]
