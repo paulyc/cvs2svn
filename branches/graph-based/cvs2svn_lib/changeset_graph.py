@@ -31,9 +31,6 @@ class ChangesetGraph(object):
     # A map { id : ChangesetGraphNode }
     self.nodes = {}
 
-  def add(self, node):
-    self.nodes[node.id] = node
-
   def add_changeset(self, changeset):
     """Add CHANGESET to this graph.
 
@@ -56,7 +53,7 @@ class ChangesetGraph(object):
           node.pred_ids.add(pred_node.id)
           pred_node.succ_ids.add(node.id)
 
-    self.add(node)
+    self.nodes[node.id] = node
 
   def __getitem__(self, id):
     return self.nodes[id]
@@ -82,14 +79,8 @@ class ChangesetGraph(object):
 
     del self.nodes[node.id]
 
-  def remove(self, node):
-    del self.nodes[node.id]
-
   def __iter__(self):
     return self.nodes.itervalues()
-
-  def get_nodes(self):
-    return self.nodes.values()
 
   def remove_nopred_nodes(self):
     """Remove and yield any nodes that do not have predecessors.
