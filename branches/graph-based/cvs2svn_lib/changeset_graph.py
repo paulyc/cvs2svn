@@ -28,7 +28,7 @@ class ChangesetGraph(object):
   """A graph of changesets and their dependencies."""
 
   def __init__(self):
-    # A map { id : ChangesetGraphNode }
+    # A map { id : _ChangesetGraphNode }
     self.nodes = {}
 
   def add_changeset(self, changeset):
@@ -37,7 +37,7 @@ class ChangesetGraph(object):
     Determine and record any dependencies to changesets that are
     already in the graph."""
 
-    node = ChangesetGraphNode(changeset.id)
+    node = _ChangesetGraphNode(changeset.id)
     for cvs_item in changeset.get_cvs_items():
       for succ_id in cvs_item.get_succ_ids():
         changeset_id = Ctx()._cvs_item_to_changeset_id[succ_id]
@@ -147,7 +147,7 @@ class ChangesetGraph(object):
       return 'ChangesetGraph:\n  EMPTY\n'
 
 
-class ChangesetGraphNode(object):
+class _ChangesetGraphNode(object):
   """A node in the changeset dependency graph."""
 
   def __init__(self, id, pred_ids=None, succ_ids=None):
