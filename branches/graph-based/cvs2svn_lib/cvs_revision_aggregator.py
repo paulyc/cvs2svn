@@ -141,7 +141,11 @@ class CVSRevisionAggregator:
       # dependencies can alter the commit's timestamp.
       self._commit_ready_commits(cvs_rev.timestamp)
 
-      self._add_pending_symbols(cvs_rev)
+      # Add to self._pending_symbols any symbols from CVS_REV for
+      # which CVS_REV is the last CVSRevision.
+      if not Ctx().trunk_only:
+        for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
+          self._pending_symbols.add(symbol_id)
 
     # Scan the accumulating commits to see if any are ready for
     # processing:
@@ -171,19 +175,6 @@ class CVSRevisionAggregator:
     SymbolingsLogger that all commits are done."""
 
     self._commit_ready_commits()
-
-  def _add_pending_symbols(self, cvs_rev):
-    """Add to self._pending_symbols any symbols from CVS_REV for which
-    CVS_REV is the last CVSRevision.
-
-    If we're not doing a trunk-only conversion, get the symbolic names
-    that this CVS_REV is the last *source* CVSRevision for and add
-    them to those left over from previous passes through the
-    aggregator."""
-
-    if not Ctx().trunk_only:
-      for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
-        self._pending_symbols.add(symbol_id)
 
   def _attempt_to_commit_symbols(self):
     """Generate one SVNCommit for each symbol in self._pending_symbols
