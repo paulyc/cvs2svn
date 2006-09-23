@@ -51,9 +51,7 @@ class CVSRevisionAggregator:
   # corresponding CVSCommit is not eligible for accomodating the
   # revision, but will be added to the dependency list of the commit
   # the revision finally goes into.  When a CVSCommit moves out of its
-  # accumulation window it is not scheduled for flush immediately, but
-  # instead enqueued in expired_queue.  Only if all the CVSCommits
-  # this one depends on went out already, it can go out as well.
+  # accumulation window it is scheduled for flush immediately.
   # Timestamps are adjusted accordingly - it could happen that a small
   # CVSCommit is commited while a big commit it depends on is still
   # underway in other directories.
@@ -66,10 +64,6 @@ class CVSRevisionAggregator:
 
     # Map of CVSRevision metadata_ids to open CVSCommits.
     self.cvs_commit = None
-
-    # List of closed CVSCommits which might still have pending
-    # dependencies.
-    self.expired_queue = []
 
     # List of CVSCommits that are ready to be committed, but might
     # need to be delayed until a CVSRevision with a later timestamp is
@@ -143,18 +137,9 @@ class CVSRevisionAggregator:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
           self._pending_symbols.add(symbol_id)
 
-    # Scan the accumulating commits to see if any are ready for
-    # processing:
-    # First take all expired commits out of the pool of available commits.
-    self.expired_queue.append(self.cvs_commit)
+    # Queue the new commit for processing
+    self.ready_queue.append(self.cvs_commit)
     self.cvs_commit = None
-
-    # Then queue all closed commits with resolved dependencies for
-    # commit.  We do this here instead of in _commit_ready_commits to
-    # avoid building deps on revisions that will be flushed
-    # immediately afterwards.
-    self.ready_queue.extend(self.expired_queue)
-    self.expired_queue = []
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
@@ -165,14 +150,13 @@ class CVSRevisionAggregator:
   def _attempt_to_commit_symbols(self):
     """Generate one SVNCommit for each symbol in self._pending_symbols
     that doesn't have an opening CVSRevision in either
-    self.cvs_commit, self.expired_queue or self.ready_queue."""
+    self.cvs_commit or self.ready_queue."""
 
     # Make a list of tuples (symbol_name, symbol) for all symbols from
     # self._pending_symbols that do not have *source* CVSRevisions in
-    # the pending commit queues (self.expired_queue or
-    # self.ready_queue):
+    # the pending commit queue (self.ready_queue):
     closeable_symbols = []
-    pending_commits = self.expired_queue + self.ready_queue
+    pending_commits = self.ready_queue[:]
     if self.cvs_commit is not None:
       pending_commits.append(self.cvs_commit)
     for symbol_id in self._pending_symbols:
