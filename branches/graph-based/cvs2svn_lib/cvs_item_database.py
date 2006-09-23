@@ -35,6 +35,7 @@ from cvs2svn_lib.record_table import FileOffsetPacker
 from cvs2svn_lib.record_table import RecordTable
 from cvs2svn_lib.database import DB_OPEN_NEW
 from cvs2svn_lib.database import DB_OPEN_READ
+from cvs2svn_lib.database import DB_OPEN_WRITE
 
 
 class NewCVSItemStore:
@@ -79,39 +80,6 @@ class NewCVSItemStore:
 
   def close(self):
     self._flush()
-    self.f.close()
-
-
-class NewIndexedCVSItemStore:
-  """A file of CVSItems that is written sequentially.
-
-  The file consists of a sequence of pickles.  The zeroth one is a
-  tuple (pickler_memo, unpickler_memo) as described in the
-  primed_pickle module.  Subsequent ones are pickled CVSItems.  The
-  offset of each CVSItem in the file is stored to an index table so
-  that the data can later be retrieved randomly (via
-  OldIndexedCVSItemStore)."""
-
-  def __init__(self, filename, index_filename):
-    """Initialize an instance, creating the files and writing the primer."""
-
-    self.f = open(filename, 'wb')
-    self.index_table = RecordTable(
-        index_filename, DB_OPEN_NEW, FileOffsetPacker())
-
-    primer = (CVSRevision, CVSBranch, CVSTag,)
-    (pickler_memo, unpickler_memo,) = get_memos(primer)
-    self.pickler = PrimedPickler(pickler_memo)
-    cPickle.dump((pickler_memo, unpickler_memo,), self.f, -1)
-
-  def add(self, cvs_item):
-    """Write cvs_item into the database."""
-
-    self.index_table[cvs_item.id] = self.f.tell()
-    self.pickler.dumpf(self.f, cvs_item)
-
-  def close(self):
-    self.index_table.close()
     self.f.close()
 
 
@@ -166,19 +134,54 @@ class OldCVSItemStore:
           'Key %r not found within items currently accessible.' % (id,))
 
 
-class OldIndexedCVSItemStore:
-  """Read a pair of files created by NewIndexedCVSItemStore.
+class IndexedCVSItemStore:
+  """A file of CVSItems that is written sequentially and read randomly.
 
-  The file can be read randomly but it cannot be written to."""
+  The file consists of a sequence of pickles.  The zeroth one is a
+  tuple (pickler_memo, unpickler_memo) as described in the
+  primed_pickle module.  Subsequent ones are pickled CVSItems.  The
+  offset of each CVSItem in the file is stored to an index table so
+  that the data can later be retrieved randomly (via
+  OldIndexedCVSItemStore).
 
-  def __init__(self, filename, index_filename):
-    self.f = open(filename, 'rb')
+  Items are always stored to the end of the file.  If an item is
+  deleted or overwritten, the fact is recorded in the index_table but
+  the space in the pickle file is not garbage-collected.  This has the
+  advantage that one can create a modified version of a database that
+  shares the main pickle file with an old version by copying the index
+  file.  But it has the disadvantage that space is wasted whenever
+  items are written multiple times."""
+
+  def __init__(self, filename, index_filename, mode):
+    """Initialize an instance, creating the files and writing the primer."""
+
+    self.mode = mode
+    if self.mode in [DB_OPEN_NEW, DB_OPEN_WRITE]:
+      self.f = open(filename, 'wb+')
+    else:
+      self.f = open(filename, 'rb')
+
     self.index_table = RecordTable(
-        index_filename, DB_OPEN_READ, FileOffsetPacker())
+        index_filename, self.mode, FileOffsetPacker())
 
-    # Read the memo from the first pickle:
-    (pickler_memo, unpickler_memo,) = cPickle.load(self.f)
+    if self.mode == DB_OPEN_NEW:
+      primer = (CVSRevision, CVSBranch, CVSTag,)
+      (pickler_memo, unpickler_memo,) = get_memos(primer)
+      cPickle.dump((pickler_memo, unpickler_memo,), self.f, -1)
+    else:
+      # Read the memo from the first pickle:
+      (pickler_memo, unpickler_memo,) = cPickle.load(self.f)
+
+    self.pickler = PrimedPickler(pickler_memo)
     self.unpickler = PrimedUnpickler(unpickler_memo)
+
+  def add(self, cvs_item):
+    """Write cvs_item into the database."""
+
+    # Make sure we're at the end of the file:
+    self.f.seek(0, 2)
+    self.index_table[cvs_item.id] = self.f.tell()
+    self.pickler.dumpf(self.f, cvs_item)
 
   def _fetch(self, offset):
     self.f.seek(offset)
@@ -196,7 +199,7 @@ class OldIndexedCVSItemStore:
     return self._fetch(offset)
 
   def close(self):
-    self.f.close()
     self.index_table.close()
+    self.f.close()
 
 

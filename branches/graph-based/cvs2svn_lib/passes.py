@@ -48,9 +48,8 @@ from cvs2svn_lib.cvs_item import CVSSymbol
 from cvs2svn_lib.cvs_item import CVSBranch
 from cvs2svn_lib.cvs_item import CVSTag
 from cvs2svn_lib.cvs_item_database import NewCVSItemStore
-from cvs2svn_lib.cvs_item_database import NewIndexedCVSItemStore
 from cvs2svn_lib.cvs_item_database import OldCVSItemStore
-from cvs2svn_lib.cvs_item_database import OldIndexedCVSItemStore
+from cvs2svn_lib.cvs_item_database import IndexedCVSItemStore
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
@@ -405,9 +404,10 @@ class ResyncRevsPass(Pass):
     Ctx()._symbol_db = SymbolDatabase()
     self.cvs_item_store = OldCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
-    cvs_items_resync_db = NewIndexedCVSItemStore(
+    cvs_items_resync_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_NEW)
 
     Log().quiet("Re-synchronizing CVS revision timestamps...")
 
@@ -583,9 +583,10 @@ class InitializeChangesetsPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
-    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
 
     self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
         artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET),
@@ -750,9 +751,10 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
 
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
-    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
 
     self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
         artifact_manager.get_temp_file(config.CVS_ITEM_TO_CHANGESET),
@@ -824,9 +826,10 @@ class CreateDatabasesPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
 
-    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
 
     if Ctx().trunk_only:
       for cvs_item in Ctx()._cvs_items_db:
@@ -878,9 +881,10 @@ class AggregateRevsPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
     Ctx()._metadata_db = MetadataDatabase(DB_OPEN_READ)
-    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
     aggregator = CVSRevisionAggregator()
@@ -989,9 +993,10 @@ class OutputPass(Pass):
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._metadata_db = MetadataDatabase(DB_OPEN_READ)
-    Ctx()._cvs_items_db = OldIndexedCVSItemStore(
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE))
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
     if not Ctx().trunk_only:
       Ctx()._symbol_db = SymbolDatabase()
     repos = SVNRepositoryMirror()
