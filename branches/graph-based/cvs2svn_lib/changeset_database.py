@@ -26,8 +26,7 @@ from cvs2svn_lib.changeset import Changeset
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.record_table import StructPacker
-from cvs2svn_lib.record_table import NewRecordTable
-from cvs2svn_lib.record_table import OldRecordTable
+from cvs2svn_lib.record_table import RecordTable
 from cvs2svn_lib.database import PrimedPDatabase
 from cvs2svn_lib.database import DB_OPEN_NEW
 from cvs2svn_lib.database import DB_OPEN_READ
@@ -37,11 +36,13 @@ CHANGESET_ID_FORMAT = '=I'
 
 
 def NewCVSItemToChangesetTable(filename):
-  return NewRecordTable(filename, StructPacker(CHANGESET_ID_FORMAT))
+  return RecordTable(
+      filename, DB_OPEN_NEW, StructPacker(CHANGESET_ID_FORMAT))
 
 
 def OldCVSItemToChangesetTable(filename):
-  return OldRecordTable(filename, StructPacker(CHANGESET_ID_FORMAT))
+  return RecordTable(
+      filename, DB_OPEN_READ, StructPacker(CHANGESET_ID_FORMAT))
 
 
 class ChangesetDatabase:

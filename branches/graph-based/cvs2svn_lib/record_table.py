@@ -30,8 +30,9 @@ respectively.
 
 Note that these classes do not keep track of which records have been
 written, aside from keeping track of the highest record number that
-was ever written.  If an unwritten record is read, then the unpack()
-method will be passes a string containing only NUL characters."""
+was ever written.  If a record that was never written is read, then
+the unpack() method will be passes a string containing only NUL
+characters."""
 
 
 from __future__ import generators
@@ -40,6 +41,9 @@ import os
 import struct
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.database import DB_OPEN_READ
+from cvs2svn_lib.database import DB_OPEN_WRITE
+from cvs2svn_lib.database import DB_OPEN_NEW
 
 
 class Packer(object):
@@ -94,12 +98,25 @@ class FileOffsetPacker(Packer):
     return struct.unpack(self.INDEX_FORMAT, s + self.PAD)[0]
 
 
-class NewRecordTable:
-  def __init__(self, filename, packer):
-    self.f = open(filename, 'wb+')
+class RecordTableAccessError(RuntimeError):
+  pass
+
+
+class RecordTable:
+  def __init__(self, filename, mode, packer):
+    self.mode = mode
+    if self.mode in [DB_OPEN_NEW, DB_OPEN_WRITE]:
+      self.f = open(filename, 'wb+')
+    else:
+      self.f = open(filename, 'rb')
     self.packer = packer
+    # Number of items that can be stored in the write cache:
     self.max_memory_cache = 128 * 1024 / self.packer.record_len
+    # Write cache.  Up to self.max_memory_cache items can be stored
+    # here.  When the cache fills up, it is written to disk in one go
+    # and then cleared.
     self.cache = {}
+    self.limit = os.path.getsize(filename) // self.packer.record_len
 
   def flush(self):
     pairs = self.cache.items()
@@ -114,33 +131,30 @@ class NewRecordTable:
     self.cache.clear()
 
   def __setitem__(self, i, v):
+    if self.mode == DB_OPEN_READ:
+      raise RecordTableAccessError()
     self.cache[i] = v
     if len(self.cache) >= self.max_memory_cache:
       self.flush()
-
-  def close(self):
-    self.flush()
-    self.f.close()
-
-
-class OldRecordTable:
-  def __init__(self, filename, packer):
-    self.f = open(filename, 'rb')
-    self.packer = packer
-    self.limit = os.path.getsize(filename) // self.packer.record_len
+    self.limit = max(self.limit, i + 1)
 
   def __getitem__(self, i):
     if not 0 <= i < self.limit:
       raise KeyError(i)
-    self.f.seek(i * self.packer.record_len)
-    s = self.f.read(self.packer.record_len)
-    return self.packer.unpack(s)
+    retval = self.cache.get(i)
+    if retval is not None:
+      return retval
+    else:
+      self.f.seek(i * self.packer.record_len)
+      s = self.f.read(self.packer.record_len)
+      return self.packer.unpack(s)
 
   def __iter__(self):
     for i in xrange(0, self.limit):
       yield self[i]
 
   def close(self):
+    self.flush()
     self.f.close()
 
 

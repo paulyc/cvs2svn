@@ -32,8 +32,9 @@ from cvs2svn_lib.primed_pickle import PrimedPickler
 from cvs2svn_lib.primed_pickle import PrimedUnpickler
 from cvs2svn_lib.record_table import Packer
 from cvs2svn_lib.record_table import FileOffsetPacker
-from cvs2svn_lib.record_table import NewRecordTable
-from cvs2svn_lib.record_table import OldRecordTable
+from cvs2svn_lib.record_table import RecordTable
+from cvs2svn_lib.database import DB_OPEN_NEW
+from cvs2svn_lib.database import DB_OPEN_READ
 
 
 class NewCVSItemStore:
@@ -95,7 +96,8 @@ class NewIndexedCVSItemStore:
     """Initialize an instance, creating the files and writing the primer."""
 
     self.f = open(filename, 'wb')
-    self.index_table = NewRecordTable(index_filename, FileOffsetPacker())
+    self.index_table = RecordTable(
+        index_filename, DB_OPEN_NEW, FileOffsetPacker())
 
     primer = (CVSRevision, CVSBranch, CVSTag,)
     (pickler_memo, unpickler_memo,) = get_memos(primer)
@@ -171,7 +173,8 @@ class OldIndexedCVSItemStore:
 
   def __init__(self, filename, index_filename):
     self.f = open(filename, 'rb')
-    self.index_table = OldRecordTable(index_filename, FileOffsetPacker())
+    self.index_table = RecordTable(
+        index_filename, DB_OPEN_READ, FileOffsetPacker())
 
     # Read the memo from the first pickle:
     (pickler_memo, unpickler_memo,) = cPickle.load(self.f)
