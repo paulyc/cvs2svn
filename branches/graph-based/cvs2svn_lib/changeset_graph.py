@@ -48,10 +48,13 @@ class ChangesetGraph(object):
   def get_nodes(self):
     return self.nodes.values()
 
-  def extract(self, node):
-    """Remove NODE and remove references to it from other nodes.
+  def __delitem__(self, id):
+    """Remove the node corresponding to ID.
 
-    This method does not change NODE.pred_ids or NODE.succ_ids."""
+    Also remove references to it from other nodes.  This method does
+    not change pred_ids or succ_ids of the node being deleted."""
+
+    node = self[id]
 
     for succ_id in node.succ_ids:
       succ = self[succ_id]
@@ -76,7 +79,7 @@ class ChangesetGraph(object):
         if not node.pred_ids]
     while nopred_nodes:
       node = nopred_nodes.pop()
-      self.extract(node)
+      del self[node.id]
       # See if any successors are now ready for extraction:
       for succ_id in node.succ_ids:
         succ = self[succ_id]
