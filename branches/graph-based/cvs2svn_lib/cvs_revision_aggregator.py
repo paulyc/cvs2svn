@@ -62,9 +62,6 @@ class CVSRevisionAggregator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CVS_REVS_DB),
           DB_OPEN_READ)
 
-    # Map of CVSRevision metadata_ids to open CVSCommits.
-    self.cvs_commit = None
-
     # List of CVSCommits that are ready to be committed, but might
     # need to be delayed until a CVSRevision with a later timestamp is
     # read.  (This can happen if the timestamp of the ready CVSCommit
@@ -112,7 +109,7 @@ class CVSRevisionAggregator:
 
     author, log = Ctx()._metadata_db[metadata_id]
     cvs_commit = CVSCommit(metadata_id, author, log)
-    self.cvs_commit = cvs_commit
+    self.ready_queue.append(cvs_commit)
 
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
@@ -137,10 +134,6 @@ class CVSRevisionAggregator:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
           self._pending_symbols.add(symbol_id)
 
-    # Queue the new commit for processing
-    self.ready_queue.append(self.cvs_commit)
-    self.cvs_commit = None
-
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
     SymbolingsLogger that all commits are done."""
@@ -149,16 +142,13 @@ class CVSRevisionAggregator:
 
   def _attempt_to_commit_symbols(self):
     """Generate one SVNCommit for each symbol in self._pending_symbols
-    that doesn't have an opening CVSRevision in either
-    self.cvs_commit or self.ready_queue."""
+    that doesn't have an opening CVSRevision in self.ready_queue."""
 
     # Make a list of tuples (symbol_name, symbol) for all symbols from
     # self._pending_symbols that do not have *source* CVSRevisions in
     # the pending commit queue (self.ready_queue):
     closeable_symbols = []
     pending_commits = self.ready_queue[:]
-    if self.cvs_commit is not None:
-      pending_commits.append(self.cvs_commit)
     for symbol_id in self._pending_symbols:
       for cvs_commit in pending_commits:
         if cvs_commit.opens_symbol(symbol_id):
