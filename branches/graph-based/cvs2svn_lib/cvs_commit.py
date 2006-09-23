@@ -26,6 +26,7 @@ from cvs2svn_lib.common import OP_ADD
 from cvs2svn_lib.common import OP_CHANGE
 from cvs2svn_lib.common import OP_DELETE
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib.time_range import TimeRange
 from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
 from cvs2svn_lib.svn_commit import SVNPreCommit
@@ -58,13 +59,7 @@ class CVSCommit:
     self.changes = [ ]
     self.deletes = [ ]
 
-    # Start out with a t_min higher than any incoming time T, and a
-    # t_max lower than any incoming T.  This way the first T will
-    # push t_min down to T, and t_max up to T, naturally (without any
-    # special-casing), and successive times will then ratchet them
-    # outward as appropriate.
-    self.t_min = 1L<<32
-    self.t_max = 0
+    self.time_range = TimeRange()
 
     # This will be set to the SVNCommit that occurs in self._commit.
     self.motivating_commit = None
@@ -120,8 +115,7 @@ class CVSCommit:
     # the same t_max, break the tie using t_min, and lastly,
     # metadata_id.  If all those are equal, then compare based on ids,
     # to ensure that no two instances compare equal.
-    return (cmp(self.t_max, other.t_max)
-            or cmp(self.t_min, other.t_min)
+    return (cmp(self.time_range, other.time_range)
             or cmp(self.metadata_id, other.metadata_id)
             or cmp(id(self), id(other)))
 
@@ -149,10 +143,7 @@ class CVSCommit:
     # problem, and anyway deciding where to break it up would be a
     # judgement call.  For now, we just print a warning in commit() if
     # this happens.
-    if cvs_rev.timestamp < self.t_min:
-      self.t_min = cvs_rev.timestamp
-    if cvs_rev.timestamp > self.t_max:
-      self.t_max = cvs_rev.timestamp
+    self.time_range.add(cvs_rev.timestamp)
 
     if cvs_rev.op == OP_DELETE:
       self.deletes.append(cvs_rev)
@@ -170,7 +161,8 @@ class CVSCommit:
     for dep in list(self._deps):
       if dep.pending:
         return False
-      self.t_max = max(self.t_max, dep.t_max + 1)
+      self.time_range.t_max = max(self.time_range.t_max,
+                                  dep.time_range.t_max + 1)
       self._deps.remove(dep)
 
     return True
@@ -307,7 +299,7 @@ class CVSCommit:
     # above), so if we have no CVSRevisions, we don't flush the
     # svn_commit to disk and roll back our revnum.
     if svn_commit.cvs_revs:
-      svn_commit.date = self.t_max
+      svn_commit.date = self.time_range.t_max
       Ctx()._persistence_manager.put_svn_commit(svn_commit)
     else:
       # We will not be flushing this SVNCommit, so rollback the
@@ -348,17 +340,17 @@ class CVSCommit:
     The returned SVNCommit is the commit that motivated any other
     SVNCommits generated in this CVSCommit."""
 
-    seconds = self.t_max - self.t_min + 1
+    seconds = self.time_range.t_max - self.time_range.t_min + 1
 
     Log().verbose('-' * 60)
     Log().verbose('CVS Revision grouping:')
     if seconds == 1:
       Log().verbose('  Start time: %s (duration: 1 second)'
-                    % time.ctime(self.t_max))
+                    % time.ctime(self.time_range.t_max))
     else:
-      Log().verbose('  Start time: %s' % time.ctime(self.t_min))
+      Log().verbose('  Start time: %s' % time.ctime(self.time_range.t_min))
       Log().verbose('  End time:   %s (duration: %d seconds)'
-                    % (time.ctime(self.t_max), seconds))
+                    % (time.ctime(self.time_range.t_max), seconds))
 
     if seconds > config.COMMIT_THRESHOLD + 1:
       Log().warn('%s: grouping spans more than %d seconds'

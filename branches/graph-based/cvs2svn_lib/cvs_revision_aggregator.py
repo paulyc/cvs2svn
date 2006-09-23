@@ -134,7 +134,8 @@ class CVSRevisionAggregator:
     for metadata_id, cvs_commits in self.cvs_commits.items():
       for cvs_commit in cvs_commits[:]:
         if timestamp is None \
-               or cvs_commit.t_max + config.COMMIT_THRESHOLD < timestamp:
+               or cvs_commit.time_range.t_max + config.COMMIT_THRESHOLD \
+                  < timestamp:
           self.expired_queue.append(cvs_commit)
           cvs_commits.remove(cvs_commit)
       if not cvs_commits:
@@ -164,7 +165,8 @@ class CVSRevisionAggregator:
 
     self.ready_queue.sort()
     while self.ready_queue and \
-              (timestamp is None or self.ready_queue[0].t_max < timestamp):
+              (timestamp is None
+               or self.ready_queue[0].time_range.t_max < timestamp):
       cvs_commit = self.ready_queue.pop(0)
       self.latest_primary_svn_commit = \
           cvs_commit.process_revisions(self._done_symbols)
