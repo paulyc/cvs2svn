@@ -58,6 +58,7 @@ pass_manager = PassManager([
   passes.ResyncRevsPass(),
   passes.InitializeChangesetsPass(),
   passes.BreakCVSRevisionChangesetLoopsPass(),
+  passes.TopologicalSortPass(),
   passes.SortRevsPass(),
   passes.CreateDatabasesPass(),
   passes.AggregateRevsPass(),

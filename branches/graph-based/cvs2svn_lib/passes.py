@@ -800,6 +800,71 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     Log().quiet("Done")
 
 
+class TopologicalSortPass(Pass):
+  """Sort changesets into commit order."""
+
+  def register_artifacts(self):
+    #self._register_temp_file(config.CVS_REVS_SORTED_DATAFILE)
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
+
+  def run(self, stats_keeper):
+    Log().quiet("Generating CVSRevisions in commit order...")
+
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    Ctx()._symbol_db = SymbolDatabase()
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
+
+    changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(
+            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_READ)
+    Ctx()._changesets_db = changesets_db
+
+    Ctx()._cvs_item_to_changeset_id = CVSItemToChangesetTable(
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
+        DB_OPEN_READ)
+
+    changeset_ids = changesets_db.keys()
+
+    changeset_graph = ChangesetGraph()
+
+    for changeset_id in changeset_ids:
+      changeset = changesets_db[changeset_id]
+      if isinstance(changeset, RevisionChangeset):
+        changeset_graph.add_changeset(changeset)
+
+    del changeset_ids
+
+    #sorted_revs = open(
+    #    artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE), 'w')
+
+    # Ensure a monotonically-increasing timestamp series by keeping
+    # track of the previous timestampe and ensuring that the following
+    # one is larger.
+    timestamp = 0
+
+    for (changeset_id, time_range) in changeset_graph.remove_nopred_nodes():
+      changeset = changesets_db[changeset_id]
+      print repr(changeset) # @@@
+      timestamp = max(time_range.t_max, timestamp + 1)
+      for cvs_item_id in changeset.cvs_item_ids:
+        print '  %s' % Ctx()._cvs_items_db[cvs_item_id] # @@@
+        #sorted_revs.write(
+        #    '%08x %x %x\n' % (timestamp, changeset_id, cvs_item_id))
+
+    #sorted_revs.close()
+
+    Log().quiet("Done")
+
+
 class SortRevsPass(Pass):
   """This pass was formerly known as pass3."""
 
