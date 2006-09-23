@@ -98,33 +98,6 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _extract_ready_commits(self):
-    """Extract any active commits that expire by TIMESTAMP from
-    self.cvs_commits and append them to self.ready_queue.  If
-    TIMESTAMP is not specified, then extract all commits."""
-
-    # First take all expired commits out of the pool of available commits.
-    for metadata_id, cvs_commit in self.cvs_commits.items():
-      self.expired_queue.append(cvs_commit)
-      del self.cvs_commits[metadata_id]
-
-    # Then queue all closed commits with resolved dependencies for
-    # commit.  We do this here instead of in _commit_ready_commits to
-    # avoid building deps on revisions that will be flushed
-    # immediately afterwards.
-    while self.expired_queue:
-      chg = False
-      for cvs_commit in self.expired_queue[:]:
-        if cvs_commit.resolve_dependencies():
-          for r in cvs_commit.revisions():
-            del self.pending_revs[r.id]
-          self.expired_queue.remove(cvs_commit)
-          cvs_commit.pending = False
-          self.ready_queue.append(cvs_commit)
-          chg = True
-      if not chg:
-        break
-
   def _commit_ready_commits(self, timestamp=None):
     """Sort the commits from self.ready_queue by time, then process
     them in order.  If TIMESTAMP is specified, only process commits
@@ -175,7 +148,27 @@ class CVSRevisionAggregator:
 
     # Scan the accumulating commits to see if any are ready for
     # processing:
-    self._extract_ready_commits()
+    # First take all expired commits out of the pool of available commits.
+    for metadata_id, cvs_commit in self.cvs_commits.items():
+      self.expired_queue.append(cvs_commit)
+      del self.cvs_commits[metadata_id]
+
+    # Then queue all closed commits with resolved dependencies for
+    # commit.  We do this here instead of in _commit_ready_commits to
+    # avoid building deps on revisions that will be flushed
+    # immediately afterwards.
+    while self.expired_queue:
+      chg = False
+      for cvs_commit in self.expired_queue[:]:
+        if cvs_commit.resolve_dependencies():
+          for r in cvs_commit.revisions():
+            del self.pending_revs[r.id]
+          self.expired_queue.remove(cvs_commit)
+          cvs_commit.pending = False
+          self.ready_queue.append(cvs_commit)
+          chg = True
+      if not chg:
+        break
 
   def flush(self):
     """Commit anything left in self.cvs_commits.  Then inform the
