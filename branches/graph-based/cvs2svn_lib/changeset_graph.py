@@ -116,6 +116,15 @@ class ChangesetGraph(object):
         seen_nodes.reverse()
         return seen_nodes
 
+  def __repr__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    if self.nodes:
+      return 'ChangesetGraph:\n%s' \
+             % ''.join(['  %r\n' % node for node in self])
+    else:
+      return 'ChangesetGraph:\n  EMPTY\n'
+
 
 class ChangesetGraphNode(object):
   """A node in the changeset dependency graph."""
@@ -126,6 +135,8 @@ class ChangesetGraphNode(object):
     self.succ_ids = set(succ_ids)
 
   def __repr__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
     return '%x; pred=[%s]; succ=[%s]' % (
         self.id,
         ','.join(['%x' % id for id in self.pred_ids]),
