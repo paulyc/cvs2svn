@@ -133,9 +133,7 @@ class CVSRevisionAggregator:
     # First take all expired commits out of the pool of available commits.
     for metadata_id, cvs_commits in self.cvs_commits.items():
       for cvs_commit in cvs_commits[:]:
-        if timestamp is None \
-               or cvs_commit.time_range.t_max + config.COMMIT_THRESHOLD \
-                  < timestamp:
+        if timestamp is None or cvs_commit.time_range.t_max < timestamp:
           self.expired_queue.append(cvs_commit)
           cvs_commits.remove(cvs_commit)
       if not cvs_commits:

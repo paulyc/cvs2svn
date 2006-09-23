@@ -804,7 +804,7 @@ class TopologicalSortPass(Pass):
   """Sort changesets into commit order."""
 
   def register_artifacts(self):
-    #self._register_temp_file(config.CVS_REVS_SORTED_DATAFILE)
+    self._register_temp_file(config.CVS_REVS_SORTED_DATAFILE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
@@ -843,8 +843,8 @@ class TopologicalSortPass(Pass):
 
     del changeset_ids
 
-    #sorted_revs = open(
-    #    artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE), 'w')
+    sorted_revs = open(
+        artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE), 'w')
 
     # Ensure a monotonically-increasing timestamp series by keeping
     # track of the previous timestampe and ensuring that the following
@@ -856,26 +856,13 @@ class TopologicalSortPass(Pass):
       print repr(changeset) # @@@
       timestamp = max(time_range.t_max, timestamp + 1)
       for cvs_item_id in changeset.cvs_item_ids:
-        print '  %s' % Ctx()._cvs_items_db[cvs_item_id] # @@@
-        #sorted_revs.write(
-        #    '%08x %x %x\n' % (timestamp, changeset_id, cvs_item_id))
+        cvs_item = Ctx()._cvs_items_db[cvs_item_id]
+        print '  %s' % cvs_item # @@@
+        sorted_revs.write(
+            '%08x %x %x\n' % (timestamp, cvs_item.metadata_id, cvs_item_id))
 
-    #sorted_revs.close()
+    sorted_revs.close()
 
-    Log().quiet("Done")
-
-
-class SortRevsPass(Pass):
-  """This pass was formerly known as pass3."""
-
-  def register_artifacts(self):
-    self._register_temp_file(config.CVS_REVS_SORTED_DATAFILE)
-    self._register_temp_file_needed(config.CVS_REVS_RESYNC_DATAFILE)
-
-  def run(self, stats_keeper):
-    Log().quiet("Sorting CVS revisions...")
-    sort_file(artifact_manager.get_temp_file(config.CVS_REVS_RESYNC_DATAFILE),
-              artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE))
     Log().quiet("Done")
 
 
@@ -963,9 +950,13 @@ class AggregateRevsPass(Pass):
     aggregator = CVSRevisionAggregator()
     for line in file(
             artifact_manager.get_temp_file(config.CVS_REVS_SORTED_DATAFILE)):
-      cvs_rev_id = int(line.strip().split()[-1], 16)
+      [timestamp, metadata_id, cvs_rev_id] = \
+          [int(s, 16) for s in line.strip().split()]
       cvs_rev = Ctx()._cvs_items_db[cvs_rev_id]
       if not (Ctx().trunk_only and isinstance(cvs_rev.lod, Branch)):
+        # This is a kludge to force aggregator to use the changesets
+        # in the form that we feed it: @@@
+        cvs_rev.timestamp = timestamp
         aggregator.process_revision(cvs_rev)
     aggregator.flush()
     if not Ctx().trunk_only:
