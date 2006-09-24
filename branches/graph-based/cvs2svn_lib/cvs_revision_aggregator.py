@@ -93,15 +93,12 @@ class CVSRevisionAggregator:
       self._done_symbols.add(symbol.id)
       self._pending_symbols.remove(symbol.id)
 
-  def _commit_ready_commits(self, timestamp=None):
+  def _commit_ready_commits(self):
     """Sort the commits from self.ready_queue by time, then process
-    them in order.  If TIMESTAMP is specified, only process commits
-    that have timestamp previous to TIMESTAMP."""
+    them in order."""
 
     self.ready_queue.sort()
-    while self.ready_queue and \
-              (timestamp is None
-               or self.ready_queue[0].timestamp < timestamp):
+    while self.ready_queue:
       cvs_commit = self.ready_queue.pop(0)
       self.latest_primary_svn_commit = \
           cvs_commit.process_revisions(self._done_symbols)
@@ -114,13 +111,6 @@ class CVSRevisionAggregator:
     order."""
 
     cvs_revs = list(changeset.get_cvs_items())
-
-    # If there are any elements in the ready_queue at this point, they
-    # need to be processed, because this latest rev couldn't possibly
-    # be part of any of them.  Limit the timestamp of commits to be
-    # processed, because re-stamping according to a commit's
-    # dependencies can alter the commit's timestamp.
-    self._commit_ready_commits(cvs_revs[0].timestamp)
 
     metadata_id = cvs_revs[0].metadata_id
 
@@ -143,9 +133,6 @@ class CVSRevisionAggregator:
       if not Ctx().trunk_only:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
           self._pending_symbols.add(symbol_id)
-
-  def flush(self):
-    """Commit anything left in self.cvs_commits."""
 
     self._commit_ready_commits()
 

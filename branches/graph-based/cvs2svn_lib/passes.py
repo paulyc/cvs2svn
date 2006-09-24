@@ -978,7 +978,6 @@ class AggregateRevsPass(Pass):
     aggregator = CVSRevisionAggregator()
     for (changeset, timestamp) in self.get_changesets():
       aggregator.process_changeset(changeset, timestamp)
-    aggregator.flush()
 
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
