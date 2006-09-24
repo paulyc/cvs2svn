@@ -300,9 +300,9 @@ class CVSCommit:
     only for symbols not in DONE_SYMBOLS (avoids unnecessary
     fills).
 
-    Return the primary SVNCommit that corresponds to this CVSCommit.
-    The returned SVNCommit is the commit that motivated any other
-    SVNCommits generated in this CVSCommit."""
+    Return the date of the primary SVNCommit that corresponds to this
+    CVSCommit.  The primary SVNCommit is the commit that motivated any
+    other SVNCommits generated in this CVSCommit."""
 
     Log().verbose('-' * 60)
     Log().verbose('CVS Revision grouping:')
@@ -320,6 +320,6 @@ class CVSCommit:
         svn_commit.date = self.motivating_commit.date
         Ctx()._persistence_manager.put_svn_commit(svn_commit)
 
-    return self.motivating_commit
+    return self.motivating_commit.date
 
 

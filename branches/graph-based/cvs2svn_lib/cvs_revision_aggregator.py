@@ -47,15 +47,9 @@ class CVSRevisionAggregator:
     # never need to fill it again.
     self._done_symbols = set()
 
-    # This variable holds the most recently created primary svn_commit
-    # object.  CVSRevisionAggregator maintains this variable merely
-    # for its date, so that it can set dates for the SVNCommits
-    # created in self._attempt_to_commit_symbols().
-    self.latest_primary_svn_commit = None
-
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _attempt_to_commit_symbols(self, symbols):
+  def _attempt_to_commit_symbols(self, symbols, timestamp):
     """Generate one SVNCommit for each symbol in SYMBOLS."""
 
     # Sort the closeable symbols so that we will always process the
@@ -67,7 +61,7 @@ class CVSRevisionAggregator:
 
     for symbol in symbols:
       Ctx()._persistence_manager.put_svn_commit(
-          SVNSymbolCloseCommit(symbol, self.latest_primary_svn_commit.date))
+          SVNSymbolCloseCommit(symbol, timestamp))
       self._done_symbols.add(symbol)
 
   def process_changeset(self, changeset, timestamp):
@@ -103,8 +97,7 @@ class CVSRevisionAggregator:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
           symbols.add(Ctx()._symbol_db.get_symbol(symbol_id))
 
-    self.latest_primary_svn_commit = \
-        cvs_commit.process_revisions(self._done_symbols)
-    self._attempt_to_commit_symbols(symbols)
+    timestamp = cvs_commit.process_revisions(self._done_symbols)
+    self._attempt_to_commit_symbols(symbols, timestamp)
 
 
