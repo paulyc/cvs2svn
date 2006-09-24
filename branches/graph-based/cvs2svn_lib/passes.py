@@ -391,7 +391,6 @@ class ResyncRevsPass(Pass):
   This pass was formerly known as pass2."""
 
   def register_artifacts(self):
-    self._register_temp_file(config.CVS_REVS_RESYNC_DATAFILE)
     self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
     self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)

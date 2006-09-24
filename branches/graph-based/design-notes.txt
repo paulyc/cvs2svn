@@ -173,24 +173,12 @@ tweaks.").  So each metadata_id may need to "fan out" to cover
 multiple commits, but without accidentally unifying those commits.
 
 Now we loop over the CVSRevisions in 'cvs2svn-cvs-items.pck, and for
-each CVSRevision write a line to 'cvs2svn-revs-resync.txt'.  Each line
-of this file looks like this:
-
-   3dc32955 5a 12ab
-
-The fields are:
-
-   1.  a fixed-width timestamp
-   2.  the metadata_id of the metadata (project, log message, author)
-       associated with this CVSRevision, as a hexadecimal string.
-   3.  the integer unique ID for this CVSRevision, as a hexadecimal
-       string.
-
-Any CVSRevision record in 'cvs2svn-cvs-items.pck' whose metadata_id
-matches some resync entry and appears to be part of the same commit as
-one of the sublists in that entry, gets tweaked.  The tweak is to
-adjust the commit time of the line to the new_time, which is taken
-from the resync hash and results from the adjustment described in
+each CVSRevision possibly change its timestamp.  Any CVSRevision
+record in 'cvs2svn-cvs-items.pck' whose metadata_id matches some
+resync entry and appears to be part of the same commit as one of the
+sublists in that entry, gets tweaked.  The tweak is to adjust the
+commit time of the line to the new_time, which is taken from the
+resync hash and results from the adjustment described in
 CollectRevsPass.
 
 The way we figure out whether a given line needs to be tweaked is to
@@ -210,26 +198,6 @@ important -- after all, we're talking about commits that weren't
 important enough to have a distinctive log message anyway, so does it
 really matter if a couple of them accidentally get unified?  Probably
 not.
-
-
-SortRevsPass (formerly called pass3)
-============
-
-This is where we deduce the changesets, that is, the grouping of file
-changes into single commits.
-
-It's very simple -- run 'sort' on 'cvs2svn-revs-resync.txt',
-converting it to 'cvs2svn-revs-resync-s.txt'.  Because of the way the
-data is laid out, this causes commits with the same metadata_id (that
-is, the same author, log message, and optionally the same project) to
-be grouped together.  Poof!  We now have the CVS changes grouped by
-logical commit.
-
-In some cases, the changes in a given commit may be interleaved with
-other commits that went on at the same time, because the sort gives
-precedence to date before metadata_id.  However, CreateDatabasesPass
-detects this by seeing that the metadata_id is different, and
-re-separates the commits.
 
 
 CreateDatabasesPass (formerly called pass4):

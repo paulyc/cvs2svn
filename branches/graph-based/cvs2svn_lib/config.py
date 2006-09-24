@@ -35,7 +35,6 @@ SORT_EXECUTABLE = 'sort'
 
 # These files are related to the cleaning and sorting of CVS revisions,
 # for commit grouping.  See design-notes.txt for details.
-CVS_REVS_RESYNC_DATAFILE = 'cvs2svn-revs-resync.txt'
 RESYNC_DATAFILE = 'cvs2svn-resync.txt'
 
 # The first file contains enough information about each CVSRevision to
