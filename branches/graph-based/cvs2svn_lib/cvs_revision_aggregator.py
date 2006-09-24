@@ -41,10 +41,10 @@ class CVSRevisionAggregator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CVS_REVS_DB),
           DB_OPEN_READ)
 
-    # A set containing the symbol ids of closed symbols.  That is,
-    # we've already encountered the last CVSRevision that is a source
-    # for that symbol, the final fill for this symbol has been done,
-    # and we never need to fill it again.
+    # A set containing the closed symbols.  That is, we've already
+    # encountered the last CVSRevision that is a source for that
+    # symbol, the final fill for this symbol has been done, and we
+    # never need to fill it again.
     self._done_symbols = set()
 
     # This variable holds the most recently created primary svn_commit
@@ -55,25 +55,20 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _attempt_to_commit_symbols(self, symbol_ids):
-    """Generate one SVNCommit for each symbol in SYMBOL_IDS."""
-
-    # Make a list of tuples (symbol_name, symbol) for all symbols from
-    # symbol_ids:
-    closeable_symbols = []
-    for symbol_id in symbol_ids:
-      symbol = Ctx()._symbol_db.get_symbol(symbol_id)
-      closeable_symbols.append( (symbol.name, symbol,) )
+  def _attempt_to_commit_symbols(self, symbols):
+    """Generate one SVNCommit for each symbol in SYMBOLS."""
 
     # Sort the closeable symbols so that we will always process the
     # symbols in the same order, regardless of the order in which the
     # dict hashing algorithm hands them back to us.  We do this so
     # that our tests will get the same results on all platforms.
-    closeable_symbols.sort()
-    for (symbol_name, symbol,) in closeable_symbols:
+    symbols = list(symbols)
+    symbols.sort(lambda a, b: cmp(a.name, b.name))
+
+    for symbol in symbols:
       Ctx()._persistence_manager.put_svn_commit(
           SVNSymbolCloseCommit(symbol, self.latest_primary_svn_commit.date))
-      self._done_symbols.add(symbol.id)
+      self._done_symbols.add(symbol)
 
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
@@ -88,9 +83,9 @@ class CVSRevisionAggregator:
     author, log = Ctx()._metadata_db[metadata_id]
     cvs_commit = CVSCommit(metadata_id, author, log, timestamp)
 
-    # A set of symbol ids for which the last source CVSRevision has
-    # been processed and is therefore ready to be closed.
-    symbol_ids = set()
+    # A set of symbols for which the last source CVSRevision has been
+    # processed and is therefore ready to be closed.
+    symbols = set()
 
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
@@ -102,14 +97,14 @@ class CVSRevisionAggregator:
 
       cvs_commit.add_revision(cvs_rev)
 
-      # Add to symbol_ids any symbols from CVS_REV for which CVS_REV
-      # is the last CVSRevision.
+      # Add to symbols any symbols from CVS_REV for which CVS_REV is
+      # the last CVSRevision.
       if not Ctx().trunk_only:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
-          symbol_ids.add(symbol_id)
+          symbols.add(Ctx()._symbol_db.get_symbol(symbol_id))
 
     self.latest_primary_svn_commit = \
         cvs_commit.process_revisions(self._done_symbols)
-    self._attempt_to_commit_symbols(symbol_ids)
+    self._attempt_to_commit_symbols(symbols)
 
 

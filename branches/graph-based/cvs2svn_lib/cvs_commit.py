@@ -134,7 +134,7 @@ class CVSCommit:
   def _pre_commit(self, done_symbols):
     """Generate any SVNCommits that must exist before the main commit.
 
-    DONE_SYMBOLS is a set of symbol ids for which the last source
+    DONE_SYMBOLS is a set of symbols for which the last source
     revision has already been seen and for which the
     CVSRevisionAggregator has already generated a fill SVNCommit.  See
     self.process_revisions()."""
@@ -144,9 +144,9 @@ class CVSCommit:
     # other hand, there might be multiple branches committed on in
     # this commit.  Whatever the case, we should count exactly one
     # commit per branch, because we only fill a branch once per
-    # CVSCommit.  This list tracks which branch_ids we've already
+    # CVSCommit.  This list tracks which symbols we've already
     # counted.
-    accounted_for_symbol_ids = set()
+    accounted_for_symbols = set()
 
     def fill_needed(cvs_rev):
       """Return True iff this is the first commit on a new branch (for
@@ -189,12 +189,12 @@ class CVSCommit:
       # branch.  After the fill, the path on which we're committing
       # will exist.
       if isinstance(cvs_rev.lod, Branch) \
-          and cvs_rev.lod.symbol.id not in accounted_for_symbol_ids \
-          and cvs_rev.lod.symbol.id not in done_symbols \
+          and cvs_rev.lod.symbol not in accounted_for_symbols \
+          and cvs_rev.lod.symbol not in done_symbols \
           and fill_needed(cvs_rev):
         symbol = cvs_rev.lod.symbol
         self.secondary_commits.append(SVNPreCommit(symbol))
-        accounted_for_symbol_ids.add(symbol.id)
+        accounted_for_symbols.add(symbol)
 
   def _commit(self):
     """Generates the primary SVNCommit that corresponds to this
