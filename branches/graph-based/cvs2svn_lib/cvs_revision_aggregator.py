@@ -101,7 +101,7 @@ class CVSRevisionAggregator:
     self.ready_queue.sort()
     while self.ready_queue and \
               (timestamp is None
-               or self.ready_queue[0].time_range.t_max < timestamp):
+               or self.ready_queue[0].timestamp < timestamp):
       cvs_commit = self.ready_queue.pop(0)
       self.latest_primary_svn_commit = \
           cvs_commit.process_revisions(self._done_symbols)
@@ -125,7 +125,7 @@ class CVSRevisionAggregator:
     metadata_id = cvs_revs[0].metadata_id
 
     author, log = Ctx()._metadata_db[metadata_id]
-    cvs_commit = CVSCommit(metadata_id, author, log)
+    cvs_commit = CVSCommit(metadata_id, author, log, timestamp)
     self.ready_queue.append(cvs_commit)
 
     for cvs_rev in cvs_revs:

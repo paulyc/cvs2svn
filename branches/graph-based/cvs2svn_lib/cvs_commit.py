@@ -26,7 +26,6 @@ from cvs2svn_lib.common import OP_ADD
 from cvs2svn_lib.common import OP_CHANGE
 from cvs2svn_lib.common import OP_DELETE
 from cvs2svn_lib.context import Ctx
-from cvs2svn_lib.time_range import TimeRange
 from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
 from cvs2svn_lib.svn_commit import SVNPreCommit
@@ -42,16 +41,15 @@ class CVSCommit:
   generate a Subversion Commit (or Commits) for the set of CVS
   Revisions in the grouping."""
 
-  def __init__(self, metadata_id, author, log):
+  def __init__(self, metadata_id, author, log, timestamp):
     self.metadata_id = metadata_id
     self.author = author
     self.log = log
+    self.timestamp = timestamp
 
     # Lists of CVSRevisions
     self.changes = [ ]
     self.deletes = [ ]
-
-    self.time_range = TimeRange()
 
     # This will be set to the SVNCommit that occurs in self._commit.
     self.motivating_commit = None
@@ -107,7 +105,7 @@ class CVSCommit:
     # the same t_max, break the tie using t_min, and lastly,
     # metadata_id.  If all those are equal, then compare based on ids,
     # to ensure that no two instances compare equal.
-    return (cmp(self.time_range, other.time_range)
+    return (cmp(self.timestamp, other.timestamp)
             or cmp(self.metadata_id, other.metadata_id)
             or cmp(id(self), id(other)))
 
@@ -127,16 +125,6 @@ class CVSCommit:
     return False
 
   def add_revision(self, cvs_rev):
-    # Record the time range of this commit.
-    #
-    # ### ISSUE: It's possible, though unlikely, that the time range
-    # of a commit could get gradually expanded to be arbitrarily
-    # longer than COMMIT_THRESHOLD.  I'm not sure this is a huge
-    # problem, and anyway deciding where to break it up would be a
-    # judgement call.  For now, we just print a warning in commit() if
-    # this happens.
-    self.time_range.add(cvs_rev.timestamp)
-
     if cvs_rev.op == OP_DELETE:
       self.deletes.append(cvs_rev)
     else:
@@ -275,7 +263,7 @@ class CVSCommit:
     # above), so if we have no CVSRevisions, we don't flush the
     # svn_commit to disk and roll back our revnum.
     if svn_commit.cvs_revs:
-      svn_commit.date = self.time_range.t_max
+      svn_commit.date = self.timestamp
       Ctx()._persistence_manager.put_svn_commit(svn_commit)
     else:
       # We will not be flushing this SVNCommit, so rollback the
@@ -316,21 +304,9 @@ class CVSCommit:
     The returned SVNCommit is the commit that motivated any other
     SVNCommits generated in this CVSCommit."""
 
-    seconds = self.time_range.t_max - self.time_range.t_min + 1
-
     Log().verbose('-' * 60)
     Log().verbose('CVS Revision grouping:')
-    if seconds == 1:
-      Log().verbose('  Start time: %s (duration: 1 second)'
-                    % time.ctime(self.time_range.t_max))
-    else:
-      Log().verbose('  Start time: %s' % time.ctime(self.time_range.t_min))
-      Log().verbose('  End time:   %s (duration: %d seconds)'
-                    % (time.ctime(self.time_range.t_max), seconds))
-
-    if seconds > config.COMMIT_THRESHOLD + 1:
-      Log().warn('%s: grouping spans more than %d seconds'
-                 % (warning_prefix, config.COMMIT_THRESHOLD))
+    Log().verbose('  Time: %s' % time.ctime(self.timestamp))
 
     if Ctx().trunk_only:
       # When trunk-only, only do the primary commit:
