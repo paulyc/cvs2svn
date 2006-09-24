@@ -49,7 +49,7 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _attempt_to_commit_symbols(self, symbols, timestamp):
+  def _commit_symbols(self, symbols, timestamp):
     """Generate one SVNCommit for each symbol in SYMBOLS."""
 
     # Sort the closeable symbols so that we will always process the
@@ -98,6 +98,6 @@ class CVSRevisionAggregator:
           symbols.add(Ctx()._symbol_db.get_symbol(symbol_id))
 
     cvs_commit.process_revisions(self._done_symbols)
-    self._attempt_to_commit_symbols(symbols, timestamp)
+    self._commit_symbols(symbols, timestamp)
 
 
