@@ -41,10 +41,6 @@ class CVSRevisionAggregator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CVS_REVS_DB),
           DB_OPEN_READ)
 
-    # A set of symbol ids for which the last source CVSRevision has
-    # already been processed but which haven't been closed yet.
-    self._pending_symbols = set()
-
     # A set containing the symbol ids of closed symbols.  That is,
     # we've already encountered the last CVSRevision that is a source
     # for that symbol, the final fill for this symbol has been done,
@@ -59,13 +55,13 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
-  def _attempt_to_commit_symbols(self):
-    """Generate one SVNCommit for each symbol in self._pending_symbols."""
+  def _attempt_to_commit_symbols(self, symbol_ids):
+    """Generate one SVNCommit for each symbol in SYMBOL_IDS."""
 
     # Make a list of tuples (symbol_name, symbol) for all symbols from
-    # self._pending_symbols:
+    # symbol_ids:
     closeable_symbols = []
-    for symbol_id in self._pending_symbols:
+    for symbol_id in symbol_ids:
       symbol = Ctx()._symbol_db.get_symbol(symbol_id)
       closeable_symbols.append( (symbol.name, symbol,) )
 
@@ -78,7 +74,6 @@ class CVSRevisionAggregator:
       Ctx()._persistence_manager.put_svn_commit(
           SVNSymbolCloseCommit(symbol, self.latest_primary_svn_commit.date))
       self._done_symbols.add(symbol.id)
-      self._pending_symbols.remove(symbol.id)
 
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
@@ -93,6 +88,10 @@ class CVSRevisionAggregator:
     author, log = Ctx()._metadata_db[metadata_id]
     cvs_commit = CVSCommit(metadata_id, author, log, timestamp)
 
+    # A set of symbol ids for which the last source CVSRevision has
+    # been processed and is therefore ready to be closed.
+    symbol_ids = set()
+
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
         continue
@@ -103,14 +102,14 @@ class CVSRevisionAggregator:
 
       cvs_commit.add_revision(cvs_rev)
 
-      # Add to self._pending_symbols any symbols from CVS_REV for
-      # which CVS_REV is the last CVSRevision.
+      # Add to symbol_ids any symbols from CVS_REV for which CVS_REV
+      # is the last CVSRevision.
       if not Ctx().trunk_only:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
-          self._pending_symbols.add(symbol_id)
+          symbol_ids.add(symbol_id)
 
     self.latest_primary_svn_commit = \
         cvs_commit.process_revisions(self._done_symbols)
-    self._attempt_to_commit_symbols()
+    self._attempt_to_commit_symbols(symbol_ids)
 
 
