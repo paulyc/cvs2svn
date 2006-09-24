@@ -41,12 +41,6 @@ class CVSRevisionAggregator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CVS_REVS_DB),
           DB_OPEN_READ)
 
-    # List of CVSCommits that are ready to be committed, but might
-    # need to be delayed until a CVSRevision with a later timestamp is
-    # read.  (This can happen if the timestamp of the ready CVSCommit
-    # had to be adjusted to make it later than its dependencies.)
-    self.ready_queue = [ ]
-
     # A set of symbol ids for which the last source CVSRevision has
     # already been processed but which haven't been closed yet.
     self._pending_symbols = set()
@@ -66,21 +60,14 @@ class CVSRevisionAggregator:
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
   def _attempt_to_commit_symbols(self):
-    """Generate one SVNCommit for each symbol in self._pending_symbols
-    that doesn't have an opening CVSRevision in self.ready_queue."""
+    """Generate one SVNCommit for each symbol in self._pending_symbols."""
 
     # Make a list of tuples (symbol_name, symbol) for all symbols from
-    # self._pending_symbols that do not have *source* CVSRevisions in
-    # the pending commit queue (self.ready_queue):
+    # self._pending_symbols:
     closeable_symbols = []
-    pending_commits = self.ready_queue[:]
     for symbol_id in self._pending_symbols:
-      for cvs_commit in pending_commits:
-        if cvs_commit.opens_symbol(symbol_id):
-          break
-      else:
-        symbol = Ctx()._symbol_db.get_symbol(symbol_id)
-        closeable_symbols.append( (symbol.name, symbol,) )
+      symbol = Ctx()._symbol_db.get_symbol(symbol_id)
+      closeable_symbols.append( (symbol.name, symbol,) )
 
     # Sort the closeable symbols so that we will always process the
     # symbols in the same order, regardless of the order in which the
@@ -92,17 +79,6 @@ class CVSRevisionAggregator:
           SVNSymbolCloseCommit(symbol, self.latest_primary_svn_commit.date))
       self._done_symbols.add(symbol.id)
       self._pending_symbols.remove(symbol.id)
-
-  def _commit_ready_commits(self):
-    """Sort the commits from self.ready_queue by time, then process
-    them in order."""
-
-    self.ready_queue.sort()
-    while self.ready_queue:
-      cvs_commit = self.ready_queue.pop(0)
-      self.latest_primary_svn_commit = \
-          cvs_commit.process_revisions(self._done_symbols)
-      self._attempt_to_commit_symbols()
 
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
@@ -116,7 +92,6 @@ class CVSRevisionAggregator:
 
     author, log = Ctx()._metadata_db[metadata_id]
     cvs_commit = CVSCommit(metadata_id, author, log, timestamp)
-    self.ready_queue.append(cvs_commit)
 
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
@@ -134,6 +109,8 @@ class CVSRevisionAggregator:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
           self._pending_symbols.add(symbol_id)
 
-    self._commit_ready_commits()
+    self.latest_primary_svn_commit = \
+        cvs_commit.process_revisions(self._done_symbols)
+    self._attempt_to_commit_symbols()
 
 
