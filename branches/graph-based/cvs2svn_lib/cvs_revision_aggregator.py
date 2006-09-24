@@ -86,6 +86,34 @@ class CVSRevisionAggregator:
 
     Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
+  def _attempt_to_commit_symbols(self):
+    """Generate one SVNCommit for each symbol in self._pending_symbols
+    that doesn't have an opening CVSRevision in self.ready_queue."""
+
+    # Make a list of tuples (symbol_name, symbol) for all symbols from
+    # self._pending_symbols that do not have *source* CVSRevisions in
+    # the pending commit queue (self.ready_queue):
+    closeable_symbols = []
+    pending_commits = self.ready_queue[:]
+    for symbol_id in self._pending_symbols:
+      for cvs_commit in pending_commits:
+        if cvs_commit.opens_symbol(symbol_id):
+          break
+      else:
+        symbol = Ctx()._symbol_db.get_symbol(symbol_id)
+        closeable_symbols.append( (symbol.name, symbol,) )
+
+    # Sort the closeable symbols so that we will always process the
+    # symbols in the same order, regardless of the order in which the
+    # dict hashing algorithm hands them back to us.  We do this so
+    # that our tests will get the same results on all platforms.
+    closeable_symbols.sort()
+    for (symbol_name, symbol,) in closeable_symbols:
+      Ctx()._persistence_manager.put_svn_commit(
+          SVNSymbolCloseCommit(symbol, self.latest_primary_svn_commit.date))
+      self._done_symbols.add(symbol.id)
+      self._pending_symbols.remove(symbol.id)
+
   def _commit_ready_commits(self, timestamp=None):
     """Sort the commits from self.ready_queue by time, then process
     them in order.  If TIMESTAMP is specified, only process commits
@@ -139,33 +167,5 @@ class CVSRevisionAggregator:
     SymbolingsLogger that all commits are done."""
 
     self._commit_ready_commits()
-
-  def _attempt_to_commit_symbols(self):
-    """Generate one SVNCommit for each symbol in self._pending_symbols
-    that doesn't have an opening CVSRevision in self.ready_queue."""
-
-    # Make a list of tuples (symbol_name, symbol) for all symbols from
-    # self._pending_symbols that do not have *source* CVSRevisions in
-    # the pending commit queue (self.ready_queue):
-    closeable_symbols = []
-    pending_commits = self.ready_queue[:]
-    for symbol_id in self._pending_symbols:
-      for cvs_commit in pending_commits:
-        if cvs_commit.opens_symbol(symbol_id):
-          break
-      else:
-        symbol = Ctx()._symbol_db.get_symbol(symbol_id)
-        closeable_symbols.append( (symbol.name, symbol,) )
-
-    # Sort the closeable symbols so that we will always process the
-    # symbols in the same order, regardless of the order in which the
-    # dict hashing algorithm hands them back to us.  We do this so
-    # that our tests will get the same results on all platforms.
-    closeable_symbols.sort()
-    for (symbol_name, symbol,) in closeable_symbols:
-      Ctx()._persistence_manager.put_svn_commit(
-          SVNSymbolCloseCommit(symbol, self.latest_primary_svn_commit.date))
-      self._done_symbols.add(symbol.id)
-      self._pending_symbols.remove(symbol.id)
 
 
