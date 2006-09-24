@@ -870,29 +870,48 @@ class CreateDatabasesPass(Pass):
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
+
+  def get_changesets(self):
+    """Generate (changeset,timestamp,) tuples in commit order."""
+
+    changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(
+            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_READ)
+
+    for line in file(
+            artifact_manager.get_temp_file(
+                config.CHANGESETS_SORTED_DATAFILE)):
+      [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
+      yield (changesets_db[changeset_id], timestamp)
+
+  def get_cvs_items(self):
+    """Generate cvs_items in commit order."""
+
+    for (changeset, timestamp,) in self.get_changesets():
+      for cvs_item in changeset.get_cvs_items():
+        # A kludge to keep consistent timestamps: @@@
+        cvs_item.timestamp = timestamp
+        yield cvs_item
 
   def run(self, stats_keeper):
-    """If we're not doing a trunk-only conversion, generate the
-    LastSymbolicNameDatabase, which contains the last CVSRevision that
-    is a source for each tag or branch.  Also record the remaining
-    revisions to the StatsKeeper."""
-
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
-
     Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
         DB_OPEN_READ)
 
     if Ctx().trunk_only:
-      for cvs_item in Ctx()._cvs_items_db:
+      Log().quiet("Recording updated statistics...")
+      for cvs_item in self.get_cvs_items():
         stats_keeper.record_cvs_item(cvs_item)
     else:
       Log().quiet("Finding last CVS revisions for all symbolic names...")
       last_sym_name_db = LastSymbolicNameDatabase()
 
-      for cvs_item in Ctx()._cvs_items_db:
+      for cvs_item in self.get_cvs_items():
         stats_keeper.record_cvs_item(cvs_item)
         if isinstance(cvs_item, CVSRevision):
           last_sym_name_db.log_revision(cvs_item)
