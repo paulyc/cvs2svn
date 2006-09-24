@@ -930,6 +930,19 @@ class AggregateRevsPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
     self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
 
+  def get_changesets(self):
+    """Generate (changeset,timestamp,) tuples in commit order."""
+
+    changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(
+            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_READ)
+
+    for line in file(
+            artifact_manager.get_temp_file(
+                config.CHANGESETS_SORTED_DATAFILE)):
+      [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
+      yield (changesets_db[changeset_id], timestamp)
+
   def run(self, stats_keeper):
     Log().quiet("Mapping CVS revisions to Subversion commits...")
 
@@ -942,16 +955,12 @@ class AggregateRevsPass(Pass):
         DB_OPEN_READ)
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
-    changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(
-            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_READ)
 
     aggregator = CVSRevisionAggregator()
-    for line in file(
-            artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE)):
-      [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
-      aggregator.process_changeset(changesets_db[changeset_id], timestamp)
+    for (changeset, timestamp) in self.get_changesets():
+      aggregator.process_changeset(changeset, timestamp)
     aggregator.flush()
+
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
     Ctx()._cvs_items_db.close()
