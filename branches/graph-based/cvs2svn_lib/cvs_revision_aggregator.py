@@ -97,7 +97,7 @@ class CVSRevisionAggregator:
         for symbol_id in self.last_revs_db.get('%x' % (cvs_rev.id,), []):
           symbols.add(Ctx()._symbol_db.get_symbol(symbol_id))
 
-    timestamp = cvs_commit.process_revisions(self._done_symbols)
+    cvs_commit.process_revisions(self._done_symbols)
     self._attempt_to_commit_symbols(symbols, timestamp)
 
 

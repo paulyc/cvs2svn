@@ -258,12 +258,13 @@ class CVSCommit:
       if cvs_rev.default_branch_revision:
         self.default_branch_cvs_revisions.append(cvs_rev)
 
+    svn_commit.date = self.timestamp
+
     # There is a slight chance that we didn't actually register any
     # CVSRevisions with our SVNCommit (see loop over self.deletes
     # above), so if we have no CVSRevisions, we don't flush the
     # svn_commit to disk and roll back our revnum.
     if svn_commit.cvs_revs:
-      svn_commit.date = self.timestamp
       Ctx()._persistence_manager.put_svn_commit(svn_commit)
     else:
       # We will not be flushing this SVNCommit, so rollback the
@@ -298,11 +299,7 @@ class CVSCommit:
     """Process all the CVSRevisions that this instance has, creating
     one or more SVNCommits in the process.  Generate fill SVNCommits
     only for symbols not in DONE_SYMBOLS (avoids unnecessary
-    fills).
-
-    Return the date of the primary SVNCommit that corresponds to this
-    CVSCommit.  The primary SVNCommit is the commit that motivated any
-    other SVNCommits generated in this CVSCommit."""
+    fills)."""
 
     Log().verbose('-' * 60)
     Log().verbose('CVS Revision grouping:')
@@ -319,7 +316,5 @@ class CVSCommit:
       for svn_commit in self.secondary_commits:
         svn_commit.date = self.motivating_commit.date
         Ctx()._persistence_manager.put_svn_commit(svn_commit)
-
-    return self.motivating_commit.date
 
 
