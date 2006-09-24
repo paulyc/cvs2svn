@@ -33,28 +33,7 @@ from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
 
 class CVSRevisionAggregator:
-  """This class groups CVSRevisions into CVSCommits that represent
-  at least one SVNCommit."""
-
-  # How it works: CVSCommits are accumulated within an interval by
-  # metadata_id (commit log and author).
-  #
-  # In a previous implementation, we would just close a CVSCommit for
-  # further CVSRevisions and open a new CVSCommit if a second
-  # CVSRevision with the same (CVS) path arrived within the
-  # accumulation window.
-  #
-  # In the new code, there can be multiple open CVSCommits touching
-  # the same files within an accumulation window.  A hash of pending
-  # CVSRevisions with associated CVSCommits is maintained.  If a new
-  # CVSRevision is found to have a prev_rev in this hash, the
-  # corresponding CVSCommit is not eligible for accomodating the
-  # revision, but will be added to the dependency list of the commit
-  # the revision finally goes into.  When a CVSCommit moves out of its
-  # accumulation window it is scheduled for flush immediately.
-  # Timestamps are adjusted accordingly - it could happen that a small
-  # CVSCommit is commited while a big commit it depends on is still
-  # underway in other directories.
+  """This class coordinates the committing of changesets and symbols."""
 
   def __init__(self):
     if not Ctx().trunk_only:
@@ -129,9 +108,19 @@ class CVSRevisionAggregator:
       self._attempt_to_commit_symbols()
 
   def process_changeset(self, changeset, timestamp):
-    """Process CHANGESET, using TIMESTAMP for all of its entries."""
+    """Process CHANGESET, using TIMESTAMP for all of its entries.
+
+    The changesets must be fed to this function in proper dependency
+    order."""
 
     cvs_revs = list(changeset.get_cvs_items())
+
+    # If there are any elements in the ready_queue at this point, they
+    # need to be processed, because this latest rev couldn't possibly
+    # be part of any of them.  Limit the timestamp of commits to be
+    # processed, because re-stamping according to a commit's
+    # dependencies can alter the commit's timestamp.
+    self._commit_ready_commits(cvs_revs[0].timestamp)
 
     metadata_id = cvs_revs[0].metadata_id
 
@@ -143,18 +132,11 @@ class CVSRevisionAggregator:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
         continue
 
-      # This is a kludge to force aggregator to use the changesets
-      # in the form that we feed it: @@@
+      # This is a kludge to force the timestamp for all revisions to
+      # be the same:
       cvs_rev.timestamp = timestamp
 
       cvs_commit.add_revision(cvs_rev)
-
-      # If there are any elements in the ready_queue at this point, they
-      # need to be processed, because this latest rev couldn't possibly
-      # be part of any of them.  Limit the timestamp of commits to be
-      # processed, because re-stamping according to a commit's
-      # dependencies can alter the commit's timestamp.
-      self._commit_ready_commits(cvs_rev.timestamp)
 
       # Add to self._pending_symbols any symbols from CVS_REV for
       # which CVS_REV is the last CVSRevision.
@@ -163,8 +145,7 @@ class CVSRevisionAggregator:
           self._pending_symbols.add(symbol_id)
 
   def flush(self):
-    """Commit anything left in self.cvs_commits.  Then inform the
-    SymbolingsLogger that all commits are done."""
+    """Commit anything left in self.cvs_commits."""
 
     self._commit_ready_commits()
 
