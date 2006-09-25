@@ -150,6 +150,12 @@ class _RevisionData:
     # _FileDataCollector._resolve_dependencies().
     self.branches_data = []
 
+    # The revision numbers of the first commits on any branches on
+    # which commits occurred.  This dependency is kept explicitly so
+    # that a revision-only topological sort would miss the dependency
+    # that exists via branches_data.
+    self.branches_revs_data = []
+
     # The _SymbolData instances of symbols that are closed by this
     # revision.
     self.closed_symbols_data = []
@@ -516,14 +522,15 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
 
       # If the branch has a child (i.e., something was committed on
       # the branch), then we store a reference to the branch_data
-      # there, and also define the child's parent to be the branch's
-      # parent:
+      # there, define the child's parent to be the branch's parent,
+      # and list the child in the branch parent's branches_revs_data:
       if branch_data.child is not None:
         child_data = self._rev_data[branch_data.child]
         assert child_data.parent_branch_data is None
         child_data.parent_branch_data = branch_data
         assert child_data.parent is None
         child_data.parent = branch_data.parent
+        parent_data.branches_revs_data.append(branch_data.child)
 
     for tag_data_list in self.sdc.tags_data.values():
       for tag_data in tag_data_list:
@@ -733,6 +740,11 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         for branch_data in rev_data.branches_data
         ]
 
+    branch_commit_ids = [
+        self._get_rev_id(rev)
+        for rev in rev_data.branches_revs_data
+        ]
+
     tag_ids = [
         tag_data.id
         for tag_data in rev_data.tags_data
@@ -754,7 +766,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         lod,
         rev_data.get_first_on_branch_id(),
         self._is_default_branch_revision(rev_data),
-        tag_ids, branch_ids,
+        tag_ids, branch_ids, branch_commit_ids,
         closed_symbol_ids)
     rev_data.cvs_rev = cvs_rev
     self.collect_data.add_cvs_item(cvs_rev)

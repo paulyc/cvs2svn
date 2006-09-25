@@ -2354,9 +2354,9 @@ test_list = [ None,
               heuristic_symbol_default,
               branch_symbol_default,
               tag_symbol_default,                   # 80
-              XFail(issue_99),
+              issue_99,
               issue_100,
-              XFail(issue_106),
+              issue_106,
               options_option,
               ]
 

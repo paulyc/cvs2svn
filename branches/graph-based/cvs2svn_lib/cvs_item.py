@@ -71,7 +71,7 @@ class CVSRevision(CVSItem):
                prev_id, next_id,
                op, rev, deltatext_exists,
                lod, first_on_branch_id, default_branch_revision,
-               tag_ids, branch_ids,
+               tag_ids, branch_ids, branch_commit_ids,
                closed_symbol_ids):
     """Initialize a new CVSRevision object.
 
@@ -94,6 +94,8 @@ class CVSRevision(CVSItem):
                             that should be treated as tags
        BRANCH_IDS      -->  (list of int) ids of all CVSSymbols rooted in this
                             revision that should be treated as branches
+       BRANCH_COMMIT_IDS --> (list of int) ids of commits on branches rooted
+                             in this revision
        CLOSED_SYMBOL_IDS --> (list of int) ids of all symbols closed by
                              this revision
     """
@@ -112,6 +114,7 @@ class CVSRevision(CVSItem):
     self.default_branch_revision = default_branch_revision
     self.tag_ids = tag_ids
     self.branch_ids = branch_ids
+    self.branch_commit_ids = branch_commit_ids
     self.closed_symbol_ids = closed_symbol_ids
 
   def _get_cvs_path(self):
@@ -145,7 +148,7 @@ class CVSRevision(CVSItem):
         lod_id,
         self.first_on_branch_id,
         self.default_branch_revision,
-        self.tag_ids, self.branch_ids,
+        self.tag_ids, self.branch_ids, self.branch_commit_ids,
         self.closed_symbol_ids,
         )
 
@@ -154,7 +157,7 @@ class CVSRevision(CVSItem):
      self.prev_id, self.next_id, self.op, self.rev,
      self.deltatext_exists,
      lod_id, self.first_on_branch_id, self.default_branch_revision,
-     self.tag_ids, self.branch_ids,
+     self.tag_ids, self.branch_ids, self.branch_commit_ids,
      self.closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     if lod_id is None:
@@ -187,7 +190,7 @@ class CVSRevision(CVSItem):
     retval = set()
     if self.first_on_branch_id is not None:
       retval.add(self.first_on_branch_id)
-    elif self.prev_id is not None:
+    if self.prev_id is not None:
       retval.add(self.prev_id)
     return retval
 
@@ -196,6 +199,8 @@ class CVSRevision(CVSItem):
     if self.next_id is not None:
       retval.add(self.next_id)
     for id in self.branch_ids + self.tag_ids:
+      retval.add(id)
+    for id in self.branch_commit_ids:
       retval.add(id)
     return retval
 
