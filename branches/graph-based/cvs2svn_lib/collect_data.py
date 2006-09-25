@@ -118,7 +118,6 @@ class _RevisionData:
     self.timestamp = timestamp
     self.author = author
     self.original_timestamp = timestamp
-    self._adjusted = False
     self.state = state
 
     # If this is the first revision on a branch, then this is the
@@ -170,13 +169,6 @@ class _RevisionData:
     # A boolean value indicating whether deltatext was associated with
     # this revision.
     self.deltatext_exists = None
-
-  def adjust_timestamp(self, timestamp):
-    self._adjusted = True
-    self.timestamp = timestamp
-
-  def timestamp_was_adjusted(self):
-    return self._adjusted
 
   def get_first_on_branch_id(self):
     return self.parent_branch_data and self.parent_branch_data.id
@@ -569,46 +561,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
           # the maximum trunk vendor revision in the permanent record.
           self.cvs_file_default_branch = rev_data.rev
 
-  def _resync_chain(self, rev_data):
-    """If the REV_DATA.parent revision exists and it occurred later
-    than the REV_DATA revision, then shove the previous revision back
-    in time (and any before it that may need to shift).  Return True
-    iff any resyncing was done.
-
-    We sync backwards and not forwards because any given CVS Revision
-    has only one previous revision.  However, a CVS Revision can *be*
-    a previous revision for many other revisions (e.g., a revision
-    that is the source of multiple branches).  This becomes relevant
-    when we do the secondary synchronization in pass 2--we can make
-    certain that we don't resync a revision earlier than its previous
-    revision, but it would be non-trivial to make sure that we don't
-    resync revision R *after* any revisions that have R as a previous
-    revision."""
-
-    resynced = False
-    while rev_data.parent is not None:
-      prev_rev_data = self._rev_data[rev_data.parent]
-
-      if prev_rev_data.timestamp < rev_data.timestamp:
-        # No resyncing needed here.
-        return resynced
-
-      old_timestamp = prev_rev_data.timestamp
-      prev_rev_data.adjust_timestamp(rev_data.timestamp - 1)
-      resynced = True
-      delta = prev_rev_data.timestamp - old_timestamp
-      Log().verbose(
-          "PASS1 RESYNC: '%s' (%s): old time='%s' delta=%ds"
-          % (self.cvs_file.cvs_path, prev_rev_data.rev,
-             time.ctime(old_timestamp), delta))
-      if abs(delta) > config.COMMIT_THRESHOLD:
-        Log().warn(
-            "%s: Significant timestamp change for '%s' (%d seconds)"
-            % (warning_prefix, self.cvs_file.cvs_path, delta))
-      rev_data = prev_rev_data
-
-    return resynced
-
   def tree_completed(self):
     """The revision tree has been parsed.  Analyze it for consistency.
 
@@ -620,27 +572,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
       self._update_default_branch(rev_data)
 
     self._resolve_dependencies()
-
-    # Our algorithm depends upon the timestamps on the revisions occuring
-    # monotonically over time.  That is, we want to see rev 1.34 occur in
-    # time before rev 1.35.  If we inserted 1.35 *first* (due to the time-
-    # sorting), and then tried to insert 1.34, we'd be screwed.
-
-    # To perform the analysis, we'll simply visit all of the 'previous'
-    # links that we have recorded and validate that the timestamp on the
-    # previous revision is before the specified revision.
-
-    # If we have to resync some nodes, then we restart the scan.  Just
-    # keep looping as long as we need to restart.
-    while True:
-      for rev_data in self._rev_data.values():
-        if self._resync_chain(rev_data):
-          # Abort for loop, causing the scan to start again:
-          break
-      else:
-        # Finished the for-loop without having to resync anything.
-        # We're done.
-        return
 
   def _determine_operation(self, rev_data):
     # How to tell if a CVSRevision is an add, a change, or a deletion:
