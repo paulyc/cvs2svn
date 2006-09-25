@@ -722,15 +722,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     return False
 
   def _process_revision_data(self, rev_data):
-    if rev_data.timestamp_was_adjusted():
-      # the timestamp on this revision was changed. log it for later
-      # resynchronization of other files's revisions that occurred
-      # for this time and log message.
-      self.collect_data.resync.write(
-          '%08lx %x %08lx\n'
-          % (rev_data.original_timestamp, rev_data.metadata_id,
-             rev_data.timestamp))
-
     if is_branch_revision(rev_data.rev):
       branch_data = self.sdc.rev_to_branch_data(rev_data.rev)
       lod = Branch(branch_data.symbol)
@@ -908,8 +899,6 @@ class CollectData:
   def __init__(self, stats_keeper):
     self._cvs_item_store = NewCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
-    self.resync = open(
-        artifact_manager.get_temp_file(config.RESYNC_DATAFILE), 'w')
     self.metadata_db = MetadataDatabase(DB_OPEN_NEW)
     self.fatal_errors = []
     self.num_files = 0

@@ -57,7 +57,6 @@ from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.changeset_graph import ChangesetGraph
 from cvs2svn_lib.changeset_database import ChangesetDatabase
 from cvs2svn_lib.changeset_database import CVSItemToChangesetTable
-from cvs2svn_lib.cvs_revision_resynchronizer import CVSRevisionResynchronizer
 from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
 from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.openings_closings import SymbolingsLogger
@@ -127,7 +126,6 @@ class CollectRevsPass(Pass):
 
   def register_artifacts(self):
     self._register_temp_file(config.SYMBOL_STATISTICS_LIST)
-    self._register_temp_file(config.RESYNC_DATAFILE)
     self._register_temp_file(config.METADATA_DB)
     self._register_temp_file(config.CVS_FILES_DB)
     self._register_temp_file(config.CVS_ITEMS_STORE)
@@ -386,7 +384,10 @@ class SortItemSummaryPass(Pass):
 
 
 class ResyncRevsPass(Pass):
-  """Clean up the revision information.
+  """Copy the CVSItems to a new, random-access database.
+
+  This pass used to resynchronize the revision information.  Now it
+  almost does nothing, and will probably soon be removed.
 
   This pass was formerly known as pass2."""
 
@@ -394,7 +395,6 @@ class ResyncRevsPass(Pass):
     self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
     self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.RESYNC_DATAFILE)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
 
@@ -410,17 +410,7 @@ class ResyncRevsPass(Pass):
 
     Log().quiet("Re-synchronizing CVS revision timestamps...")
 
-    resynchronizer = CVSRevisionResynchronizer(self.cvs_item_store)
-
-    # We may have recorded some changes in revisions' timestamp.  We need to
-    # scan for any other files which may have had the same log message and
-    # occurred at "the same time" and change their timestamps, too.
-
-    # Process the revisions file, looking for items to clean up
     for cvs_item in self.cvs_item_store:
-      if isinstance(cvs_item, CVSRevision):
-        resynchronizer.resynchronize(cvs_item)
-
       cvs_items_resync_db.add(cvs_item)
 
     cvs_items_resync_db.close()

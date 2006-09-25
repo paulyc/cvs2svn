@@ -2355,7 +2355,7 @@ test_list = [ None,
               branch_symbol_default,
               tag_symbol_default,                   # 80
               XFail(issue_99),
-              XFail(issue_100),
+              issue_100,
               XFail(issue_106),
               options_option,
               ]
