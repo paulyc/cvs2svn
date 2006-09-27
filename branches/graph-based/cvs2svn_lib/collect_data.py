@@ -371,6 +371,11 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     # line of development.
     self._primary_dependencies = []
 
+    # The revision number of the root revision in the dependency tree.
+    # This is usually '1.1', but could be something else due to
+    # cvsadmin -o
+    self._root_rev = None
+
     # If set, this is an RCS branch number -- rcsparse calls this the
     # "principal branch", but CVS and RCS refer to it as the "default
     # branch", so that's what we call it, even though the rcsparse API
@@ -537,6 +542,14 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         if not Ctx().trunk_only and parent_data.child is not None:
           closing_data = self._rev_data[parent_data.child]
           closing_data.closed_symbols_data.append(tag_data)
+
+    # Determine self.root_rev based on the fact that it is the only
+    # revision without a parent:
+    for rev_data in self._rev_data.values():
+      if rev_data.parent is None:
+        assert self._root_rev is None
+        self._root_rev = rev_data.rev
+    assert self._root_rev is not None
 
   def _update_default_branch(self, rev_data):
     """Ratchet up the highest vendor head revision based on REV_DATA,
