@@ -161,6 +161,16 @@ class _RevisionData:
     # at some point (as best we can determine).
     self.non_trunk_default_branch_revision = False
 
+    # Iff this is the 1.2 revision at which a non-trunk default branch
+    # revision was ended, store the number of the last revision on
+    # the default branch here.
+    self.default_branch_prev = None
+
+    # Iff this is the last revision of a non-trunk default branch, and
+    # the branch is followed by a 1.2 revision, then this holds the
+    # number of the 1.2 revision (namely, '1.2').
+    self.default_branch_next = None
+
     # A boolean value indicating whether deltatext was associated with
     # this revision.
     self.deltatext_exists = None
@@ -660,14 +670,21 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
       else:
         rev_1_2_timestamp = rev_1_2.timestamp
 
+      prev_rev_data = None
       rev = vendor_branch_data.child
       while rev:
         rev_data = self._rev_data[rev]
         if rev_1_2_timestamp is not None \
                and rev_data.timestamp >= rev_1_2_timestamp:
+          # That's the end of the once-default branch.
           break
         rev_data.non_trunk_default_branch_revision = True
+        prev_rev_data = rev_data
         rev = rev_data.child
+
+      if rev_1_2 is not None and prev_rev_data is not None:
+        rev_1_2.default_branch_prev = prev_rev_data.rev
+        prev_rev_data.default_branch_next = rev_1_2.rev
 
   def _process_revision_data(self, rev_data):
     if is_branch_revision(rev_data.rev):
@@ -707,6 +724,8 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         lod,
         rev_data.get_first_on_branch_id(),
         rev_data.non_trunk_default_branch_revision,
+        self._get_rev_id(rev_data.default_branch_prev),
+        self._get_rev_id(rev_data.default_branch_next),
         tag_ids, branch_ids, branch_commit_ids,
         closed_symbol_ids)
     rev_data.cvs_rev = cvs_rev

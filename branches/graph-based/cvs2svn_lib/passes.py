@@ -238,15 +238,25 @@ class FilterSymbolsPass(Pass):
           if isinstance(symbol, ExcludedSymbol):
             # Delete this item.
             del file_item_map[cvs_item.id]
-            # The only other reference to this item from outside of
-            # the to-be-deleted branch is if this is the first commit
-            # on the branch, in which case it is listed in the
-            # branch_commit_ids of the CVSRevision from which the
-            # branch sprouted.
+            # There are only other possible references to this item
+            # from CVSRevisions outside of the to-be-deleted branch:
+
+            # Is if this is the first commit on the branch, it is
+            # listed in the branch_commit_ids of the CVSRevision from
+            # which the branch sprouted.
             if cvs_item.first_on_branch_id is not None:
               prev = file_item_map.get(cvs_item.prev_id)
               if prev is not None:
                 prev.branch_commit_ids.remove(cvs_item.id)
+
+            # If it is the last default revision on a non-trunk
+            # default branch followed by a 1.2 revision, then the 1.2
+            # revision depends on this one.
+            if cvs_item.default_branch_next_id is not None:
+              next = file_item_map.get(cvs_item.default_branch_next_id)
+              if next is not None:
+                assert next.default_branch_prev_id == cvs_item.id
+                next.default_branch_prev_id = None
       elif isinstance(cvs_item, CVSSymbol):
         # Skip this symbol if it is to be excluded
         symbol = cvs_item.symbol

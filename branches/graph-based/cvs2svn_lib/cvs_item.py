@@ -71,6 +71,7 @@ class CVSRevision(CVSItem):
                prev_id, next_id,
                op, rev, deltatext_exists,
                lod, first_on_branch_id, default_branch_revision,
+               default_branch_prev_id, default_branch_next_id,
                tag_ids, branch_ids, branch_commit_ids,
                closed_symbol_ids):
     """Initialize a new CVSRevision object.
@@ -87,9 +88,13 @@ class CVSRevision(CVSItem):
        DELTATEXT_EXISTS-->  (bool) true iff non-empty deltatext
        LOD             -->  (LineOfDevelopment) LOD where this rev occurred
        FIRST_ON_BRANCH_ID -->  (int or None) if the first rev on its branch,
-                               the branch_id of that branch; else, None.
+                               the branch_id of that branch; else, None
        DEFAULT_BRANCH_REVISION --> (bool) true iff this is a default branch
                                    revision
+       DEFAULT_BRANCH_PREV_ID --> (int or None) Iff 1.2 revision after end of
+                            default branch, id of last rev on default branch
+       DEFAULT_BRANCH_NEXT_ID --> (int or None) Iff last rev on default branch
+                                  preceding 1.2 rev, id of 1.2 rev
        TAG_IDS         -->  (list of int) ids of CVSSymbols on this revision
                             that should be treated as tags
        BRANCH_IDS      -->  (list of int) ids of all CVSSymbols rooted in this
@@ -112,6 +117,8 @@ class CVSRevision(CVSItem):
     self.lod = lod
     self.first_on_branch_id = first_on_branch_id
     self.default_branch_revision = default_branch_revision
+    self.default_branch_prev_id = default_branch_prev_id
+    self.default_branch_next_id = default_branch_next_id
     self.tag_ids = tag_ids
     self.branch_ids = branch_ids
     self.branch_commit_ids = branch_commit_ids
@@ -148,15 +155,22 @@ class CVSRevision(CVSItem):
         lod_id,
         self.first_on_branch_id,
         self.default_branch_revision,
+        self.default_branch_prev_id, self.default_branch_next_id,
         self.tag_ids, self.branch_ids, self.branch_commit_ids,
         self.closed_symbol_ids,
         )
 
   def __setstate__(self, data):
-    (self.id, cvs_file_id, self.timestamp, self.metadata_id,
-     self.prev_id, self.next_id, self.op, self.rev,
+    (self.id, cvs_file_id,
+     self.timestamp, self.metadata_id,
+     self.prev_id, self.next_id,
+     self.op,
+     self.rev,
      self.deltatext_exists,
-     lod_id, self.first_on_branch_id, self.default_branch_revision,
+     lod_id,
+     self.first_on_branch_id,
+     self.default_branch_revision,
+     self.default_branch_prev_id, self.default_branch_next_id,
      self.tag_ids, self.branch_ids, self.branch_commit_ids,
      self.closed_symbol_ids) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
@@ -192,12 +206,16 @@ class CVSRevision(CVSItem):
       retval.add(self.first_on_branch_id)
     if self.prev_id is not None:
       retval.add(self.prev_id)
+    if self.default_branch_prev_id is not None:
+      retval.add(self.default_branch_prev_id)
     return retval
 
   def get_succ_ids(self):
     retval = set()
     if self.next_id is not None:
       retval.add(self.next_id)
+    if self.default_branch_next_id is not None:
+      retval.add(self.default_branch_next_id)
     for id in self.branch_ids + self.tag_ids:
       retval.add(id)
     for id in self.branch_commit_ids:
