@@ -63,15 +63,6 @@ branch_tag_re = re.compile(r'''
     $
     ''', re.VERBOSE)
 
-# This really only matches standard '1.1.1.*'-style vendor revisions.
-# One could conceivably have a file whose default branch is 1.1.3 or
-# whatever, or was that at some point in time, with vendor revisions
-# 1.1.3.1, 1.1.3.2, etc.  But with the default branch gone now (which
-# is the only time this regexp gets used), we'd have no basis for
-# assuming that the non-standard vendor branch had ever been the
-# default branch anyway, so we don't want this to match them anyway.
-vendor_revision = re.compile(r'^1\.1\.1\.\d+$')
-
 
 def is_trunk_revision(rev):
   """Return True iff REV is a trunk revision."""
@@ -165,6 +156,10 @@ class _RevisionData:
 
     # The id of the metadata record associated with this revision.
     self.metadata_id = None
+
+    # True iff this revision was the head revision on a default branch
+    # at some point (as best we can determine).
+    self.non_trunk_default_branch_revision = False
 
     # A boolean value indicating whether deltatext was associated with
     # this revision.
@@ -386,30 +381,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     # (as opposed to added normally).
     self._file_imported = False
 
-    # The default RCS branch, if any, for this CVS file.
-    #
-    # The value is None or a vendor branch revision, such as
-    # '1.1.1.1', or '1.1.1.2', or '1.1.1.96'.  The vendor branch
-    # revision represents the highest vendor branch revision thought
-    # to have ever been head of the default branch.
-    #
-    # The reason we record a specific vendor revision, rather than a
-    # default branch number, is that there are two cases to handle:
-    #
-    # One case is simple.  The RCS file lists a default branch
-    # explicitly in its header, such as '1.1.1'.  In this case, we
-    # know that every revision on the vendor branch is to be treated
-    # as head of trunk at that point in time.
-    #
-    # But there's also a degenerate case.  The RCS file does not
-    # currently have a default branch, yet we can deduce that for some
-    # period in the past it probably *did* have one.  For example, the
-    # file has vendor revisions 1.1.1.1 -> 1.1.1.96, all of which are
-    # dated before 1.2, and then it has 1.1.1.97 -> 1.1.1.100 dated
-    # after 1.2.  In this case, we should record 1.1.1.96 as the last
-    # vendor revision to have been the head of the default branch.
-    self.cvs_file_default_branch = None
-
     # If the RCS file doesn't have a default branch anymore, but does
     # have vendor revisions, then we make an educated guess that those
     # revisions *were* the head of the default branch up until the
@@ -551,33 +522,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         self._root_rev = rev_data.rev
     assert self._root_rev is not None
 
-  def _update_default_branch(self, rev_data):
-    """Ratchet up the highest vendor head revision based on REV_DATA,
-    if necessary."""
-
-    if self.default_branch:
-      default_branch_root = self.default_branch + "."
-      if (rev_data.rev.startswith(default_branch_root)
-          and default_branch_root.count('.') == rev_data.rev.count('.')):
-        # This revision is on the default branch, so record that it is
-        # the new highest default branch head revision.
-        self.cvs_file_default_branch = rev_data.rev
-    else:
-      # No default branch, so make an educated guess.
-      if rev_data.rev == '1.2':
-        # This is probably the time when the file stopped having a
-        # default branch, so make a note of it.
-        self.first_non_vendor_revision_date = rev_data.timestamp
-      else:
-        if vendor_revision.match(rev_data.rev) \
-              and (not self.first_non_vendor_revision_date
-                   or rev_data.timestamp
-                       < self.first_non_vendor_revision_date):
-          # We're looking at a vendor revision, and it wasn't
-          # committed after this file lost its default branch, so bump
-          # the maximum trunk vendor revision in the permanent record.
-          self.cvs_file_default_branch = rev_data.rev
-
   def tree_completed(self):
     """The revision tree has been parsed.  Analyze it for consistency.
 
@@ -586,7 +530,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     for rev in self._rev_order:
       rev_data = self._rev_data[rev]
       self.sdc.register_commit(rev_data)
-      self._update_default_branch(rev_data)
 
     self._resolve_dependencies()
 
@@ -646,38 +589,85 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         self.project, rev_data.author, log)
     rev_data.deltatext_exists = bool(text)
 
-    # "...Give back one kadam to honor the Hebrew God whose Ark this is."
-    #       -- Imam to Indy and Sallah, in 'Raiders of the Lost Ark'
-    #
-    # If revision 1.1 appears to have been created via 'cvs add'
-    # instead of 'cvs import', then this file probably never had a
-    # default branch, so retroactively remove its record in the
-    # default branches db.  The test is that the log message CVS uses
-    # for 1.1 in imports is "Initial revision\n" with no period.
+    # If this is revision 1.1, determine whether the file appears to
+    # have been created via 'cvs add' instead of 'cvs import'.  The
+    # test is that the log message CVS uses for 1.1 in imports is
+    # "Initial revision\n" with no period.  (This fact helps determine
+    # whether this file might have had a default branch in the past.)
     if revision == '1.1':
-      if log == 'Initial revision\n':
-        self._file_imported = True
-      else:
-        self.cvs_file_default_branch = None
+      self._file_imported = (log == 'Initial revision\n')
 
     self._revision_data.append(rev_data)
 
-  def _is_default_branch_revision(self, rev_data):
-    """Return True iff REV_DATA.rev is a default branch revision."""
+  def _process_default_branch_revisions(self):
+    """Process any non-trunk default branch revisions.
 
-    val = self.cvs_file_default_branch
-    if val is not None:
-      val_last_dot = val.rindex(".")
-      our_last_dot = rev_data.rev.rindex(".")
-      default_branch = val[:val_last_dot]
-      our_branch = rev_data.rev[:our_last_dot]
-      default_rev_component = int(val[val_last_dot + 1:])
-      our_rev_component = int(rev_data.rev[our_last_dot + 1:])
-      if (default_branch == our_branch
-          and our_rev_component <= default_rev_component):
-        return True
+    If a non-trunk default branch is determined to have existed, set
+    _RevisionData.non_trunk_default_branch_revision for all revisions
+    that were once non-trunk default revisions.
 
-    return False
+    There are two cases to handle:
+
+    One case is simple.  The RCS file lists a default branch
+    explicitly in its header, such as '1.1.1'.  In this case, we know
+    that every revision on the vendor branch is to be treated as head
+    of trunk at that point in time.
+
+    But there's also a degenerate case.  The RCS file does not
+    currently have a default branch, yet we can deduce that for some
+    period in the past it probably *did* have one.  For example, the
+    file has vendor revisions 1.1.1.1 -> 1.1.1.96, all of which are
+    dated before 1.2, and then it has 1.1.1.97 -> 1.1.1.100 dated
+    after 1.2.  In this case, we should record 1.1.1.96 as the last
+    vendor revision to have been the head of the default branch."""
+
+    if self.default_branch:
+      # There is still a default branch; that means that all revisions
+      # on that branch get marked.
+      rev = self.sdc.branches_data[self.default_branch].child
+      while rev:
+        rev_data = self._rev_data[rev]
+        rev_data.non_trunk_default_branch_revision = True
+        rev = rev_data.child
+    elif self._file_imported:
+      # No default branch, but the file appears to have been imported.
+      # So our educated guess is that all revisions on the '1.1.1'
+      # branch with timestamps prior to the timestamp of '1.2' were
+      # non-trunk default branch revisions.
+      #
+      # This really only processes standard '1.1.1.*'-style vendor
+      # revisions.  One could conceivably have a file whose default
+      # branch is 1.1.3 or whatever, or was that at some point in
+      # time, with vendor revisions 1.1.3.1, 1.1.3.2, etc.  But with
+      # the default branch gone now, we'd have no basis for assuming
+      # that the non-standard vendor branch had ever been the default
+      # branch anyway.
+      #
+      # Note that we rely on comparisons between the timestamps of the
+      # revisions on the vendor branch and that of revision 1.2, even
+      # though the timestamps might be incorrect due to clock skew.
+      # We could do a slightly better job if we used the changeset
+      # timestamps, as it is possible that the dependencies that went
+      # into determining those timestamps are more accurate.  But that
+      # would require an extra pass or two.
+      vendor_branch_data = self.sdc.branches_data.get('1.1.1')
+      if vendor_branch_data is None:
+        return
+
+      rev_1_2 = self._rev_data.get('1.2')
+      if rev_1_2 is None:
+        rev_1_2_timestamp = None
+      else:
+        rev_1_2_timestamp = rev_1_2.timestamp
+
+      rev = vendor_branch_data.child
+      while rev:
+        rev_data = self._rev_data[rev]
+        if rev_1_2_timestamp is not None \
+               and rev_data.timestamp >= rev_1_2_timestamp:
+          break
+        rev_data.non_trunk_default_branch_revision = True
+        rev = rev_data.child
 
   def _process_revision_data(self, rev_data):
     if is_branch_revision(rev_data.rev):
@@ -716,7 +706,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
         rev_data.deltatext_exists,
         lod,
         rev_data.get_first_on_branch_id(),
-        self._is_default_branch_revision(rev_data),
+        rev_data.non_trunk_default_branch_revision,
         tag_ids, branch_ids, branch_commit_ids,
         closed_symbol_ids)
     rev_data.cvs_rev = cvs_rev
@@ -751,6 +741,8 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
       parent branch in the symbol database.
 
     This is a callback method declared in Sink."""
+
+    self._process_default_branch_revisions()
 
     for rev_data in self._revision_data:
       self._process_revision_data(rev_data)
