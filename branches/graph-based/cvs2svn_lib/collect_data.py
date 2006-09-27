@@ -377,6 +377,10 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     # setter method is still 'set_principal_branch'.
     self.default_branch = None
 
+    # True iff revision 1.1 of the file appears to have been imported
+    # (as opposed to added normally).
+    self._file_imported = False
+
     # The default RCS branch, if any, for this CVS file.
     #
     # The value is None or a vendor branch revision, such as
@@ -637,8 +641,11 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     # default branch, so retroactively remove its record in the
     # default branches db.  The test is that the log message CVS uses
     # for 1.1 in imports is "Initial revision\n" with no period.
-    if revision == '1.1' and log != 'Initial revision\n':
-      self.cvs_file_default_branch = None
+    if revision == '1.1':
+      if log == 'Initial revision\n':
+        self._file_imported = True
+      else:
+        self.cvs_file_default_branch = None
 
     self._revision_data.append(rev_data)
 
