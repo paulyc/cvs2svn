@@ -55,6 +55,7 @@ from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.changeset_graph import ChangesetGraph
+from cvs2svn_lib.changeset_graph_link import ChangesetGraphLink
 from cvs2svn_lib.changeset_database import ChangesetDatabase
 from cvs2svn_lib.changeset_database import CVSItemToChangesetTable
 from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
@@ -619,18 +620,6 @@ class InitializeChangesetsPass(Pass):
 class BreakCVSRevisionChangesetLoopsPass(Pass):
   """Break up any dependency loops involving only RevisionChangesets."""
 
-  # A cvs_item doesn't depend on any cvs_items in either pred or succ:
-  LINK_NONE = 0
-
-  # A cvs_item depends on one or more cvs_items in pred but none in succ:
-  LINK_PRED = 1
-
-  # A cvs_item depends on one or more cvs_items in succ but none in pred:
-  LINK_SUCC = 2
-
-  # A cvs_item depends on one or more cvs_items in both pred and succ:
-  LINK_PASSTHRU = LINK_PRED | LINK_SUCC
-
   def register_artifacts(self):
     self._register_temp_file(config.CHANGESETS_REVBROKEN_DB)
     self._register_temp_file(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
@@ -640,70 +629,6 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET)
     self._register_temp_file_needed(config.CHANGESETS_DB)
-
-  def get_link_type(self, pred, cvs_item, succ):
-    """Return the type of links from CVS_ITEM to nodes PRED and SUCC.
-
-    The return value is one of LINK_NONE, LINK_PRED, LINK_SUCC, or
-    LINK_PASSTHRU."""
-
-    retval = self.LINK_NONE
-    if cvs_item.get_pred_ids() & pred.cvs_item_ids:
-      retval |= self.LINK_PRED
-    if cvs_item.get_succ_ids() & succ.cvs_item_ids:
-      retval |= self.LINK_SUCC
-    return retval
-
-  def get_link_counts(self, pred, changeset, succ):
-    """Return the count of links from CHANGESET to items in PRED/SUCC.
-
-    The return value is an array of counts indexed by LINK_NONE,
-    LINK_PRED, LINK_SUCC, and LINK_PASSTHRU."""
-
-    # A count of each type of link for cvs_items in changeset
-    # (indexed by LINK_* constants):
-    link_counts = [0] * 4
-
-    for cvs_item in list(changeset.get_cvs_items()):
-      link_counts[self.get_link_type(pred, cvs_item, succ)] += 1
-
-    return link_counts
-
-  def break_changeset(self, pred, changeset, succ):
-    """Break up the changeset referred to by NODE.
-
-    Break it up in such a way that the link pred_node -> node ->
-    succ_node is broken as completely and as efficiently as possible.
-    Update databases and self.changeset_graph accordingly."""
-
-    link_counts = self.get_link_counts(pred, changeset, succ)
-    if link_counts[self.LINK_PRED] < link_counts[self.LINK_SUCC]:
-      item_type_to_move = self.LINK_PRED
-    else:
-      item_type_to_move = self.LINK_SUCC
-    items_to_keep = []
-    items_to_move = []
-    for cvs_item in changeset.get_cvs_items():
-      if self.get_link_type(pred, cvs_item, succ) == item_type_to_move:
-        items_to_move.append(cvs_item.id)
-      else:
-        items_to_keep.append(cvs_item.id)
-    del self.changeset_graph[changeset.id]
-    del self.changesets_db[changeset.id]
-
-    # Create new changesets of the same type as the old one:
-    new_changesets = [
-        changeset.__class__(
-            self.changeset_key_generator.gen_id(), items_to_keep),
-        changeset.__class__(
-            self.changeset_key_generator.gen_id(), items_to_move),
-        ]
-
-    for changeset in new_changesets:
-      self.changeset_graph.add_changeset(changeset)
-      self.changesets_db.store(changeset)
-      for item_id in changeset.cvs_item_ids:
-        self.cvs_item_to_changeset_id[item_id] = changeset.id
 
   def break_cycle(self, cycle):
     """Break up one or more changesets in CYCLE to help break the cycle.
@@ -718,30 +643,31 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
 
-    #print 'Breaking cycle:', ' -> '.join([
-    #    '%x' % node.id for node in (cycle + [cycle[0]])]) # @@@
+    Log().verbose('Breaking cycle: %s' % ' -> '.join([
+        '%x' % node.id for node in (cycle + [cycle[0]])]))
 
     best_i = None
-    best_link_counts = None
-    best_simple_links = None
+    best_link = None
     for i in range(len(cycle)):
       # It's OK if this index wraps to -1:
-      link_counts = self.get_link_counts(
+      link = ChangesetGraphLink(
           cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
 
-      simple_links = min(link_counts[self.LINK_PRED],
-                         link_counts[self.LINK_SUCC])
-      if best_i is None or (
-            cmp(link_counts[self.LINK_PASSTHRU],
-                best_link_counts[self.LINK_PASSTHRU])
-            or cmp(simple_links, best_simple_links)) < 0:
+      if best_i is None or link < best_link:
         best_i = i
-        best_link_counts = link_counts
-        best_simple_links = simple_links
-    print best_i, best_link_counts # @@@
+        best_link = link
+    print best_i, best_link # @@@
 
-    self.break_changeset(
-        cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
+    new_changesets = best_link.break_changeset(self.changeset_key_generator)
+
+    del self.changeset_graph[best_link.changeset.id]
+    del self.changesets_db[best_link.changeset.id]
+
+    for changeset in new_changesets:
+      self.changeset_graph.add_changeset(changeset)
+      self.changesets_db.store(changeset)
+      for item_id in changeset.cvs_item_ids:
+        self.cvs_item_to_changeset_id[item_id] = changeset.id
 
   def run(self, stats_keeper):
     Log().quiet("Breaking CVSRevision dependency loops...")
