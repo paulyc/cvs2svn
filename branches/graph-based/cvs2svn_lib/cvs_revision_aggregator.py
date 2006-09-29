@@ -19,6 +19,7 @@
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
+from cvs2svn_lib.log import Log
 from cvs2svn_lib.common import DB_OPEN_NEW
 from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib import config
@@ -71,6 +72,10 @@ class CVSRevisionAggregator:
     order."""
 
     cvs_revs = list(changeset.get_cvs_items())
+
+    if not cvs_revs:
+      Log().warn('Changeset has no items: %r' % changeset)
+      return
 
     metadata_id = cvs_revs[0].metadata_id
 
