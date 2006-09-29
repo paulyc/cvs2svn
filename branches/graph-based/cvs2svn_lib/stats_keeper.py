@@ -175,7 +175,7 @@ class StatsKeeper:
 
     for pass_num in passes:
       duration = int(self._pass_timings[pass_num])
-      p_str = ('pass %d:%6d %s\n'
+      p_str = ('pass %2d:%6d %s\n'
                % (pass_num, duration, desc(duration)))
       output += p_str
 
