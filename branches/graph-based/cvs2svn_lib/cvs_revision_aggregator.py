@@ -90,10 +90,6 @@ class CVSRevisionAggregator:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
         continue
 
-      # This is a kludge to force the timestamp for all revisions to
-      # be the same:
-      cvs_rev.timestamp = timestamp
-
       cvs_commit.add_revision(cvs_rev)
 
       # Add to symbols any symbols from CVS_REV for which CVS_REV is
