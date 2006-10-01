@@ -225,6 +225,8 @@ class FilterSymbolsPass(Pass):
   def register_artifacts(self):
     self._register_temp_file(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
+    self._register_temp_file(config.CVS_REVS_SUMMARY_DATAFILE)
+    self._register_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_STORE)
@@ -325,8 +327,14 @@ class FilterSymbolsPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_NEW)
+    revs_summary_file = open(
+        artifact_manager.get_temp_file(config.CVS_REVS_SUMMARY_DATAFILE),
+        'w')
+    symbols_summary_file = open(
+        artifact_manager.get_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE),
+        'w')
 
-    Log().quiet("Filtering out excluded branches and tags...")
+    Log().quiet("Filtering out excluded symbols and summarizing items...")
 
     # Process the cvs items store one file at a time:
     for file_item_map in self.cvs_item_store.iter_file_item_maps():
@@ -337,47 +345,15 @@ class FilterSymbolsPass(Pass):
       for cvs_item in file_item_map.values():
         cvs_items_db.add(cvs_item)
 
+        if isinstance(cvs_item, CVSRevision):
+          revs_summary_file.write(
+              '%x %08x %x\n'
+              % (cvs_item.metadata_id, cvs_item.timestamp, cvs_item.id,))
+        elif isinstance(cvs_item, CVSSymbol):
+          symbols_summary_file.write(
+              '%x %x\n' % (cvs_item.symbol.id, cvs_item.id,))
+
     cvs_items_db.close()
-
-    Log().quiet("Done")
-
-
-class CreateItemSummaryPass(Pass):
-  """Create a file containing the information needed to create changesets."""
-
-  def register_artifacts(self):
-    self._register_temp_file(config.CVS_REVS_SUMMARY_DATAFILE)
-    self._register_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE)
-    self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-
-  def run(self, stats_keeper):
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    Ctx()._symbol_db = SymbolDatabase()
-    cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
-        DB_OPEN_READ)
-    revs_summary_file = open(
-        artifact_manager.get_temp_file(config.CVS_REVS_SUMMARY_DATAFILE),
-        'w')
-    symbols_summary_file = open(
-        artifact_manager.get_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE),
-        'w')
-
-    Log().quiet("Summarizing CVS revisions...")
-
-    for cvs_item in cvs_items_db:
-      if isinstance(cvs_item, CVSRevision):
-        revs_summary_file.write(
-            '%x %08x %x\n'
-            % (cvs_item.metadata_id, cvs_item.timestamp, cvs_item.id,))
-      elif isinstance(cvs_item, CVSSymbol):
-        symbols_summary_file.write(
-            '%x %x\n' % (cvs_item.symbol.id, cvs_item.id,))
-
     revs_summary_file.close()
     symbols_summary_file.close()
 
