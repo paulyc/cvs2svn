@@ -52,8 +52,8 @@ class StatsKeeper:
     self._stats_reflect_exclude = False
     self._repos_files = set()
 
-  def log_duration_for_pass(self, duration, pass_num):
-    self._pass_timings[pass_num] = duration
+  def log_duration_for_pass(self, duration, pass_num, pass_name):
+    self._pass_timings[pass_num] = (pass_name, duration,)
 
   def set_start_time(self, start):
     self._start_time = start
@@ -167,20 +167,17 @@ class StatsKeeper:
   def timings(self):
     passes = self._pass_timings.keys()
     passes.sort()
-    output = 'Timings:\n------------------\n'
-
-    def desc(val):
-      if val == 1: return "second"
-      return "seconds"
+    output = 'Timings (seconds):\n------------------\n'
 
     for pass_num in passes:
-      duration = int(self._pass_timings[pass_num])
-      p_str = ('pass %2d:%6d %s\n'
-               % (pass_num, duration, desc(duration)))
+      (pass_name, duration,) = self._pass_timings[pass_num]
+      duration = int(duration)
+      p_str = ('%6d   pass%-2d (%s)\n'
+               % (duration, pass_num, pass_name,))
       output += p_str
 
     total = int(self._end_time - self._start_time)
-    output += ('total: %6d %s' % (total, desc(total)))
+    output += ('%6d   total' % total)
     return output
 
 
