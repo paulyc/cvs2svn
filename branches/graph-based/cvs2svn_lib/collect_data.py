@@ -391,13 +391,6 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     # (as opposed to added normally).
     self._file_imported = False
 
-    # If the RCS file doesn't have a default branch anymore, but does
-    # have vendor revisions, then we make an educated guess that those
-    # revisions *were* the head of the default branch up until the
-    # commit of 1.2, at which point the file's default branch became
-    # trunk.  This records the date at which 1.2 was committed.
-    self.first_non_vendor_revision_date = None
-
     # A list of rev_data for each revision, in the order that the
     # corresponding set_revision_info() callback was called.  This
     # information is collected while the file is being parsed then
