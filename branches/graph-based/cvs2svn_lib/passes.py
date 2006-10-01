@@ -656,7 +656,7 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
       if best_i is None or link < best_link:
         best_i = i
         best_link = link
-    print best_i, best_link # @@@
+    Log().verbose('Breaking index=%d (%s)' % (best_i, best_link,)) # @@@
 
     new_changesets = best_link.break_changeset(self.changeset_key_generator)
 
