@@ -28,7 +28,6 @@ from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.database import Database
 from cvs2svn_lib.database import SDatabase
-from cvs2svn_lib.persistence_manager import PersistenceManager
 from cvs2svn_lib.cvs_commit import CVSCommit
 from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
@@ -47,8 +46,6 @@ class CVSRevisionCreator:
     # symbol, the final fill for this symbol has been done, and we
     # never need to fill it again.
     self._done_symbols = set()
-
-    Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
 
   def _commit_symbols(self, symbols, timestamp):
     """Generate one SVNCommit for each symbol in SYMBOLS."""

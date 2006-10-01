@@ -875,6 +875,8 @@ class CreateRevsPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
+    Ctx()._persistence_manager = PersistenceManager(DB_OPEN_NEW)
+
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
 
