@@ -223,8 +223,8 @@ class FilterSymbolsPass(Pass):
   references to the excluded symbols."""
 
   def register_artifacts(self):
-    self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_STORE)
@@ -322,9 +322,9 @@ class FilterSymbolsPass(Pass):
     Ctx()._symbol_db = SymbolDatabase()
     self.cvs_item_store = OldCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
-    cvs_items_resync_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+    cvs_items_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_NEW)
 
     Log().quiet("Filtering out excluded branches and tags...")
@@ -336,9 +336,9 @@ class FilterSymbolsPass(Pass):
 
       # Store whatever is left to the new file:
       for cvs_item in file_item_map.values():
-        cvs_items_resync_db.add(cvs_item)
+        cvs_items_db.add(cvs_item)
 
-    cvs_items_resync_db.close()
+    cvs_items_db.close()
 
     Log().quiet("Done")
 
@@ -351,15 +351,15 @@ class CreateItemSummaryPass(Pass):
     self._register_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
-    cvs_items_resync_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+    cvs_items_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
     revs_summary_file = open(
         artifact_manager.get_temp_file(config.CVS_REVS_SUMMARY_DATAFILE),
@@ -370,7 +370,7 @@ class CreateItemSummaryPass(Pass):
 
     Log().quiet("Summarizing CVS revisions...")
 
-    for cvs_item in cvs_items_resync_db:
+    for cvs_item in cvs_items_db:
       if isinstance(cvs_item, CVSRevision):
         revs_summary_file.write(
             '%x %08x %x\n'
@@ -415,8 +415,8 @@ class InitializeChangesetsPass(Pass):
     self._register_temp_file(config.CHANGESETS_DB)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.CVS_REVS_SUMMARY_SORTED_DATAFILE)
     self._register_temp_file_needed(
         config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE)
@@ -562,8 +562,8 @@ class InitializeChangesetsPass(Pass):
     self.symbol_db = SymbolDatabase()
     Ctx()._symbol_db = self.symbol_db
     Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
 
     self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
@@ -596,8 +596,8 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     self._register_temp_file(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET)
     self._register_temp_file_needed(config.CHANGESETS_DB)
 
@@ -646,8 +646,8 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
     Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
 
     shutil.copyfile(
@@ -710,8 +710,8 @@ class TopologicalSortPass(Pass):
     self._register_temp_file(config.CHANGESETS_SORTED_DATAFILE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
@@ -721,8 +721,8 @@ class TopologicalSortPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
     Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
 
     changesets_db = ChangesetDatabase(
@@ -771,8 +771,8 @@ class CreateDatabasesPass(Pass):
       self._register_temp_file(config.SYMBOL_LAST_CVS_REVS_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
     self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
 
@@ -802,8 +802,8 @@ class CreateDatabasesPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
     Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
 
     if Ctx().trunk_only:
@@ -845,8 +845,8 @@ class AggregateRevsPass(Pass):
       self._register_temp_file(config.SYMBOL_OPENINGS_CLOSINGS)
       self._register_temp_file_needed(config.SYMBOL_LAST_CVS_REVS_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.METADATA_DB)
     self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
@@ -872,8 +872,8 @@ class AggregateRevsPass(Pass):
     Ctx()._symbol_db = SymbolDatabase()
     Ctx()._metadata_db = MetadataDatabase(DB_OPEN_READ)
     Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
@@ -967,8 +967,8 @@ class OutputPass(Pass):
     self._register_temp_file(config.SVN_MIRROR_REVISIONS_DB)
     self._register_temp_file(config.SVN_MIRROR_NODES_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.METADATA_DB)
     self._register_temp_file_needed(config.SVN_COMMITS_DB)
@@ -981,8 +981,8 @@ class OutputPass(Pass):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._metadata_db = MetadataDatabase(DB_OPEN_READ)
     Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
     if not Ctx().trunk_only:
       Ctx()._symbol_db = SymbolDatabase()
