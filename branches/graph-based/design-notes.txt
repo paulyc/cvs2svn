@@ -153,8 +153,8 @@ The format for this file is:
          f                       --> [18, 12]
 
 
-AggregateRevsPass (formerly called pass5)
-=================
+CreateRevsPass (formerly called pass5)
+==============
 
 Primarily, this pass gathers CVS revisions into Subversion revisions
 (a Subversion revision is comprised of one or more CVS revisions)

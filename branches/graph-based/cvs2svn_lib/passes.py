@@ -61,7 +61,7 @@ from cvs2svn_lib.changeset_database import CVSItemToChangesetTable
 from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
 from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.openings_closings import SymbolingsLogger
-from cvs2svn_lib.cvs_revision_aggregator import CVSRevisionAggregator
+from cvs2svn_lib.cvs_revision_creator import CVSRevisionCreator
 from cvs2svn_lib.svn_repository_mirror import SVNRepositoryMirror
 from cvs2svn_lib.svn_commit import SVNInitialProjectCommit
 from cvs2svn_lib.persistence_manager import PersistenceManager
@@ -830,7 +830,7 @@ class CreateDatabasesPass(Pass):
     Log().quiet("Done")
 
 
-class AggregateRevsPass(Pass):
+class CreateRevsPass(Pass):
   """Generate the SVNCommit <-> CVSRevision mapping databases.
   CVSCommit._commit also calls SymbolingsLogger to register
   CVSRevisions that represent an opening or closing for a path on a
@@ -878,9 +878,9 @@ class AggregateRevsPass(Pass):
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
 
-    aggregator = CVSRevisionAggregator()
+    creator = CVSRevisionCreator()
     for (changeset, timestamp) in self.get_changesets():
-      aggregator.process_changeset(changeset, timestamp)
+      creator.process_changeset(changeset, timestamp)
 
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()

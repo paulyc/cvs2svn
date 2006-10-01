@@ -1614,9 +1614,9 @@ def no_spurious_svn_commits():
             + 'branch xiphophorus,\nand this log message was tweaked', ())
 
   # Check spurious commit that could be created in
-  # CVSRevisionAggregator.attempt_to_commit_symbols
-  #   (We shouldn't consider a CVSRevision whose op is OP_DEAD as a
-  #   candidate for the LastSymbolicNameDatabase.
+  # CVSRevisionCreator._commit_symbols().  (We shouldn't consider a
+  # CVSRevision whose op is OP_DEAD as a candidate for the
+  # LastSymbolicNameDatabase.)
   conv.logs[20].check('This file was also added on branch xiphophorus,', (
     ('/%(branches)s/xiphophorus/added-on-branch2.txt', 'A'),
     ))

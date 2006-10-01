@@ -136,7 +136,7 @@ class CVSCommit:
 
     DONE_SYMBOLS is a set of symbols for which the last source
     revision has already been seen and for which the
-    CVSRevisionAggregator has already generated a fill SVNCommit.  See
+    CVSRevisionCreator has already generated a fill SVNCommit.  See
     self.process_revisions()."""
 
     # There may be multiple cvs_revs in this commit that would cause

@@ -14,7 +14,7 @@
 # history and logs, available at http://cvs2svn.tigris.org/.
 # ====================================================================
 
-"""This module contains the CVSRevisionAggregator class."""
+"""This module contains the CVSRevisionCreator class."""
 
 
 from cvs2svn_lib.boolean import *
@@ -33,7 +33,7 @@ from cvs2svn_lib.cvs_commit import CVSCommit
 from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
 
-class CVSRevisionAggregator:
+class CVSRevisionCreator:
   """This class coordinates the committing of changesets and symbols."""
 
   def __init__(self):
