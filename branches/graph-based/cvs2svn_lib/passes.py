@@ -360,21 +360,31 @@ class FilterSymbolsPass(Pass):
     Log().quiet("Done")
 
 
-class SortItemSummaryPass(Pass):
+class SortRevisionSummaryPass(Pass):
   """Sort the revision summary file."""
 
   def register_artifacts(self):
     self._register_temp_file(config.CVS_REVS_SUMMARY_SORTED_DATAFILE)
-    self._register_temp_file(config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE)
     self._register_temp_file_needed(config.CVS_REVS_SUMMARY_DATAFILE)
-    self._register_temp_file_needed(config.CVS_SYMBOLS_SUMMARY_DATAFILE)
 
   def run(self, stats_keeper):
-    Log().quiet("Sorting CVS summaries...")
+    Log().quiet("Sorting CVS revision summaries...")
     sort_file(
         artifact_manager.get_temp_file(config.CVS_REVS_SUMMARY_DATAFILE),
         artifact_manager.get_temp_file(
             config.CVS_REVS_SUMMARY_SORTED_DATAFILE))
+    Log().quiet("Done")
+
+
+class SortSymbolSummaryPass(Pass):
+  """Sort the symbol summary file."""
+
+  def register_artifacts(self):
+    self._register_temp_file(config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE)
+    self._register_temp_file_needed(config.CVS_SYMBOLS_SUMMARY_DATAFILE)
+
+  def run(self, stats_keeper):
+    Log().quiet("Sorting CVS symbol summaries...")
     sort_file(
         artifact_manager.get_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE),
         artifact_manager.get_temp_file(
