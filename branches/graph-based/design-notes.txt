@@ -121,10 +121,17 @@ When every CVS file is done, CollectRevsPass is complete, and:
 
      CVSRevisions that were part of a single CVS commit always have a
      common author and log message, therefore these fields are always
-     included in the digest.  Moreover, if ctx.cross_project_commits
-     is False, we avoid combining CVS revisions from separate projects
-     by including the project.id in the digest.  This database
-     contains two mappings for each digest:
+     included in the digest.  Moreover:
+
+     - if ctx.cross_project_commits is False, we avoid combining CVS
+       revisions from separate projects by including the project.id in
+       the digest.
+
+     - if ctx.cross_branch_commits is False, we avoid combining CVS
+       revisions from different branches by including the branch name
+       in the digest.
+
+     This database contains two mappings for each digest:
 
      digest (40-byte string) -> metadata_id (int)
 

@@ -92,6 +92,7 @@ USAGE: %(progname)s [-v] [-s svn-repos-path] [-p pass] cvs-repos-path
   --exclude=REGEXP     exclude branches and tags matching REGEXP
   --symbol-default=OPT choose how ambiguous symbols are converted.  OPT is
                        "branch", "tag", or "heuristic", or "strict" (default)
+  --no-cross-branch-commits Prevent the creation of cross-branch commits
   --symbol-transform=P:S transform symbol names from P to S where P and S
                        use Python regexp and reference syntax respectively
   --username=NAME      username for cvs2svn-synthesized commits
@@ -150,6 +151,7 @@ class RunOptions:
           "no-prune",
           "encoding=",
           "force-branch=", "force-tag=", "exclude=", "symbol-default=",
+          "no-cross-branch-commits",
           "symbol-transform=",
           "username=",
           "fs-type=", "bdb-txn-nosync",
@@ -298,6 +300,8 @@ class RunOptions:
           raise FatalError(
               '%r is not a valid option for --symbol_default.' % (value,))
         symbol_strategy_default = value
+      elif opt == '--no-cross-branch-commits':
+        ctx.cross_branch_commits = False
       elif opt == '--symbol-transform':
         [pattern, replacement] = value.split(":")
         try:

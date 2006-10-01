@@ -595,8 +595,15 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     """This is a callback method declared in Sink."""
 
     rev_data = self._rev_data[revision]
+
+    branch_symbol = self.sdc.rev_to_branch_data(revision)
+    if branch_symbol == None:
+      branch_name = None
+    else:
+      branch_name = branch_symbol.symbol
+
     rev_data.metadata_id = self.collect_data.metadata_db.get_key(
-        self.project, rev_data.author, log)
+        self.project, branch_name, rev_data.author, log)
     rev_data.deltatext_exists = bool(text)
 
     # If this is revision 1.1, determine whether the file appears to
