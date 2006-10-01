@@ -169,15 +169,20 @@ class StatsKeeper:
     passes.sort()
     output = 'Timings (seconds):\n------------------\n'
 
+    total = self._end_time - self._start_time
+
+    # Output times with up to 3 decimal places:
+    decimals = max(0, 4 - len('%d' % int(total)))
+    length = len(('%%.%df' % decimals) % total)
+    format = '%%%d.%df' % (length, decimals,)
+
     for pass_num in passes:
       (pass_name, duration,) = self._pass_timings[pass_num]
-      duration = int(duration)
-      p_str = ('%6d   pass%-2d (%s)\n'
+      p_str = ((format + '   pass%-2d   %s\n')
                % (duration, pass_num, pass_name,))
       output += p_str
 
-    total = int(self._end_time - self._start_time)
-    output += ('%6d   total' % total)
+    output += ((format + '   total') % total)
     return output
 
 
