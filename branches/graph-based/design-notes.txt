@@ -49,33 +49,10 @@ For each revision summary, _FileDataCollector.define_revision() is
 invoked, recording that revision's metadata in various variables of
 the _FileDataCollector class instance.
 
-After finishing the revision summaries, the parser invokes
-_FileDataCollector.tree_completed(), which loops over the revision
-information stored, determining if there are instances where a higher
-revision was committed "before" a lower one (rare, but it can happen
-when there was clock skew on the repository machine).  If there are
-any, it "resyncs" the timestamp of the earlier rev to be just before
-that of the later rev, but saves the original timestamp in
-self._rev_data[blah].original_timestamp, so we can later write out a
-record to the resync file indicating that an adjustment was made (this
-makes it possible to catch the other parts of this commit and resync
-them similarly; more details below).
-
 Next, the parser encounters the *real* revision data, which has the
 log messages and file contents.  For each revision, it invokes
 _FileDataCollector.set_revision_info(), which writes a record to
 'cvs2svn-cvs-items.pck'.
-
-Also, for resync'd revisions, a line like this is written out to
-'cvs2svn-resync.txt':
-
-   3d6c1329 18a 3d6c1328
-
-The fields are:
-
-   NEW_TIMESTAMP   METADATA_ID   OLD_TIMESTAMP
-
-(The resync file will be explained later.)
 
 That's it -- the RCS file is done.
 
@@ -89,9 +66,6 @@ When every CVS file is done, CollectRevsPass is complete, and:
      'cvs2svn-cvs-files.db'.  The revisions are sorted in groups, one
      per CVSFile.  But a multi-file commit will still be scattered all
      over the place.
-
-   - 'cvs2svn-resync.txt' contains a small amount of resync data, in
-     no particular order.
 
    - 'cvs2svn-symbol-stats.pck' contains a pickled list of symbol
      statistics entries (instances of
@@ -154,57 +128,6 @@ conversion altogether.
 Create 'cvs2svn-symbols.pck', which contains a pickle of a list of
 BranchSymbol, TagSymbol, and ExcludedSymbol objects indicating how
 each symbol should be processed in the conversion.
-
-
-ResyncRevsPass (formerly called pass2)
-==============
-
-This is where the resync file is used.  The goal of this pass is to
-output the information from 'cvs2svn-cvs-items.pck to a new file,
-'cvs2svn-cvs-items-resync.pck' (resynched items) with its
-corresponding index file, 'cvs2svn-cvs-items-resync-index.dat'.  It
-has the same content as the original file, except that the timestamps
-of some CVSRevisions have been resynced.
-
-First, read the whole resync file into a hash table that maps each
-metadata_id to a list of lists.  Each sublist represents one of the
-timestamp adjustments from CollectRevsPass, and looks like this:
-
-   [old_time_lower, old_time_upper, new_time]
-
-The reason to map each metadata_id to a list of sublists, instead of
-to one list, is that sometimes you'll get the same metadata for
-unrelated commits (for example, the same author commits many times
-using the empty log message, or a log message that just says "Doc
-tweaks.").  So each metadata_id may need to "fan out" to cover
-multiple commits, but without accidentally unifying those commits.
-
-Now we loop over the CVSRevisions in 'cvs2svn-cvs-items.pck, and for
-each CVSRevision possibly change its timestamp.  Any CVSRevision
-record in 'cvs2svn-cvs-items.pck' whose metadata_id matches some
-resync entry and appears to be part of the same commit as one of the
-sublists in that entry, gets tweaked.  The tweak is to adjust the
-commit time of the line to the new_time, which is taken from the
-resync hash and results from the adjustment described in
-CollectRevsPass.
-
-The way we figure out whether a given line needs to be tweaked is to
-loop over all the sublists, seeing if this commit's original time
-falls within the old<-->new time range for the current sublist.  If it
-does, we tweak the line before writing it out, and then conditionally
-adjust the sublist's range to account for the timestamp we just
-adjusted (since it could be an outlier).  Note that this could, in
-theory, result in separate commits being accidentally unified, since
-we might gradually adjust the two sides of the range such that they are
-eventually more than COMMIT_THRESHOLD seconds apart.  However, this is
-really a case of CVS not recording enough information to disambiguate
-the commits; we'd know we have a time range that exceeds the
-COMMIT_THRESHOLD, but we wouldn't necessarily know where to divide it
-up.  We could try some clever heuristic, but for now it's not
-important -- after all, we're talking about commits that weren't
-important enough to have a distinctive log message anyway, so does it
-really matter if a couple of them accidentally get unified?  Probably
-not.
 
 
 CreateDatabasesPass (formerly called pass4):
