@@ -223,7 +223,8 @@ class FilterSymbolsPass(Pass):
   references to the excluded symbols."""
 
   def register_artifacts(self):
-    self._register_temp_file(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
+    self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_STORE)
@@ -321,8 +322,10 @@ class FilterSymbolsPass(Pass):
     Ctx()._symbol_db = SymbolDatabase()
     self.cvs_item_store = OldCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_STORE))
-    cvs_items_filtered_store = NewCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
+    cvs_items_resync_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_NEW)
 
     Log().quiet("Filtering out excluded branches and tags...")
 
@@ -333,9 +336,9 @@ class FilterSymbolsPass(Pass):
 
       # Store whatever is left to the new file:
       for cvs_item in file_item_map.values():
-        cvs_items_filtered_store.add(cvs_item)
+        cvs_items_resync_db.add(cvs_item)
 
-    cvs_items_filtered_store.close()
+    cvs_items_resync_db.close()
 
     Log().quiet("Done")
 
@@ -348,13 +351,16 @@ class CreateItemSummaryPass(Pass):
     self._register_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
 
   def run(self, stats_keeper):
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
-    self.cvs_item_store = OldCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
+    cvs_items_resync_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
+        DB_OPEN_READ)
     revs_summary_file = open(
         artifact_manager.get_temp_file(config.CVS_REVS_SUMMARY_DATAFILE),
         'w')
@@ -364,7 +370,7 @@ class CreateItemSummaryPass(Pass):
 
     Log().quiet("Summarizing CVS revisions...")
 
-    for cvs_item in self.cvs_item_store:
+    for cvs_item in cvs_items_resync_db:
       if isinstance(cvs_item, CVSRevision):
         revs_summary_file.write(
             '%x %08x %x\n'
@@ -398,41 +404,6 @@ class SortItemSummaryPass(Pass):
         artifact_manager.get_temp_file(config.CVS_SYMBOLS_SUMMARY_DATAFILE),
         artifact_manager.get_temp_file(
             config.CVS_SYMBOLS_SUMMARY_SORTED_DATAFILE))
-    Log().quiet("Done")
-
-
-class ResyncRevsPass(Pass):
-  """Copy the CVSItems to a new, random-access database.
-
-  This pass used to resynchronize the revision information.  Now it
-  almost does nothing, and will probably soon be removed.
-
-  This pass was formerly known as pass2."""
-
-  def register_artifacts(self):
-    self._register_temp_file(config.CVS_ITEMS_RESYNC_STORE)
-    self._register_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE)
-    self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
-
-  def run(self, stats_keeper):
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    Ctx()._symbol_db = SymbolDatabase()
-    self.cvs_item_store = OldCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE))
-    cvs_items_resync_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_RESYNC_INDEX_TABLE),
-        DB_OPEN_NEW)
-
-    Log().quiet("Re-synchronizing CVS revision timestamps...")
-
-    for cvs_item in self.cvs_item_store:
-      cvs_items_resync_db.add(cvs_item)
-
-    cvs_items_resync_db.close()
-
     Log().quiet("Done")
 
 

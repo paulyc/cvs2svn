@@ -55,7 +55,6 @@ pass_manager = PassManager([
   #passes.CheckDependenciesPass(config.CVS_ITEMS_FILTERED_STORE),
   passes.CreateItemSummaryPass(),
   passes.SortItemSummaryPass(),
-  passes.ResyncRevsPass(),
   passes.InitializeChangesetsPass(),
   passes.BreakCVSRevisionChangesetLoopsPass(),
   passes.TopologicalSortPass(),
