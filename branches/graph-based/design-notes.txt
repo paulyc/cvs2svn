@@ -1,6 +1,68 @@
                          How cvs2svn Works
                          =================
 
+                       Theory and requirements
+                       ------ --- ------------
+
+There are two main problem converting a CVS repository to SVN:
+
+- CVS does not record enough information to determine what actually
+  happened to a repository.  For example, CVS does not record:
+
+  - Which file modifications were part of the same commit
+
+  - The timestamp of tag and branch creations
+
+  - Exactly which revision was the base of a branch (there is
+    ambiguity between x.y, x.y.2.0, x.y.4.0, etc.)
+
+  - When the default branch was changed (for example, from a vendor
+    branch back to trunk).
+
+- The timestamps in a CVS archive are not reliable.  It can easily
+  happen that timestamps are not even monotonic, and large errors (for
+  example due to a failing server clock battery) are not unusual.
+
+The absolutely crucial, sine qua non requirement of a conversion is
+that the dependency relationships within a file be honored, mainly:
+
+- A revision depends on its predecessor
+
+- A branch creation depends on the revision from which it branched,
+  and commits on the branch depend on the branch creation
+
+- A tag creation depends on the revision being tagged
+
+These dependencies are reliably defined in the CVS repository, and
+they trump all others, so they are the scaffolding of the conversion.
+
+Moreover, it is highly desirable that the timestamps of the SVN
+commits be monotonically increasing.
+
+Within these constraints we also want the results of the conversion to
+resemble the history of the CVS repository as closely as possible.
+For example, the set of file changes grouped together in an SVN commit
+should be the same as the files changed within the corresponding CVS
+commit, insofar as that can be achieved in a manner that is consistent
+with the dependency requirements.  And the SVN commit timestamps
+should recreate the time of the CVS commit as far as possible without
+violating the monotonicity requirement.
+
+The basic idea of the conversion is this: create the largest
+conceivable changesets, then split up changesets as necessary to break
+any cycles in the graph of changeset dependencies.  When all cycles
+have been removed, then do a topological sort of the changesets (with
+ambiguities resolved using CVS timestamps) to determine a
+self-consistent changeset commit order.
+
+The quality of the conversion (not in terms of correctness, but in
+terms of minimizing the number of svn commits) is mostly determined by
+the cleverness of the heuristics used to split up cycles.
+
+
+                            Implementation
+                            --------------
+
 A cvs2svn run consists of a number of passes.  Each pass saves the
 data it produces to files on disk, so that a) we don't hold huge
 amounts of state in memory, and b) the conversion process is
@@ -30,15 +92,15 @@ Next, the parser hits the revision summary section.  That's the part
 of the RCS file that looks like this:
 
    1.6
-   date	2002.06.12.04.54.12;	author captnmark;	state Exp;
+   date 2002.06.12.04.54.12;    author captnmark;       state Exp;
    branches
-   	1.6.2.1;
-   next	1.5;
+        1.6.2.1;
+   next 1.5;
 
    1.5
-   date	2002.05.28.18.02.11;	author captnmark;	state Exp;
+   date 2002.05.28.18.02.11;    author captnmark;       state Exp;
    branches;
-   next	1.4;
+   next 1.4;
 
    [...]
 
@@ -193,21 +255,116 @@ SortSymbolSummaryPass
 =====================
 
 Sort the symbol summary written by FilterSymbolsPass, creating
-'cvs2svn-symbols-summary-s.txt'.  The sort groups symbol items that
-might be added to the same changeset together.  The output of this
+'cvs2svn-symbols-summary-s.txt'.  The sort groups together symbol
+items that might be added to the same changeset.  The output of this
 pass is not used by the current code.
 
 
 InitializeChangesetsPass
 ========================
 
+This pass creates first-draft changesets, splitting them using
+COMMIT_THRESHOLD and breaking up any revision changesets that have
+internal dependencies.
+
+The raw material for creating revision changesets is
+'cvs2svn-revs-summary-s.txt', which already has CVSRevisions sorted in
+such a way that potential changesets are grouped together and sorted
+by date.  The contents of this file are read line by line, and the
+corresponding CVSRevisions are accumulated into a changeset.  Whenever
+the metadata_id changes, or whenever there is a time gap of more than
+COMMIT_THRESHOLD (currently set to 5 minutes) between CVSRevisions,
+then a new changeset is started.
+
+At this point a revision changeset can have internal dependencies if
+two commits were made to the same file with the same log message
+within COMMIT_THRESHOLD of each other.  The next job of this pass is
+to split up changesets in such a way to break such internal
+dependencies.  This is done by sorting the CVSRevisions within a
+changeset by timestamp, then choosing the split point that breaks the
+most internal dependencies.  This procedure is continued recursively
+until there are no more dependencies internal to a single changeset.
+
+Analogously, the CVSSymbol items from 'cvs2svn-symbols-summary-s.txt'
+are grouped into symbol changesets.  (Symbol changesets cannot have
+internal dependencies, so there is no need to break them up at this
+stage.)
+
+The result of this pass is two files:
+
+   - 'cvs2svn-cvs-item-to-changeset.dat', which maps CVSItem ids to
+     the id of the changeset containing the item, and
+
+   - 'cvs2svn-changesets.db', which contains the changeset objects
+     themselves, indexed by changeset id.
+
 
 BreakCVSRevisionChangesetLoopsPass
 ==================================
 
+There can still be cycles in the graph of changesets caused by:
+
+   - Interleaved commits.  Since CVS commits are not atomic, it can
+     happen that two commits are in progress at the same time and each
+     alters the same two files, but in different orders.  These should
+     be small cycles involving only a few changesets.  To resolve
+     these cycles, one or more of the blobs have to be split up
+     (eventually becoming separate svn commits).
+
+   - Cycles involving a changeset formed by the accidental combination
+     of unrelated items within a short period of time with the same
+     digest.  These should also be be small cycles involving only a
+     few changesets.
+
+   - Split creation of branches.  The same branch tag can be added to
+     different files at completely different times.  It is possible
+     that the revision that is tagged later depends on a changeset
+     that involves a file on the branch that was created earlier.
+     These cycles can be large, but they always involve a symbol
+     changeset.  To resolve these cycles, the symbol changeset should
+     be split up into two blobs.
+
+The job of this pass is to break up cycles of the first two types
+(those involving only CVSRevisions).
+
+This pass works by building up the graph of revision changesets and
+their dependencies in memory, then attempting a topological sort of
+the changesets.  Whenever the sort stalls, that implies the existence
+of a cycle, one of which can easily be determined.  This cycle is broken
+up through the use of heuristics that try to determine an "efficient"
+way of splitting one or more of the changesets that are involved.
+
+The new changesets are written to
+'cvs2svn-cvs-item-to-changeset-revbroken.dat' and
+'cvs2svn-changesets-revbroken.db', which are in the same format as the
+files produced by InitializeChangesetsPass.
+
 
 TopologicalSortPass
 ===================
+
+Given that BreakCVSRevisionChangesetLoopsPass has broken up any
+dependency cycles among the revision changesets, it is by definition
+possible to order the changesets in such a way that all of a
+changeset's dependencies are committed before the changeset itself.
+(This is called a topological sort.)  This pass does so by again
+building up the graph of changesets in memory, then at each step
+picking a changeset that has no remaining dependencies and removing it
+from the graph.  Whenever more than one dependency-free changeset is
+available, the one with the earliest timestamp is chosen.  As
+changesets are processed, the timestamp sequence is ensured to be
+monotonic by the simple expedient of adjusting retrograde timestamps
+to be later than their predecessor.
+
+This pass writes a line to 'cvs2svn-changesets-s.txt' for each
+changeset, in the order that the changesets should be committed.  Each
+lines contains
+
+    CHANGESET_ID TIMESTAMP
+
+where CHANGESET_ID is the id of the changeset and TIMESTAMP is the
+timstamp that should be assigned to it when it is committed.  Both
+values are written in hexadecimal.
 
 
 CreateDatabasesPass (formerly called pass4):
