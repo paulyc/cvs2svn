@@ -593,7 +593,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     if branch_symbol == None:
       branch_name = None
     else:
-      branch_name = branch_symbol.symbol
+      branch_name = branch_symbol.symbol.name
 
     rev_data.metadata_id = self.collect_data.metadata_db.get_key(
         self.project, branch_name, rev_data.author, log)
