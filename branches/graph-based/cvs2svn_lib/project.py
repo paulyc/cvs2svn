@@ -78,7 +78,7 @@ class Project:
 
   def __init__(self, project_cvs_repos_path,
                trunk_path, branches_path, tags_path,
-               symbol_transforms):
+               symbol_transforms=None):
     """Create a new Project record.
 
     PROJECT_CVS_REPOS_PATH is the main CVS directory for this project
@@ -86,11 +86,8 @@ class Project:
     are the full, normalized directory names in svn for the
     corresponding part of the repository.
 
-    SYMBOL_TRANSFORMS is a list of (pattern, replacement) tuples,
-    where each pattern is a regular expression that is matched against
-    symbol names and replacement is replacement text that should be
-    used if the regexp matches.  The replacement can include
-    substitution patterns (e.g., r'\1' or r'\g<name>')."""
+    SYMBOL_TRANSFORMS is a list of SymbolTransform instances which
+    will be used to transform any symbol names within this project."""
 
     # A unique id for this project, also used as its index in
     # Ctx().projects.  This field is filled in by Ctx.add_project().
@@ -121,9 +118,10 @@ class Project:
 
     # A list of transformation rules (regexp, replacement) applied to
     # symbol names in this project.
-    self.symbol_transforms = [
-        (re.compile(pattern), replacement,)
-        for (pattern, replacement,) in symbol_transforms]
+    if symbol_transforms is None:
+      self.symbol_transforms = []
+    else:
+      self.symbol_transforms = symbol_transforms
 
   def __cmp__(self, other):
     return cmp(self.id, other.id)
@@ -238,12 +236,12 @@ class Project:
     return path_join(self.get_branch_path(branch_symbol),
                      self._relative_name(cvs_path))
 
-  def transform_symbol(self, name):
+  def transform_symbol(self, cvs_file, name):
     """Transform the symbol NAME using the renaming rules specified
     with --symbol-transform.  Return the transformed symbol name."""
 
-    for (pattern, replacement) in self.symbol_transforms:
-      newname = pattern.sub(replacement, name)
+    for symbol_transform in self.symbol_transforms:
+      newname = symbol_transform.transform(cvs_file, name)
       if newname != name:
         Log().warn("   symbol '%s' transformed to '%s'" % (name, newname))
         name = newname
