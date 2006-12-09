@@ -39,24 +39,26 @@ class ChangesetGraph(object):
     Determine and record any dependencies to changesets that are
     already in the graph."""
 
-    node = ChangesetGraphNode(changeset.id)
-    for cvs_item in changeset.get_cvs_items():
-      for succ_id in cvs_item.get_succ_ids():
-        changeset_id = Ctx()._cvs_item_to_changeset_id[succ_id]
-        succ_node = self.nodes.get(changeset_id)
-        if succ_node is not None:
-          node.succ_ids.add(succ_node.id)
-          succ_node.pred_ids.add(node.id)
+    node = changeset.create_graph_node()
 
-      for pred_id in cvs_item.get_pred_ids():
-        changeset_id = Ctx()._cvs_item_to_changeset_id[pred_id]
-        pred_node = self.nodes.get(changeset_id)
-        if pred_node is not None:
-          node.pred_ids.add(pred_node.id)
-          pred_node.succ_ids.add(node.id)
+    # Now tie the node into our graph.  If a changeset referenced by
+    # node is already in our graph, then add the backwards connection
+    # from the other node to the new one.  If not, then delete the
+    # changeset from node.
 
-      if isinstance(changeset, RevisionChangeset):
-        node.time_range.add(cvs_item.timestamp)
+    for pred_id in list(node.pred_ids):
+      pred_node = self.nodes.get(pred_id)
+      if pred_node is not None:
+        pred_node.succ_ids.add(node.id)
+      else:
+        node.pred_ids.remove(pred_id)
+
+    for succ_id in list(node.succ_ids):
+      succ_node = self.nodes.get(succ_id)
+      if succ_node is not None:
+        succ_node.pred_ids.add(node.id)
+      else:
+        node.succ_ids.remove(succ_id)
 
     self.nodes[node.id] = node
 

@@ -20,6 +20,8 @@
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib.time_range import TimeRange
+from cvs2svn_lib.changeset_graph_node import ChangesetGraphNode
 
 
 class Changeset(object):
@@ -35,6 +37,25 @@ class Changeset(object):
     return set([
         Ctx()._cvs_items_db[cvs_item_id]
         for cvs_item_id in self.cvs_item_ids])
+
+  def create_graph_node(self):
+    """Return a ChangesetGraphNode for this Changset."""
+
+    time_range = TimeRange()
+    pred_ids = set()
+    succ_ids = set()
+
+    for cvs_item in self.get_cvs_items():
+      if isinstance(self, RevisionChangeset):
+        time_range.add(cvs_item.timestamp)
+
+      for pred_id in cvs_item.get_pred_ids():
+        pred_ids.add(Ctx()._cvs_item_to_changeset_id[pred_id])
+
+      for succ_id in cvs_item.get_succ_ids():
+        succ_ids.add(Ctx()._cvs_item_to_changeset_id[succ_id])
+
+    return ChangesetGraphNode(self.id, time_range, pred_ids, succ_ids)
 
   def __getstate__(self):
     return (self.id, self.cvs_item_ids,)
