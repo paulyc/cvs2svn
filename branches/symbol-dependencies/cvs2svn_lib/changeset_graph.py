@@ -26,6 +26,14 @@ from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset_graph_node import ChangesetGraphNode
 
 
+class CycleInGraphException(Exception):
+  def __init__(self, cycle):
+    Exception.__init__(
+        self,
+        'Cycle found in graph: %s'
+        % ' -> '.join(map(str, cycle + [cycle[0]])))
+
+
 class ChangesetGraph(object):
   """A graph of changesets and their dependencies."""
 
@@ -89,7 +97,7 @@ class ChangesetGraph(object):
   def __iter__(self):
     return self.nodes.itervalues()
 
-  def remove_nopred_nodes(self):
+  def _consume_nopred_nodes(self):
     """Remove and yield changesets in dependency order.
 
     Each iteration, this generator yields a (changeset_id, time_range)
@@ -131,39 +139,47 @@ class ChangesetGraph(object):
         nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
       yield (node.id, node.time_range)
 
-  def find_cycle(self):
-    """Return a cycle in this graph as a lists of Changesets.
+  def consume_graph(self, cycle_breaker=None):
+    """Remove and yield changesets from this graph in dependency order.
 
-    The cycle is left in the graph.
+    Each iteration, this generator yields a (changeset_id, time_range)
+    tuple for the oldest changeset in the graph that doesn't have any
+    predecessor nodes.  If CYCLE_BREAKER is specified, then call
+    CYCLE_BREAKER(cycle) whenever a cycle is encountered, where cycle
+    is the list of changesets that are involved in the cycle (ordered
+    such that cycle[n-1] is a predecessor of cycle[n] and cycle[-1] is
+    a predecessor of cycle[0]).  CYCLE_BREAKER should break the cycle
+    in place then return.
 
-    This method gradually consumes and destroys the graph: it extracts
-    and discards nodes that have no predecessors.
+    If a cycle is found and CYCLE_BREAKER was not specified, raise
+    CycleInGraphException."""
 
-    If there are no cycles left in the graph, return None.  By the
-    time this can happen, all of the nodes in the graph will have been
-    removed."""
-
-    for (changeset_id, time_range) in self.remove_nopred_nodes():
-      pass
-
-    if not self.nodes:
-      return None
-    # Now all nodes in the graph are involved in a cycle.  Pick an
-    # arbitrary node and follow it backwards until a node is seen a
-    # second time, then we have our cycle.
-    node = self.nodes.itervalues().next()
-    seen_nodes = [node]
     while True:
-      node_id = node.pred_ids.__iter__().next()
-      node = self[node_id]
-      try:
-        i = seen_nodes.index(node)
-      except ValueError:
-        seen_nodes.append(node)
-      else:
-        seen_nodes = seen_nodes[i:]
-        seen_nodes.reverse()
-        return [Ctx()._changesets_db[node.id] for node in seen_nodes]
+      for (changeset_id, time_range) in self._consume_nopred_nodes():
+        yield (changeset_id, time_range)
+
+      if not self.nodes:
+        return
+      # Now all nodes in the graph are involved in a cycle.  Pick an
+      # arbitrary node and follow it backwards until a node is seen a
+      # second time, then we have our cycle.
+      node = self.nodes.itervalues().next()
+      seen_nodes = [node]
+      while True:
+        node_id = node.pred_ids.__iter__().next()
+        node = self[node_id]
+        try:
+          i = seen_nodes.index(node)
+        except ValueError:
+          seen_nodes.append(node)
+        else:
+          seen_nodes = seen_nodes[i:]
+          seen_nodes.reverse()
+          cycle = [Ctx()._changesets_db[node.id] for node in seen_nodes]
+          if cycle_breaker is not None:
+            cycle_breaker(cycle)
+          else:
+            raise CycleInGraphException(cycle)
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
