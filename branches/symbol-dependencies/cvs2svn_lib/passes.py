@@ -547,8 +547,8 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET)
     self._register_temp_file_needed(config.CHANGESETS_DB)
+    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET)
 
   def break_cycle(self, cycle):
     """Break up one or more changesets in CYCLE to help break the cycle.
@@ -648,6 +648,119 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     Log().quiet("Done")
 
 
+class BreakCVSSymbolChangesetLoopsPass(Pass):
+  """Break up any dependency loops that are closed by SymbolChangesets."""
+
+  def register_artifacts(self):
+    self._register_temp_file(config.CHANGESETS_SYMBROKEN_DB)
+    self._register_temp_file(config.CVS_ITEM_TO_CHANGESET_SYMBROKEN)
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
+    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
+
+  def break_cycle(self, cycle):
+    """Break up one or more SymbolChangesets in CYCLE to help break the cycle.
+
+    CYCLE is a list of Changesets where
+
+        cycle[i] depends on cycle[i - 1]
+
+    and CYCLE involves at least one SymbolChangeset.  Break up one or
+    more symbol changesets in CYCLE to make progress towards breaking
+    the cycle.  Update self.changeset_graph accordingly.
+
+    It is not guaranteed that the cycle will be broken by one call to
+    this routine, but at least some progress must be made."""
+
+    Log().verbose('Breaking cycle: %s' % ' -> '.join([
+        '%x' % node.id for node in (cycle + [cycle[0]])]))
+
+    best_i = None
+    best_link = None
+    for i in range(len(cycle)):
+      if isinstance(cycle[i], SymbolChangeset):
+        # It's OK if this index wraps to -1:
+        link = ChangesetGraphLink(
+            cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
+
+        if best_i is None or link < best_link:
+          best_i = i
+          best_link = link
+
+    new_changesets = best_link.break_changeset(self.changeset_key_generator)
+
+    del self.changeset_graph[best_link.changeset.id]
+    del self.changesets_db[best_link.changeset.id]
+
+    for changeset in new_changesets:
+      self.changeset_graph.add_changeset(changeset)
+      self.changesets_db.store(changeset)
+      for item_id in changeset.cvs_item_ids:
+        self.cvs_item_to_changeset_id[item_id] = changeset.id
+
+  def run(self, stats_keeper):
+    Log().quiet("Breaking CVSSymbol dependency loops...")
+
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    Ctx()._symbol_db = SymbolDatabase()
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
+        DB_OPEN_READ)
+
+    shutil.copyfile(
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_SYMBROKEN))
+    self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_SYMBROKEN),
+        DB_OPEN_WRITE)
+    Ctx()._cvs_item_to_changeset_id = self.cvs_item_to_changeset_id
+
+    old_changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(config.CHANGESETS_REVBROKEN_DB),
+        DB_OPEN_READ)
+    Ctx()._changesets_db = old_changesets_db
+    self.changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(config.CHANGESETS_SYMBROKEN_DB),
+        DB_OPEN_NEW)
+
+    changeset_ids = old_changesets_db.keys()
+    changeset_ids.sort()
+
+    self.changeset_graph = ChangesetGraph()
+
+    for changeset_id in changeset_ids:
+      changeset = old_changesets_db[changeset_id]
+      self.changesets_db.store(changeset)
+      self.changeset_graph.add_changeset(changeset)
+
+    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
+    del changeset_ids
+
+    old_changesets_db.close()
+    del old_changesets_db
+
+    Ctx()._changesets_db = self.changesets_db
+
+    while True:
+      cycle = self.changeset_graph.find_cycle()
+      if cycle is None:
+        break
+      else:
+        self.break_cycle(cycle)
+
+    self.cvs_item_to_changeset_id.close()
+    self.changesets_db.close()
+
+    Log().quiet("Done")
+
+
 class TopologicalSortPass(Pass):
   """Sort changesets into commit order."""
 
@@ -657,8 +770,8 @@ class TopologicalSortPass(Pass):
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
-    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
+    self._register_temp_file_needed(config.CHANGESETS_SYMBROKEN_DB)
+    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_SYMBROKEN)
 
   def run(self, stats_keeper):
     Log().quiet("Generating CVSRevisions in commit order...")
@@ -671,13 +784,13 @@ class TopologicalSortPass(Pass):
         DB_OPEN_READ)
 
     changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_REVBROKEN_DB),
+        artifact_manager.get_temp_file(config.CHANGESETS_SYMBROKEN_DB),
         DB_OPEN_READ)
     Ctx()._changesets_db = changesets_db
 
     Ctx()._cvs_item_to_changeset_id = CVSItemToChangesetTable(
         artifact_manager.get_temp_file(
-            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
+            config.CVS_ITEM_TO_CHANGESET_SYMBROKEN),
         DB_OPEN_READ)
 
     changeset_ids = changesets_db.keys()
@@ -686,8 +799,7 @@ class TopologicalSortPass(Pass):
 
     for changeset_id in changeset_ids:
       changeset = changesets_db[changeset_id]
-      if isinstance(changeset, RevisionChangeset):
-        changeset_graph.add_changeset(changeset)
+      changeset_graph.add_changeset(changeset)
 
     del changeset_ids
 
@@ -701,8 +813,11 @@ class TopologicalSortPass(Pass):
     timestamp = 0
 
     for (changeset_id, time_range) in changeset_graph.remove_nopred_nodes():
-      timestamp = max(time_range.t_max, timestamp + 1)
-      sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
+      if isinstance(changesets_db[changeset_id], RevisionChangeset):
+        timestamp = max(time_range.t_max, timestamp + 1)
+        sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
+
+    assert len(changeset_graph.nodes) == 0
 
     sorted_changesets.close()
 
@@ -719,14 +834,14 @@ class CreateDatabasesPass(Pass):
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CHANGESETS_SYMBROKEN_DB)
     self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
 
   def get_changesets(self):
     """Generate changesets in commit order."""
 
     changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_REVBROKEN_DB),
+        artifact_manager.get_temp_file(config.CHANGESETS_SYMBROKEN_DB),
         DB_OPEN_READ)
 
     for line in file(
@@ -787,7 +902,7 @@ class CreateRevsPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.METADATA_DB)
-    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CHANGESETS_SYMBROKEN_DB)
     self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
 
   def get_changesets(self):
@@ -795,7 +910,7 @@ class CreateRevsPass(Pass):
 
     changesets_db = ChangesetDatabase(
         artifact_manager.get_temp_file(
-            config.CHANGESETS_REVBROKEN_DB), DB_OPEN_READ)
+            config.CHANGESETS_SYMBROKEN_DB), DB_OPEN_READ)
 
     for line in file(
             artifact_manager.get_temp_file(

@@ -351,6 +351,23 @@ The new changesets are written to
 files produced by InitializeChangesetsPass.
 
 
+BreakCVSSymbolChangesetLoopsPass
+================================
+
+Read in the complete changeset graph and break any loops in the
+dependency graph by breaking up CVSBranch changesets.
+
+At this stage, all loops can be broken up by this mechanism because
+(1) all CVSRevision dependency loops were already broken in
+BreakCVSRevisionChangesetLoopsPass; (2) CVSTags cannot participate in
+dependency loops because no other CVSItem can depend on a CVSTag.
+
+The new changesets are written to
+'cvs2svn-cvs-item-to-changeset-symbroken.dat' and
+'cvs2svn-changesets-symbroken.db', which are in the same format as the
+files produced by InitializeChangesetsPass.
+
+
 TopologicalSortPass
 ===================
 

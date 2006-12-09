@@ -59,6 +59,7 @@ pass_manager = PassManager([
   passes.SortSymbolSummaryPass(),
   passes.InitializeChangesetsPass(),
   passes.BreakCVSRevisionChangesetLoopsPass(),
+  passes.BreakCVSSymbolChangesetLoopsPass(),
   passes.TopologicalSortPass(),
   passes.CreateDatabasesPass(),
   passes.CreateRevsPass(),
