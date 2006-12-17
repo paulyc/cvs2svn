@@ -51,7 +51,7 @@ class Changeset(object):
     (self.id, self.cvs_item_ids,) = state
 
   def __str__(self):
-    return 'Changeset<%x>' % (self.id,)
+    raise NotImplementedError()
 
   def __repr__(self):
     return '%s [%s]' % (
@@ -77,6 +77,9 @@ class RevisionChangeset(Changeset):
 
     return ChangesetGraphNode(self.id, time_range, pred_ids, succ_ids)
 
+  def __str__(self):
+    return 'RevisionChangeset<%x>' % (self.id,)
+
 
 class SymbolChangeset(Changeset):
   """A Changeset consisting of CVSSymbols."""
@@ -93,5 +96,8 @@ class SymbolChangeset(Changeset):
         succ_ids.add(Ctx()._cvs_item_to_changeset_id[succ_id])
 
     return ChangesetGraphNode(self.id, TimeRange(), pred_ids, succ_ids)
+
+  def __str__(self):
+    return 'SymbolChangeset<%x>' % (self.id,)
 
 
