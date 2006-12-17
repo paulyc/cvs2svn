@@ -46,6 +46,7 @@ from cvs2svn_lib.cvs_item_database import OldCVSItemStore
 from cvs2svn_lib.cvs_item_database import IndexedCVSItemStore
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.changeset import RevisionChangeset
+from cvs2svn_lib.changeset import OrderedChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.changeset_graph import ChangesetGraph
 from cvs2svn_lib.changeset_graph_link import ChangesetGraphLink
@@ -646,6 +647,80 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     Log().quiet("Done")
 
 
+class RevisionTopologicalSortPass(Pass):
+  """Sort RevisionChangesets into commit order.
+
+  Also convert them to OrderedChangesets, without changing their ids."""
+
+  def register_artifacts(self):
+    self._register_temp_file(config.CHANGESETS_REVSORTED_DB)
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.CVS_FILES_DB)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
+    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
+    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
+
+  def run(self, stats_keeper):
+    Log().quiet("Generating CVSRevisions in commit order...")
+
+    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
+    Ctx()._symbol_db = SymbolDatabase()
+    Ctx()._cvs_items_db = IndexedCVSItemStore(
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
+        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
+        DB_OPEN_READ)
+
+    changesets_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(config.CHANGESETS_REVBROKEN_DB),
+        DB_OPEN_READ)
+    changesets_revordered_db = ChangesetDatabase(
+        artifact_manager.get_temp_file(config.CHANGESETS_REVSORTED_DB),
+        DB_OPEN_NEW)
+    Ctx()._changesets_db = changesets_db
+
+    Ctx()._cvs_item_to_changeset_id = CVSItemToChangesetTable(
+        artifact_manager.get_temp_file(
+            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
+        DB_OPEN_READ)
+
+    changeset_ids = changesets_db.keys()
+
+    changeset_graph = ChangesetGraph()
+
+    for changeset_id in changeset_ids:
+      changeset = changesets_db[changeset_id]
+      if isinstance(changeset, RevisionChangeset):
+        changeset_graph.add_changeset(changeset)
+      else:
+        changesets_revordered_db.store(changeset)
+
+    del changeset_ids
+
+
+    changeset_ids = []
+
+    # Sentry:
+    changeset_ids.append(None)
+
+    for (changeset_id, time_range) in changeset_graph.consume_graph():
+      changeset_ids.append(changeset_id)
+
+    # Sentry:
+    changeset_ids.append(None)
+
+    for i in range(1, len(changeset_ids) - 1):
+      changeset = changesets_db[changeset_ids[i]]
+      changesets_revordered_db.store(
+          OrderedChangeset(
+              changeset.id, changeset.cvs_item_ids,
+              changeset_ids[i - 1], changeset_ids[i + 1]))
+
+    changesets_revordered_db.close()
+
+    Log().quiet("Done")
+
+
 class BreakCVSSymbolChangesetLoopsPass(Pass):
   """Break up any dependency loops that are closed by SymbolChangesets."""
 
@@ -656,7 +731,7 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CHANGESETS_REVBROKEN_DB)
+    self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
   def break_cycle(self, cycle):
@@ -721,7 +796,7 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     Ctx()._cvs_item_to_changeset_id = self.cvs_item_to_changeset_id
 
     old_changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_REVBROKEN_DB),
+        artifact_manager.get_temp_file(config.CHANGESETS_REVSORTED_DB),
         DB_OPEN_READ)
     Ctx()._changesets_db = old_changesets_db
     self.changesets_db = ChangesetDatabase(
@@ -809,7 +884,7 @@ class TopologicalSortPass(Pass):
     timestamp = 0
 
     for (changeset_id, time_range) in changeset_graph.consume_graph():
-      if isinstance(changesets_db[changeset_id], RevisionChangeset):
+      if isinstance(changesets_db[changeset_id], OrderedChangeset):
         timestamp = max(time_range.t_max, timestamp + 1)
         sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
 

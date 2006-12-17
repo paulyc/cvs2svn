@@ -65,6 +65,10 @@ CHANGESETS_DB = 'cvs2svn-changesets.db'
 # have been broken.
 CHANGESETS_REVBROKEN_DB = 'cvs2svn-changesets-revbroken.db'
 
+# A mapping from id to Changeset, after the RevisionChangesets have
+# been sorted and converted into OrderedChangesets.
+CHANGESETS_REVSORTED_DB = 'cvs2svn-changesets-revsorted.db'
+
 # A mapping from id to Changeset, after the SymbolChangeset loops have
 # been broken.
 CHANGESETS_SYMBROKEN_DB = 'cvs2svn-changesets-symbroken.db'
