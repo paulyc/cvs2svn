@@ -27,6 +27,7 @@ from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.database import Database
+from cvs2svn_lib.changeset import OrderedChangeset
 from cvs2svn_lib.cvs_commit import CVSCommit
 from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
@@ -61,11 +62,10 @@ class CVSRevisionCreator:
           SVNSymbolCloseCommit(symbol, timestamp))
       self._done_symbols.add(symbol)
 
-  def process_changeset(self, changeset, timestamp):
+  def _process_revision_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
 
-    The changesets must be fed to this function in proper dependency
-    order."""
+    CHANGESET must be an OrderedChangeset."""
 
     cvs_revs = list(changeset.get_cvs_items())
 
@@ -96,5 +96,14 @@ class CVSRevisionCreator:
         symbols.add(Ctx()._symbol_db.get_symbol(symbol_id))
 
       self._commit_symbols(symbols, timestamp)
+
+  def process_changeset(self, changeset, timestamp):
+    """Process CHANGESET, using TIMESTAMP for all of its entries.
+
+    The changesets must be fed to this function in proper dependency
+    order."""
+
+    if isinstance(changeset, OrderedChangeset):
+      self._process_revision_changeset(changeset, timestamp)
 
 

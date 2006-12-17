@@ -1003,8 +1003,7 @@ class CreateRevsPass(Pass):
 
     creator = CVSRevisionCreator()
     for (changeset, timestamp) in self.get_changesets():
-      if isinstance(changeset, OrderedChangeset):
-        creator.process_changeset(changeset, timestamp)
+      creator.process_changeset(changeset, timestamp)
 
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
