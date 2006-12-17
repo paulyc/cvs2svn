@@ -139,6 +139,34 @@ class ChangesetGraph(object):
         nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
       yield (node.id, node.time_range)
 
+  def _find_cycle(self):
+    """Find a cycle in the dependency graph and return it.
+
+    Return the list of changesets that are involved in the cycle
+    (ordered such that cycle[n-1] is a predecessor of cycle[n] and
+    cycle[-1] is a predecessor of cycle[0]).  This routine must only
+    be called after all nopred_nodes have been removed but the node
+    list is not empty."""
+
+    # Since there are no nopred nodes in the graph, all nodes in the
+    # graph must either be involved in a cycle or depend (directly or
+    # indirectly) on nodes that are in a cycle.  Pick an arbitrary
+    # node and follow it backwards until a node is seen a second time;
+    # then we have our cycle.
+    node = self.nodes.itervalues().next()
+    seen_nodes = [node]
+    while True:
+      node_id = node.pred_ids.__iter__().next()
+      node = self[node_id]
+      try:
+        i = seen_nodes.index(node)
+      except ValueError:
+        seen_nodes.append(node)
+      else:
+        seen_nodes = seen_nodes[i:]
+        seen_nodes.reverse()
+        return [Ctx()._changesets_db[node.id] for node in seen_nodes]
+
   def consume_graph(self, cycle_breaker=None):
     """Remove and yield changesets from this graph in dependency order.
 
@@ -160,26 +188,13 @@ class ChangesetGraph(object):
 
       if not self.nodes:
         return
-      # Now all nodes in the graph are involved in a cycle.  Pick an
-      # arbitrary node and follow it backwards until a node is seen a
-      # second time, then we have our cycle.
-      node = self.nodes.itervalues().next()
-      seen_nodes = [node]
-      while True:
-        node_id = node.pred_ids.__iter__().next()
-        node = self[node_id]
-        try:
-          i = seen_nodes.index(node)
-        except ValueError:
-          seen_nodes.append(node)
-        else:
-          seen_nodes = seen_nodes[i:]
-          seen_nodes.reverse()
-          cycle = [Ctx()._changesets_db[node.id] for node in seen_nodes]
-          if cycle_breaker is not None:
-            cycle_breaker(cycle)
-          else:
-            raise CycleInGraphException(cycle)
+
+      # There must be a cycle; find and process it:
+      cycle = self._find_cycle()
+      if cycle_breaker is not None:
+        cycle_breaker(cycle)
+      else:
+        raise CycleInGraphException(cycle)
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
