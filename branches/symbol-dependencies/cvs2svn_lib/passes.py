@@ -884,9 +884,8 @@ class TopologicalSortPass(Pass):
     timestamp = 0
 
     for (changeset_id, time_range) in changeset_graph.consume_graph():
-      if isinstance(changesets_db[changeset_id], OrderedChangeset):
-        timestamp = max(time_range.t_max, timestamp + 1)
-        sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
+      timestamp = max(time_range.t_max, timestamp + 1)
+      sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
 
     sorted_changesets.close()
 
@@ -1004,7 +1003,8 @@ class CreateRevsPass(Pass):
 
     creator = CVSRevisionCreator()
     for (changeset, timestamp) in self.get_changesets():
-      creator.process_changeset(changeset, timestamp)
+      if isinstance(changeset, OrderedChangeset):
+        creator.process_changeset(changeset, timestamp)
 
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
