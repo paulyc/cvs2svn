@@ -215,7 +215,8 @@ class CVSCommit:
                        for cvs_rev in self._deletes
                        if self._delete_needed(cvs_rev)
                        ]
-    svn_commit = SVNPrimaryCommit(self._changes + needed_deletes)
+    svn_commit = SVNPrimaryCommit(
+        self._changes + needed_deletes, self._timestamp)
     self._motivating_commit = svn_commit
 
     for cvs_rev in self._changes:
@@ -239,8 +240,6 @@ class CVSCommit:
     for cvs_rev in needed_deletes:
       if cvs_rev.default_branch_revision:
         self._default_branch_cvs_revisions.append(cvs_rev)
-
-    svn_commit.date = self._timestamp
 
     # There is a slight chance that we didn't actually register any
     # CVSRevisions with our SVNCommit (see loop over self._deletes
