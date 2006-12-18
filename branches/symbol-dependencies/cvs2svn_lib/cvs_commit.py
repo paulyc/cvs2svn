@@ -41,23 +41,21 @@ class CVSCommit:
   generate a Subversion Commit (or Commits) for the set of CVS
   Revisions in the grouping."""
 
-  def __init__(self, metadata_id, author, log, timestamp):
-    self.metadata_id = metadata_id
-    self.author = author
-    self.log = log
-    self.timestamp = timestamp
+  def __init__(self, metadata_id, timestamp):
+    self._metadata_id = metadata_id
+    self._timestamp = timestamp
 
     # Lists of CVSRevisions
-    self.changes = [ ]
-    self.deletes = [ ]
+    self._changes = [ ]
+    self._deletes = [ ]
 
     # This will be set to the SVNCommit that occurs in self._commit.
-    self.motivating_commit = None
+    self._motivating_commit = None
 
     # This is a list of all non-primary SVNCommits motivated by the
     # main commit.  We gather these so that we can set their dates to
     # the same date as the primary commit.
-    self.secondary_commits = [ ]
+    self._secondary_commits = [ ]
 
     # State for handling default branches.
     #
@@ -91,45 +89,24 @@ class CVSCommit:
     # default branch commit that will need to be copied to trunk (or
     # deleted from trunk) in some generated revision following the
     # "regular" revision.
-    self.default_branch_cvs_revisions = [ ]
+    self._default_branch_cvs_revisions = [ ]
 
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
     return 'CVSCommit([%s], [%s])' % (
-        ', '.join([str(change) for change in self.changes]),
-        ', '.join([str(delete) for delete in self.deletes]),)
+        ', '.join([str(change) for change in self._changes]),
+        ', '.join([str(delete) for delete in self._deletes]),)
 
-  def __cmp__(self, other):
-    # Commits should be sorted by t_max.  If both self and other have
-    # the same t_max, break the tie using t_min, and lastly,
-    # metadata_id.  If all those are equal, then compare based on ids,
-    # to ensure that no two instances compare equal.
-    return (cmp(self.timestamp, other.timestamp)
-            or cmp(self.metadata_id, other.metadata_id)
-            or cmp(id(self), id(other)))
-
-  def __hash__(self):
-    return id(self)
-
-  def revisions(self):
-    return self.changes + self.deletes
-
-  def opens_symbol(self, symbol_id):
-    """Return True if any CVSRevision in this commit is on a tag or a
-    branch or is the origin of a tag or branch."""
-
-    for cvs_rev in self.revisions():
-      if cvs_rev.opens_symbol(symbol_id):
-        return True
-    return False
+  def _revisions(self):
+    return self._changes + self._deletes
 
   def add_revision(self, cvs_rev):
     if cvs_rev.op == OP_DELETE:
-      self.deletes.append(cvs_rev)
+      self._deletes.append(cvs_rev)
     else:
       # OP_CHANGE or OP_ADD
-      self.changes.append(cvs_rev)
+      self._changes.append(cvs_rev)
 
   def _fill_needed(cvs_rev):
     """Return True iff this is the first commit on a new branch (for
@@ -185,7 +162,7 @@ class CVSCommit:
     # counted.
     accounted_for_symbols = set()
 
-    for cvs_rev in self.changes + self.deletes:
+    for cvs_rev in self._changes + self._deletes:
       # If a commit is on a branch, we must ensure that the branch
       # path being committed exists (in HEAD of the Subversion
       # repository).  If it doesn't exist, we will need to fill the
@@ -196,7 +173,7 @@ class CVSCommit:
           and cvs_rev.lod.symbol not in done_symbols \
           and self._fill_needed(cvs_rev):
         symbol = cvs_rev.lod.symbol
-        self.secondary_commits.append(SVNPreCommit(symbol))
+        self._secondary_commits.append(SVNPreCommit(symbol))
         accounted_for_symbols.add(symbol)
 
   def _delete_needed(cvs_rev):
@@ -235,13 +212,13 @@ class CVSCommit:
     # revision containing the log message for the second dead
     # revision, because we don't want to lose that information.
     needed_deletes = [ cvs_rev
-                       for cvs_rev in self.deletes
+                       for cvs_rev in self._deletes
                        if self._delete_needed(cvs_rev)
                        ]
-    svn_commit = SVNPrimaryCommit(self.changes + needed_deletes)
-    self.motivating_commit = svn_commit
+    svn_commit = SVNPrimaryCommit(self._changes + needed_deletes)
+    self._motivating_commit = svn_commit
 
-    for cvs_rev in self.changes:
+    for cvs_rev in self._changes:
       # Only make a change if we need to:
       if cvs_rev.rev == "1.1.1.1" and not cvs_rev.deltatext_exists:
         # When 1.1.1.1 has an empty deltatext, the explanation is
@@ -257,16 +234,16 @@ class CVSCommit:
         pass
       else:
         if cvs_rev.default_branch_revision:
-          self.default_branch_cvs_revisions.append(cvs_rev)
+          self._default_branch_cvs_revisions.append(cvs_rev)
 
     for cvs_rev in needed_deletes:
       if cvs_rev.default_branch_revision:
-        self.default_branch_cvs_revisions.append(cvs_rev)
+        self._default_branch_cvs_revisions.append(cvs_rev)
 
-    svn_commit.date = self.timestamp
+    svn_commit.date = self._timestamp
 
     # There is a slight chance that we didn't actually register any
-    # CVSRevisions with our SVNCommit (see loop over self.deletes
+    # CVSRevisions with our SVNCommit (see loop over self._deletes
     # above), so if we have no CVSRevisions, we don't flush the
     # svn_commit to disk and roll back our revnum.
     if svn_commit.cvs_revs:
@@ -277,7 +254,7 @@ class CVSCommit:
       SVNCommit.revnum -= 1
 
     if not Ctx().trunk_only:
-      for cvs_rev in self.revisions():
+      for cvs_rev in self._revisions():
         Ctx()._symbolings_logger.log_revision(cvs_rev, svn_commit.revnum)
 
   def _post_commit(self):
@@ -291,14 +268,14 @@ class CVSCommit:
     first need to delete the existing trunk there."""
 
     # Only generate a commit if we have default branch revs
-    if self.default_branch_cvs_revisions:
+    if self._default_branch_cvs_revisions:
       # Generate an SVNCommit for all of our default branch cvs_revs.
-      svn_commit = SVNPostCommit(self.motivating_commit.revnum,
-                                 self.default_branch_cvs_revisions)
-      for cvs_rev in self.default_branch_cvs_revisions:
+      svn_commit = SVNPostCommit(self._motivating_commit.revnum,
+                                 self._default_branch_cvs_revisions)
+      for cvs_rev in self._default_branch_cvs_revisions:
         Ctx()._symbolings_logger.log_default_branch_closing(
             cvs_rev, svn_commit.revnum)
-      self.secondary_commits.append(svn_commit)
+      self._secondary_commits.append(svn_commit)
 
   def process_revisions(self, done_symbols):
     """Process all the CVSRevisions that this instance has, creating
@@ -308,7 +285,7 @@ class CVSCommit:
 
     Log().verbose('-' * 60)
     Log().verbose('CVS Revision grouping:')
-    Log().verbose('  Time: %s' % time.ctime(self.timestamp))
+    Log().verbose('  Time: %s' % time.ctime(self._timestamp))
 
     if Ctx().trunk_only:
       # When trunk-only, only do the primary commit:
@@ -318,8 +295,8 @@ class CVSCommit:
       self._commit()
       self._post_commit()
 
-      for svn_commit in self.secondary_commits:
-        svn_commit.date = self.motivating_commit.date
+      for svn_commit in self._secondary_commits:
+        svn_commit.date = self._motivating_commit.date
         Ctx()._persistence_manager.put_svn_commit(svn_commit)
 
 

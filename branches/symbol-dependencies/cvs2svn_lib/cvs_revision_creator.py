@@ -76,7 +76,7 @@ class CVSRevisionCreator:
     metadata_id = cvs_revs[0].metadata_id
 
     author, log = Ctx()._metadata_db[metadata_id]
-    cvs_commit = CVSCommit(metadata_id, author, log, timestamp)
+    cvs_commit = CVSCommit(metadata_id, timestamp)
 
     for cvs_rev in cvs_revs:
       if Ctx().trunk_only and isinstance(cvs_rev.lod, Branch):
