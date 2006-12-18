@@ -41,13 +41,9 @@ class CVSCommit:
   generate a Subversion Commit (or Commits) for the set of CVS
   Revisions in the grouping."""
 
-  def __init__(self, metadata_id, timestamp):
+  def __init__(self, metadata_id, timestamp, cvs_revs):
     self._metadata_id = metadata_id
     self._timestamp = timestamp
-
-    # Lists of CVSRevisions
-    self._changes = [ ]
-    self._deletes = [ ]
 
     # This will be set to the SVNCommit that occurs in self._commit.
     self._motivating_commit = None
@@ -91,6 +87,17 @@ class CVSCommit:
     # "regular" revision.
     self._default_branch_cvs_revisions = [ ]
 
+    # Lists of CVSRevisions
+    self._changes = [ ]
+    self._deletes = [ ]
+
+    for cvs_rev in cvs_revs:
+      if cvs_rev.op == OP_DELETE:
+        self._deletes.append(cvs_rev)
+      else:
+        # OP_CHANGE or OP_ADD
+        self._changes.append(cvs_rev)
+
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
@@ -100,13 +107,6 @@ class CVSCommit:
 
   def _revisions(self):
     return self._changes + self._deletes
-
-  def add_revision(self, cvs_rev):
-    if cvs_rev.op == OP_DELETE:
-      self._deletes.append(cvs_rev)
-    else:
-      # OP_CHANGE or OP_ADD
-      self._changes.append(cvs_rev)
 
   def _fill_needed(cvs_rev):
     """Return True iff this is the first commit on a new branch (for
