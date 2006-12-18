@@ -141,7 +141,6 @@ class CVSCommit:
       return False
 
     pm = Ctx()._persistence_manager
-    prev_svn_revnum = pm.get_svn_revnum(cvs_rev.prev_id)
 
     # It should be the case that when we have a file F that is
     # added on branch B (thus, F on trunk is in state 'dead'), we
@@ -149,11 +148,12 @@ class CVSCommit:
     # been filled before.
     if cvs_rev.op == OP_ADD:
       # Fill the branch only if it has never been filled before:
-      return cvs_rev.lod.symbol.id not in pm.last_filled
+      return not pm.filled(cvs_rev.lod)
     elif cvs_rev.op == OP_CHANGE:
       # We need to fill only if the last commit affecting the file
       # has not been filled yet:
-      return prev_svn_revnum > pm.last_filled.get(cvs_rev.lod.symbol.id, 0)
+      return not pm.filled_since(
+          cvs_rev.lod, pm.get_svn_revnum(cvs_rev.prev_id))
     elif cvs_rev.op == OP_DELETE:
       # If the previous revision was also a delete, we don't need
       # to fill it - and there's nothing to copy to the branch, so
@@ -163,7 +163,8 @@ class CVSCommit:
         return False
       # Other deletes need fills only if the last commit affecting
       # the file has not been filled yet:
-      return prev_svn_revnum > pm.last_filled.get(cvs_rev.lod.symbol.id, 0)
+      return not pm.filled_since(
+          cvs_rev.lod, pm.get_svn_revnum(cvs_rev.prev_id))
 
   _fill_needed = staticmethod(_fill_needed)
 
