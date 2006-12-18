@@ -28,7 +28,7 @@ from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.database import Database
 from cvs2svn_lib.changeset import OrderedChangeset
-from cvs2svn_lib.cvs_commit import CVSCommit
+from cvs2svn_lib.cvs_commit import process_revisions
 from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
 
@@ -82,9 +82,7 @@ class CVSRevisionCreator:
           for cvs_rev in cvs_revs
           if not isinstance(cvs_rev.lod, Branch)]
 
-    cvs_commit = CVSCommit(metadata_id, timestamp, cvs_revs)
-
-    cvs_commit.process_revisions(self._done_symbols)
+    process_revisions(cvs_revs, timestamp, self._done_symbols)
 
     # Commit any symbols for which changeset is the last one that
     # affects the symbol.
