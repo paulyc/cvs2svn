@@ -17,6 +17,8 @@
 """This module contains the CVSRevisionCreator class."""
 
 
+import time
+
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib.log import Log
@@ -81,6 +83,10 @@ class CVSRevisionCreator:
           cvs_rev
           for cvs_rev in cvs_revs
           if not isinstance(cvs_rev.lod, Branch)]
+
+    Log().verbose('-' * 60)
+    Log().verbose('CVS Revision grouping:')
+    Log().verbose('  Time: %s' % time.ctime(timestamp))
 
     process_revisions(cvs_revs, timestamp, self._done_symbols)
 

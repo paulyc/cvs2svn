@@ -16,8 +16,6 @@
 
 """This module contains the CVSCommit class."""
 
-import time
-
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib import config
@@ -30,7 +28,6 @@ from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
 from cvs2svn_lib.svn_commit import SVNPreCommit
 from cvs2svn_lib.svn_commit import SVNPostCommit
-from cvs2svn_lib.log import Log
 from cvs2svn_lib.line_of_development import Branch
 
 
@@ -224,10 +221,6 @@ def process_revisions(cvs_revs, timestamp, done_symbols):
     else:
       # OP_CHANGE or OP_ADD
       changes.append(cvs_rev)
-
-  Log().verbose('-' * 60)
-  Log().verbose('CVS Revision grouping:')
-  Log().verbose('  Time: %s' % time.ctime(timestamp))
 
   if Ctx().trunk_only:
     # When trunk-only, only do the primary commit:
