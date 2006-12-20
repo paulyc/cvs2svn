@@ -32,9 +32,7 @@ from cvs2svn_lib.svn_commit import SVNRevisionCommit
 from cvs2svn_lib.svn_commit import SVNInitialProjectCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
 from cvs2svn_lib.svn_commit import SVNSymbolCommit
-from cvs2svn_lib.svn_commit import SVNPreCommit
 from cvs2svn_lib.svn_commit import SVNPostCommit
-from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
 
 class PersistenceManager:
@@ -59,7 +57,7 @@ class PersistenceManager:
     self.svn_commit_db = PrimedPDatabase(
         artifact_manager.get_temp_file(config.SVN_COMMITS_DB), mode,
         (SVNInitialProjectCommit, SVNPrimaryCommit, SVNSymbolCommit,
-         SVNPreCommit, SVNPostCommit, SVNSymbolCloseCommit,))
+         SVNPostCommit,))
     self.cvs2svn_db = RecordTable(
         artifact_manager.get_temp_file(config.CVS_REVS_TO_SVN_REVNUMS),
         mode, SignedIntegerPacker(SVN_INVALID_REVNUM))

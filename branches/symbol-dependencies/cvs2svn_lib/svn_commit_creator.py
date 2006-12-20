@@ -36,9 +36,8 @@ from cvs2svn_lib.database import Database
 from cvs2svn_lib.changeset import OrderedChangeset
 from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
-from cvs2svn_lib.svn_commit import SVNPreCommit
+from cvs2svn_lib.svn_commit import SVNSymbolCommit
 from cvs2svn_lib.svn_commit import SVNPostCommit
-from cvs2svn_lib.svn_commit import SVNSymbolCloseCommit
 
 
 class SVNCommitCreator:
@@ -59,9 +58,8 @@ class SVNCommitCreator:
   def _commit_symbols(self, changeset_id, timestamp):
     """Generate SVNCommits for any symbols that are closed in all files.
 
-    Generate a SVNSymbolCloseCommit for any symbols for which the
-    changeset with id CHANGESET_ID is the last one that affects the
-    symbol."""
+    Generate a SVNSymbolCommit for any symbols for which the changeset
+    with id CHANGESET_ID is the last one that affects the symbol."""
 
     symbol_ids = self._last_changesets_db.get('%x' % (changeset_id,), [])
     symbols = set([
@@ -78,7 +76,7 @@ class SVNCommitCreator:
 
     for symbol in symbols:
       Ctx()._persistence_manager.put_svn_commit(
-          SVNSymbolCloseCommit(symbol, timestamp))
+          SVNSymbolCommit(symbol, timestamp))
       self._done_symbols.add(symbol)
 
   def _fill_needed(cvs_rev):
@@ -141,7 +139,7 @@ class SVNCommitCreator:
           and cvs_rev.lod.symbol not in self._done_symbols \
           and self._fill_needed(cvs_rev):
         symbol = cvs_rev.lod.symbol
-        secondary_commits.append(SVNPreCommit(symbol))
+        secondary_commits.append(SVNSymbolCommit(symbol))
         accounted_for_symbols.add(symbol)
 
     return secondary_commits

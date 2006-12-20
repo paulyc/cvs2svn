@@ -286,8 +286,9 @@ class SVNPrimaryCommit(SVNCommit, SVNRevisionCommit):
 
 
 class SVNSymbolCommit(SVNCommit):
-  def __init__(self, description, symbol, date, revnum=None):
-    SVNCommit.__init__(self, description, date, revnum)
+  def __init__(self, symbol, date=0, revnum=None):
+    SVNCommit.__init__(
+        self, 'copying to tag/branch %r' % symbol.name, date, revnum)
 
     # The TypedSymbol that is filled in this SVNCommit.
     self.symbol = symbol
@@ -326,8 +327,7 @@ class SVNSymbolCommit(SVNCommit):
   def __setstate__(self, state):
     (revnum, symbol_id, date) = state
     symbol = Ctx()._symbol_db.get_symbol(symbol_id)
-    SVNSymbolCommit.__init__(
-        self, "Retrieved from disk", symbol, date, revnum)
+    SVNSymbolCommit.__init__(self, symbol, date, revnum)
 
   def __str__(self):
     """ Print a human-readable description of this SVNCommit.
@@ -337,12 +337,6 @@ class SVNSymbolCommit(SVNCommit):
     return (
         SVNCommit.__str__(self)
         + "   symbolic name: %s\n" % self.symbol.get_clean_name())
-
-
-class SVNPreCommit(SVNSymbolCommit):
-  def __init__(self, symbol, revnum=None):
-    SVNSymbolCommit.__init__(
-        self, 'pre-commit symbolic name %r' % symbol.name, symbol, 0, revnum)
 
 
 class SVNPostCommit(SVNCommit, SVNRevisionCommit):
@@ -417,11 +411,5 @@ class SVNPostCommit(SVNCommit, SVNRevisionCommit):
     SVNRevisionCommit.__setstate__(self, rev_state)
 
     self._motivating_revnum = motivating_revnum
-
-
-class SVNSymbolCloseCommit(SVNSymbolCommit):
-  def __init__(self, symbol, date, revnum=None):
-    SVNSymbolCommit.__init__(
-        self, 'closing tag/branch %r' % symbol.name, symbol, date, revnum)
 
 
