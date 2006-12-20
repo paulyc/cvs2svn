@@ -171,12 +171,23 @@ class SVNCommitCreator:
 
   _delete_needed = staticmethod(_delete_needed)
 
-  def _commit(self, timestamp, changes, deletes):
+  def _commit(self, timestamp, cvs_revs):
     """Generates the primary SVNCommit for a set of CVSRevisions.
 
     CHANGES and DELETES are the CVSRevisions to be included.  Use
     TIMESTAMP as the time of the commit (do not use the timestamps
     stored in the CVSRevisions)."""
+
+    # Lists of CVSRevisions
+    changes = []
+    deletes = []
+
+    for cvs_rev in cvs_revs:
+      if cvs_rev.op == OP_DELETE:
+        deletes.append(cvs_rev)
+      else:
+        # OP_CHANGE or OP_ADD
+        changes.append(cvs_rev)
 
     # Generate an SVNCommit unconditionally.  Even if the only change in
     # this group of CVSRevisions is a deletion of an already-deleted
@@ -276,27 +287,16 @@ class SVNCommitCreator:
           for cvs_rev in cvs_revs
           if not isinstance(cvs_rev.lod, Branch)]
 
-    # Lists of CVSRevisions
-    changes = []
-    deletes = []
-
-    for cvs_rev in cvs_revs:
-      if cvs_rev.op == OP_DELETE:
-        deletes.append(cvs_rev)
-      else:
-        # OP_CHANGE or OP_ADD
-        changes.append(cvs_rev)
-
     if Ctx().trunk_only:
       # When trunk-only, only do the primary commit:
-      self._commit(timestamp, changes, deletes)
+      self._commit(timestamp, cvs_revs)
     else:
       # This is a list of all non-primary SVNCommits motivated by the
       # main commit.  We gather these so that we can set their dates to
       # the same date as the primary commit.
       secondary_commits = []
 
-      secondary_commits.extend(self._pre_commit(changes + deletes))
+      secondary_commits.extend(self._pre_commit(cvs_revs))
 
       # If some of the commits in this txn happened on a non-trunk
       # default branch, then those files will have to be copied into
@@ -311,7 +311,7 @@ class SVNCommitCreator:
       # deleted from trunk) in some generated revision following the
       # "regular" revision.
       motivating_commit, default_branch_cvs_revisions = self._commit(
-          timestamp, changes, deletes)
+          timestamp, cvs_revs)
 
       secondary_commits.extend(
           self._post_commit(
