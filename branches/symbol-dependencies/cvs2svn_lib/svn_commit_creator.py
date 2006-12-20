@@ -179,8 +179,7 @@ class SVNCommitCreator:
         for cvs_rev in deletes
         if self._delete_needed(cvs_rev)
         ]
-    svn_commit = SVNPrimaryCommit(
-        changes + needed_deletes, timestamp)
+    svn_commit = SVNPrimaryCommit(changes + needed_deletes, timestamp)
 
     default_branch_cvs_revisions = []
     for cvs_rev in changes:
@@ -300,7 +299,7 @@ class SVNCommitCreator:
               default_branch_cvs_revisions, motivating_commit.revnum))
 
       for svn_commit in secondary_commits:
-        svn_commit.date = motivating_commit.date
+        svn_commit.date = timestamp
         Ctx()._persistence_manager.put_svn_commit(svn_commit)
 
   def _process_revision_changeset(self, changeset, timestamp):
