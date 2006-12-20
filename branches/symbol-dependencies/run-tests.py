@@ -1656,13 +1656,17 @@ def no_spurious_svn_commits():
   "ensure that we don't create any spurious commits"
   conv = ensure_conversion('phoenix')
 
-  # Check spurious commit that could be created in CVSCommit._pre_commit
+  # Check spurious commit that could be created in
+  # SVNCommitCreator._pre_commit()
+  #
   #   (When you add a file on a branch, CVS creates a trunk revision
   #   in state 'dead'.  If the log message of that commit is equal to
   #   the one that CVS generates, we do not ever create a 'fill'
   #   SVNCommit for it.)
   #
-  # and spurious commit that could be created in CVSCommit._commit
+  # and spurious commit that could be created in
+  # SVNCommitCreator._commit()
+  #
   #   (When you add a file on a branch, CVS creates a trunk revision
   #   in state 'dead'.  If the log message of that commit is equal to
   #   the one that CVS generates, we do not create a primary SVNCommit
@@ -1680,7 +1684,7 @@ def no_spurious_svn_commits():
             + 'branch xiphophorus,\nand this log message was tweaked', ())
 
   # Check spurious commit that could be created in
-  # CVSRevisionCreator._commit_symbols().  (We shouldn't consider a
+  # SVNCommitCreator._commit_symbols().  (We shouldn't consider a
   # CVSRevision whose op is OP_DEAD as a candidate for the
   # LastSymbolicNameDatabase.)
   conv.logs[20].check('This file was also added on branch xiphophorus,', (

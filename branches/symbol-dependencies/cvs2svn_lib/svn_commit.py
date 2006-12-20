@@ -14,7 +14,7 @@
 # history and logs, available at http://cvs2svn.tigris.org/.
 # ====================================================================
 
-"""This module contains the CVSCommit class."""
+"""This module contains the SVNCommit classes."""
 
 
 from cvs2svn_lib.boolean import *
@@ -240,9 +240,10 @@ class SVNPrimaryCommit(SVNCommit, SVNRevisionCommit):
           and not cvs_rev.deltatext_exists
           and repos.path_exists(cvs_rev.svn_path)):
         # This change can be omitted.  See comment in
-        # CVSCommit._commit() for what this is all about.  Note that
-        # although asking repos.path_exists() is somewhat expensive,
-        # we only do it if the first two (cheap) tests succeed first.
+        # SVNCommitCreator._commit() for what this is all about.  Note
+        # that although asking repos.path_exists() is somewhat
+        # expensive, we only do it if the first two (cheap) tests
+        # succeed first.
         pass
 
       elif cvs_rev.op == OP_ADD:
@@ -379,8 +380,9 @@ class SVNPostCommit(SVNCommit, SVNRevisionCommit):
     """Commit SELF to REPOS, which is a SVNRepositoryMirror.
 
     Propagate any changes that happened on a non-trunk default branch
-    to the trunk of the repository.  See CVSCommit._post_commit() for
-    details on why this is necessary."""
+    to the trunk of the repository.  See
+    SVNCommitCreator._post_commit() for details on why this is
+    necessary."""
 
     repos.start_commit(self.revnum, self._get_revprops())
 

@@ -65,9 +65,9 @@ class PersistenceManager:
         mode, SignedIntegerPacker(SVN_INVALID_REVNUM))
 
     # branch_id -> svn_revnum in which branch was last filled.  This
-    # is used by CVSCommit._pre_commit, to prevent creating a fill
-    # revision which would have nothing to do.  The record with index
-    # None reflects the svn revision of the last SVNPostCommit.
+    # is used by SVNCommitCreator._pre_commit, to prevent creating a
+    # fill revision which would have nothing to do.  The record with
+    # index None reflects the svn revision of the last SVNPostCommit.
     self._last_filled = {}
 
   def get_svn_revnum(self, cvs_rev_id):
