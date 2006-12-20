@@ -253,10 +253,19 @@ class SVNCommitCreator:
     else:
       return []
 
-  def _process_revisions(self, changeset, timestamp):
-    """Process CHANGESET, creating one or more SVNCommits in the process.
+  def _process_revision_changeset(self, changeset, timestamp):
+    """Process CHANGESET, using TIMESTAMP for all of its entries.
 
-    CHANGESET must be an OrderedChangeset."""
+    Creating one or more SVNCommits in the process, and store them to
+    the persistence manager.  CHANGESET must be an OrderedChangeset."""
+
+    if not changeset.cvs_item_ids:
+      Log().warn('Changeset has no items: %r' % changeset)
+      return
+
+    Log().verbose('-' * 60)
+    Log().verbose('CVS Revision grouping:')
+    Log().verbose('  Time: %s' % time.ctime(timestamp))
 
     cvs_revs = list(changeset.get_cvs_items())
 
@@ -311,21 +320,6 @@ class SVNCommitCreator:
       for svn_commit in secondary_commits:
         svn_commit.date = timestamp
         Ctx()._persistence_manager.put_svn_commit(svn_commit)
-
-  def _process_revision_changeset(self, changeset, timestamp):
-    """Process CHANGESET, using TIMESTAMP for all of its entries.
-
-    CHANGESET must be an OrderedChangeset."""
-
-    if not changeset.cvs_item_ids:
-      Log().warn('Changeset has no items: %r' % changeset)
-      return
-
-    Log().verbose('-' * 60)
-    Log().verbose('CVS Revision grouping:')
-    Log().verbose('  Time: %s' % time.ctime(timestamp))
-
-    self._process_revisions(changeset, timestamp)
 
     if not Ctx().trunk_only:
       self._commit_symbols(changeset.id, timestamp)
