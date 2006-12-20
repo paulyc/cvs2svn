@@ -56,8 +56,18 @@ class SVNCommitCreator:
     # never need to fill it again.
     self._done_symbols = set()
 
-  def _commit_symbols(self, symbols, timestamp):
-    """Generate one SVNCommit for each symbol in SYMBOLS."""
+  def _commit_symbols(self, changeset_id, timestamp):
+    """Generate SVNCommits for any symbols that are closed in all files.
+
+    Generate a SVNSymbolCloseCommit for any symbols for which the
+    changeset with id CHANGESET_ID is the last one that affects the
+    symbol."""
+
+    symbol_ids = self._last_changesets_db.get('%x' % (changeset_id,), [])
+    symbols = set([
+        Ctx()._symbol_db.get_symbol(symbol_id)
+        for symbol_id in symbol_ids
+        ])
 
     # Sort the closeable symbols so that we will always process the
     # symbols in the same order, regardless of the order in which the
@@ -317,16 +327,8 @@ class SVNCommitCreator:
 
     self._process_revisions(changeset, timestamp)
 
-    # Commit any symbols for which changeset is the last one that
-    # affects the symbol.
     if not Ctx().trunk_only:
-      symbols = set()
-
-      for symbol_id in \
-            self._last_changesets_db.get('%x' % (changeset.id,), []):
-        symbols.add(Ctx()._symbol_db.get_symbol(symbol_id))
-
-      self._commit_symbols(symbols, timestamp)
+      self._commit_symbols(changeset.id, timestamp)
 
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
