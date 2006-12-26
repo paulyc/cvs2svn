@@ -43,7 +43,9 @@ from cvs2svn_lib.svn_commit import SVNPostCommit
 class SVNCommitCreator:
   """This class coordinates the committing of changesets and symbols."""
 
-  def __init__(self):
+  def __init__(self, persistence_manager):
+    self._persistence_manager = persistence_manager
+
     if not Ctx().trunk_only:
       self._last_changesets_db = Database(
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CHANGESETS_DB),
@@ -75,11 +77,11 @@ class SVNCommitCreator:
     symbols.sort(lambda a, b: cmp(a.name, b.name))
 
     for symbol in symbols:
-      Ctx()._persistence_manager.put_svn_commit(
+      self._persistence_manager.put_svn_commit(
           SVNSymbolCommit(symbol, timestamp))
       self._done_symbols.add(symbol)
 
-  def _fill_needed(cvs_rev):
+  def _fill_needed(self, cvs_rev):
     """Return True iff CVS_REV forces the branch to be filled.
 
     Return True if CVS_REV is the first commit on a new branch (for this
@@ -90,19 +92,18 @@ class SVNCommitCreator:
       # Only commits that are the first on their branch can force fills:
       return False
 
-    pm = Ctx()._persistence_manager
-
     # It should be the case that when we have a file F that is added on
     # branch B (thus, F on trunk is in state 'dead'), we generate an
     # SVNCommit to fill B iff the branch has never been filled before.
     if cvs_rev.op == OP_ADD:
       # Fill the branch only if it has never been filled before:
-      return not pm.filled(cvs_rev.lod)
+      return not self._persistence_manager.filled(cvs_rev.lod)
     elif cvs_rev.op == OP_CHANGE:
       # We need to fill only if the last commit affecting the file has
       # not been filled yet:
-      return not pm.filled_since(
-          cvs_rev.lod, pm.get_svn_revnum(cvs_rev.prev_id))
+      return not self._persistence_manager.filled_since(
+          cvs_rev.lod,
+          self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
     elif cvs_rev.op == OP_DELETE:
       # If the previous revision was also a delete, we don't need to
       # fill it - and there's nothing to copy to the branch, so we can't
@@ -112,10 +113,9 @@ class SVNCommitCreator:
         return False
       # Other deletes need fills only if the last commit affecting the
       # file has not been filled yet:
-      return not pm.filled_since(
-          cvs_rev.lod, pm.get_svn_revnum(cvs_rev.prev_id))
-
-  _fill_needed = staticmethod(_fill_needed)
+      return not self._persistence_manager.filled_since(
+          cvs_rev.lod,
+          self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
 
   def _pre_commit(self, cvs_revs):
     """Generate any SVNCommits that must exist before the main commit."""
@@ -144,7 +144,7 @@ class SVNCommitCreator:
 
     return secondary_commits
 
-  def _delete_needed(cvs_rev):
+  def _delete_needed(self, cvs_rev):
     """Return True iff the specified delete CVS_REV is really needed.
 
     When a file is added on a branch, CVS not only adds the file on the
@@ -166,8 +166,6 @@ class SVNCommitCreator:
         Ctx()._cvs_items_db[cvs_rev.branch_ids[0]].symbol.name,)
     author, log_msg = Ctx()._metadata_db[cvs_rev.metadata_id]
     return log_msg != cvs_generated_msg
-
-  _delete_needed = staticmethod(_delete_needed)
 
   def _commit(self, timestamp, cvs_revs):
     """Generates the primary SVNCommit for a set of CVSRevisions.
@@ -228,7 +226,7 @@ class SVNCommitCreator:
     # if we have no CVSRevisions, we don't flush the svn_commit to disk
     # and roll back our revnum.
     if svn_commit.cvs_revs:
-      Ctx()._persistence_manager.put_svn_commit(svn_commit)
+      self._persistence_manager.put_svn_commit(svn_commit)
     else:
       # We will not be flushing this SVNCommit, so rollback the
       # SVNCommit revision counter.
@@ -317,7 +315,7 @@ class SVNCommitCreator:
 
       for svn_commit in secondary_commits:
         svn_commit.date = timestamp
-        Ctx()._persistence_manager.put_svn_commit(svn_commit)
+        self._persistence_manager.put_svn_commit(svn_commit)
 
     if not Ctx().trunk_only:
       self._commit_symbols(changeset.id, timestamp)
