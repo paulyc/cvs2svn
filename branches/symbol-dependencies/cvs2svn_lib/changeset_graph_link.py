@@ -122,9 +122,9 @@ class ChangesetGraphLink(object):
 
     # Create new changesets of the same type as the old one:
     return [
-        self.changeset.__class__(
+        self.changeset.create_split_changeset(
             changeset_key_generator.gen_id(), items_to_keep),
-        self.changeset.__class__(
+        self.changeset.create_split_changeset(
             changeset_key_generator.gen_id(), items_to_move),
         ]
 

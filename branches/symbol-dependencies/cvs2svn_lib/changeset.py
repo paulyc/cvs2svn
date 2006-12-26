@@ -44,6 +44,16 @@ class Changeset(object):
 
     raise NotImplementedError()
 
+  def create_split_changeset(self, id, cvs_item_ids):
+    """Return a Changeset with the specified contents.
+
+    This method is only implemented for changesets that can be split.
+    The type of the new changeset should be the same as that of SELF,
+    and any other information from SELF should also be copied to the
+    new changeset."""
+
+    raise NotImplementedError()
+
   def __getstate__(self):
     return (self.id, self.cvs_item_ids,)
 
@@ -76,6 +86,9 @@ class RevisionChangeset(Changeset):
         succ_ids.add(Ctx()._cvs_item_to_changeset_id[succ_id])
 
     return ChangesetGraphNode(self.id, time_range, pred_ids, succ_ids)
+
+  def create_split_changeset(self, id, cvs_item_ids):
+    return RevisionChangeset(id, cvs_item_ids)
 
   def __str__(self):
     return 'RevisionChangeset<%x>' % (self.id,)
@@ -150,6 +163,9 @@ class SymbolChangeset(Changeset):
         succ_ids.add(Ctx()._cvs_item_to_changeset_id[succ_id])
 
     return ChangesetGraphNode(self.id, TimeRange(), pred_ids, succ_ids)
+
+  def create_split_changeset(self, id, cvs_item_ids):
+    return SymbolChangeset(id, cvs_item_ids)
 
   def __str__(self):
     return 'SymbolChangeset<%x>' % (self.id,)
