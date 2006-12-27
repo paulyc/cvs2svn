@@ -41,6 +41,10 @@ class ChangesetGraphNode(object):
     # The ids of changesets that are direct successors of this one.
     self.succ_ids = succ_ids
 
+  def __cmp__(self, other):
+    return cmp(self.time_range, other.time_range) \
+           or cmp(self.id, other.id)
+
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
 
