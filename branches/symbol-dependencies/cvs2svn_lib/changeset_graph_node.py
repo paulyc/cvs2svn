@@ -21,6 +21,7 @@ from __future__ import generators
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
+from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.time_range import TimeRange
 
 
@@ -41,9 +42,10 @@ class ChangesetGraphNode(object):
     # The ids of changesets that are direct successors of this one.
     self.succ_ids = succ_ids
 
-  def __cmp__(self, other):
-    return cmp(self.time_range, other.time_range) \
-           or cmp(self.id, other.id)
+  def get_changeset(self):
+    """Return the changeset associated with this node."""
+
+    return Ctx()._changesets_db[self.id]
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
