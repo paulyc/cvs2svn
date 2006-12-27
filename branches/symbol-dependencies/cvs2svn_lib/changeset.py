@@ -60,6 +60,9 @@ class Changeset(object):
   def __setstate__(self, state):
     (self.id, self.cvs_item_ids,) = state
 
+  def __cmp__(self, other):
+    raise NotImplementedError()
+
   def __str__(self):
     raise NotImplementedError()
 
@@ -70,6 +73,8 @@ class Changeset(object):
 
 class RevisionChangeset(Changeset):
   """A Changeset consisting of CVSRevisions."""
+
+  _sort_order = 2
 
   def create_graph_node(self):
     time_range = TimeRange()
@@ -90,6 +95,10 @@ class RevisionChangeset(Changeset):
   def create_split_changeset(self, id, cvs_item_ids):
     return RevisionChangeset(id, cvs_item_ids)
 
+  def __cmp__(self, other):
+    return cmp(self._sort_order, other._sort_order) \
+           or cmp(self.id, other.id)
+
   def __str__(self):
     return 'RevisionChangeset<%x>' % (self.id,)
 
@@ -102,6 +111,8 @@ class OrderedChangeset(Changeset):
   chain of dependencies with the order consistent with the
   dependencies).  These OrderedChangesets form the skeleton for the
   full topological sort that includes SymbolChangesets as well."""
+
+  _sort_order = 1
 
   def __init__(self, id, cvs_item_ids, prev_id, next_id):
     Changeset.__init__(self, id, cvs_item_ids)
@@ -144,12 +155,18 @@ class OrderedChangeset(Changeset):
     Changeset.__setstate__(self, state[:-2])
     (self.prev_id, self.next_id,) = state[-2:]
 
+  def __cmp__(self, other):
+    return cmp(self._sort_order, other._sort_order) \
+           or cmp(self.id, other.id)
+
   def __str__(self):
     return 'OrderedChangeset<%x>' % (self.id,)
 
 
 class SymbolChangeset(Changeset):
   """A Changeset consisting of CVSSymbols."""
+
+  _sort_order = 0
 
   def __init__(self, id, symbol, cvs_item_ids):
     Changeset.__init__(self, id, cvs_item_ids)
@@ -170,6 +187,11 @@ class SymbolChangeset(Changeset):
 
   def create_split_changeset(self, id, cvs_item_ids):
     return SymbolChangeset(id, self.symbol, cvs_item_ids)
+
+  def __cmp__(self, other):
+    return cmp(self._sort_order, other._sort_order) \
+           or cmp(self.symbol, other.symbol) \
+           or cmp(self.id, other.id)
 
   def __getstate__(self):
     return Changeset.__getstate__(self) + (self.symbol.id,)
