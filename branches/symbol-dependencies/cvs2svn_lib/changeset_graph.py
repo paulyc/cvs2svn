@@ -120,7 +120,7 @@ class ChangesetGraph(object):
         node
         for node in self.nodes.itervalues()
         if not node.pred_ids]
-    nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
+    nopred_nodes.sort()
     while nopred_nodes:
       node = nopred_nodes.pop(0)
       del self[node.id]
@@ -136,7 +136,7 @@ class ChangesetGraph(object):
         # instead use a heap to keep things coming out in order.  But
         # I highly doubt that this will be a bottleneck, so here we
         # go.
-        nopred_nodes.sort(lambda a, b: cmp(a.time_range, b.time_range))
+        nopred_nodes.sort()
       yield (node.id, node.time_range)
 
   def _find_cycle(self):
