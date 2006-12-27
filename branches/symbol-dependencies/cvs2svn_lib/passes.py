@@ -419,14 +419,17 @@ class InitializeChangesetsPass(Pass):
         # if any:
         if changeset:
           yield SymbolChangeset(
-              self.changeset_key_generator.gen_id(), changeset)
+              self.changeset_key_generator.gen_id(),
+              Ctx()._symbol_db.get_symbol(symbol_id), changeset)
           changeset = []
         old_symbol_id = symbol_id
       changeset.append(cvs_item_id)
 
     # Finish up the last changeset, if any:
     if changeset:
-      yield SymbolChangeset(self.changeset_key_generator.gen_id(), changeset)
+      yield SymbolChangeset(
+          self.changeset_key_generator.gen_id(),
+          Ctx()._symbol_db.get_symbol(symbol_id), changeset)
 
   def compare_items(a, b):
       return (

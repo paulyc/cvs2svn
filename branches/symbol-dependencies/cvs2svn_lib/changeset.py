@@ -151,6 +151,10 @@ class OrderedChangeset(Changeset):
 class SymbolChangeset(Changeset):
   """A Changeset consisting of CVSSymbols."""
 
+  def __init__(self, id, symbol, cvs_item_ids):
+    Changeset.__init__(self, id, cvs_item_ids)
+    self.symbol = symbol
+
   def create_graph_node(self):
     pred_ids = set()
     succ_ids = set()
@@ -165,9 +169,17 @@ class SymbolChangeset(Changeset):
     return ChangesetGraphNode(self.id, TimeRange(), pred_ids, succ_ids)
 
   def create_split_changeset(self, id, cvs_item_ids):
-    return SymbolChangeset(id, cvs_item_ids)
+    return SymbolChangeset(id, self.symbol, cvs_item_ids)
+
+  def __getstate__(self):
+    return Changeset.__getstate__(self) + (self.symbol.id,)
+
+  def __setstate__(self, state):
+    Changeset.__setstate__(self, state[:-1])
+    symbol_id = state[-1]
+    self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 
   def __str__(self):
-    return 'SymbolChangeset<%x>' % (self.id,)
+    return 'SymbolChangeset<%x>("%s")' % (self.id, self.symbol,)
 
 
