@@ -128,7 +128,6 @@ class SVNCommitCreator:
     # branch, because we only fill a branch once per primary SVNCommit.
     # This list tracks which symbols we've already counted.
     accounted_for_symbols = set()
-    secondary_commits = []
 
     for cvs_rev in cvs_revs:
       # If a commit is on a branch, we must ensure that the branch path
@@ -140,10 +139,8 @@ class SVNCommitCreator:
           and cvs_rev.lod.symbol not in self._done_symbols \
           and self._fill_needed(cvs_rev):
         symbol = cvs_rev.lod.symbol
-        secondary_commits.append(SVNSymbolCommit(symbol))
+        yield SVNSymbolCommit(symbol)
         accounted_for_symbols.add(symbol)
-
-    return secondary_commits
 
   def _delete_needed(self, cvs_rev):
     """Return True iff the specified delete CVS_REV is really needed.
@@ -240,7 +237,7 @@ class SVNCommitCreator:
     return svn_commit, default_branch_cvs_revisions
 
   def _post_commit(self, cvs_revs, motivating_revnum):
-    """Generates any SVNCommits that we can perform following CVS_REVS.
+    """Generate any SVNCommits that we can perform following CVS_REVS.
 
     That is, handle non-trunk default branches.  Sometimes an RCS file
     has a non-trunk default branch, so a commit on that default branch
@@ -257,9 +254,7 @@ class SVNCommitCreator:
       for cvs_rev in cvs_revs:
         Ctx()._symbolings_logger.log_default_branch_closing(
             cvs_rev, svn_commit.revnum)
-      return [svn_commit]
-    else:
-      return []
+      yield svn_commit
 
   def _process_revision_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
