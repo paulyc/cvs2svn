@@ -355,7 +355,7 @@ class SVNRepositoryMirror:
     """Fill a branch without any contents.
 
     The first commit to a branch was to add a file on the branch.
-    Create the branch by copying trunk from the our current revision
+    Create the branch by copying trunk from our current revision
     number minus 1."""
 
     dest_path = symbol.get_path()
