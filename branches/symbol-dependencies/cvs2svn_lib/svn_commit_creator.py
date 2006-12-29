@@ -284,7 +284,6 @@ class SVNCommitCreator:
           for cvs_rev in cvs_revs
           if not isinstance(cvs_rev.lod, Branch)]
 
-    if Ctx().trunk_only:
       # When trunk-only, only do the primary commit:
       self._commit(timestamp, cvs_revs)
     else:
@@ -318,7 +317,6 @@ class SVNCommitCreator:
         svn_commit.date = timestamp
         self._persistence_manager.put_svn_commit(svn_commit)
 
-    if not Ctx().trunk_only:
       self._commit_symbols(changeset.id, timestamp)
 
   def _process_symbol_changeset(self, changeset, timestamp):
