@@ -286,7 +286,7 @@ class SVNPrimaryCommit(SVNCommit, SVNRevisionCommit):
 
 
 class SVNSymbolCommit(SVNCommit):
-  def __init__(self, symbol, date=0, revnum=None):
+  def __init__(self, symbol, date, revnum=None):
     SVNCommit.__init__(
         self, 'copying to tag/branch %r' % symbol.name, date, revnum)
 
@@ -340,8 +340,8 @@ class SVNSymbolCommit(SVNCommit):
 
 
 class SVNPostCommit(SVNCommit, SVNRevisionCommit):
-  def __init__(self, motivating_revnum, cvs_revs, revnum=None):
-    SVNCommit.__init__(self, 'post-commit default branch(es)', 0, revnum)
+  def __init__(self, motivating_revnum, cvs_revs, date):
+    SVNCommit.__init__(self, 'post-commit default branch(es)', date)
     SVNRevisionCommit.__init__(self, cvs_revs)
 
     # The subversion revision number of the *primary* commit where the

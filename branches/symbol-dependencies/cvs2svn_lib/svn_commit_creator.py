@@ -118,7 +118,7 @@ class SVNCommitCreator:
           cvs_rev.lod,
           self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
 
-  def _pre_commit(self, cvs_revs):
+  def _pre_commit(self, cvs_revs, timestamp):
     """Generate any SVNCommits that must exist before the main commit."""
 
     # There may be multiple cvs_revs in this commit that would cause
@@ -139,7 +139,8 @@ class SVNCommitCreator:
           and cvs_rev.lod.symbol not in self._done_symbols \
           and self._fill_needed(cvs_rev):
         symbol = cvs_rev.lod.symbol
-        yield SVNSymbolCommit(symbol)
+        self._persistence_manager.put_svn_commit(
+            SVNSymbolCommit(symbol, timestamp))
         accounted_for_symbols.add(symbol)
 
   def _delete_needed(self, cvs_rev):
@@ -236,7 +237,7 @@ class SVNCommitCreator:
 
     return svn_commit, default_branch_cvs_revisions
 
-  def _post_commit(self, cvs_revs, motivating_revnum):
+  def _post_commit(self, cvs_revs, motivating_revnum, timestamp):
     """Generate any SVNCommits that we can perform following CVS_REVS.
 
     That is, handle non-trunk default branches.  Sometimes an RCS file
@@ -250,11 +251,11 @@ class SVNCommitCreator:
     # Only generate a commit if we have default branch revs
     if cvs_revs:
       # Generate an SVNCommit for all of our default branch cvs_revs.
-      svn_commit = SVNPostCommit(motivating_revnum, cvs_revs)
+      svn_commit = SVNPostCommit(motivating_revnum, cvs_revs, timestamp)
       for cvs_rev in cvs_revs:
         Ctx()._symbolings_logger.log_default_branch_closing(
             cvs_rev, svn_commit.revnum)
-      yield svn_commit
+      self._persistence_manager.put_svn_commit(svn_commit)
 
   def _process_revision_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
@@ -282,12 +283,7 @@ class SVNCommitCreator:
       # When trunk-only, only do the primary commit:
       self._commit(timestamp, cvs_revs)
     else:
-      # This is a list of all non-primary SVNCommits motivated by the
-      # main commit.  We gather these so that we can set their dates to
-      # the same date as the primary commit.
-      secondary_commits = []
-
-      secondary_commits.extend(self._pre_commit(cvs_revs))
+      self._pre_commit(cvs_revs, timestamp)
 
       # If some of the commits in this txn happened on a non-trunk
       # default branch, then those files will have to be copied into
@@ -304,13 +300,8 @@ class SVNCommitCreator:
       motivating_commit, default_branch_cvs_revisions = self._commit(
           timestamp, cvs_revs)
 
-      secondary_commits.extend(
-          self._post_commit(
-              default_branch_cvs_revisions, motivating_commit.revnum))
-
-      for svn_commit in secondary_commits:
-        svn_commit.date = timestamp
-        self._persistence_manager.put_svn_commit(svn_commit)
+      self._post_commit(
+          default_branch_cvs_revisions, motivating_commit.revnum, timestamp)
 
       self._commit_symbols(changeset.id, timestamp)
 
