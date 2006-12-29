@@ -90,58 +90,58 @@ class SVNCommitCreator:
     for the detailed rules."""
 
     if cvs_rev.first_on_branch_id is None:
-      # Only commits that are the first on their branch can force fills:
+      # Only commits that are the first on their branch can force
+      # fills:
       return False
-
-    # It should be the case that when we have a file F that is added on
-    # branch B (thus, F on trunk is in state 'dead'), we generate an
-    # SVNCommit to fill B iff the branch has never been filled before.
-    if cvs_rev.op == OP_ADD:
-      # Fill the branch only if it has never been filled before:
+    elif cvs_rev.op == OP_ADD:
+      # If file F was added on branch B (thus, F on trunk is in state
+      # 'dead'), fill B iff the branch has never been filled before.
       return not self._persistence_manager.filled(cvs_rev.lod)
     elif cvs_rev.op == OP_CHANGE:
-      # We need to fill only if the last commit affecting the file has
-      # not been filled yet:
+      # We need to fill iff the branch has not been filled since the
+      # source revision source was committed:
       return not self._persistence_manager.filled_since(
           cvs_rev.lod,
           self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
     elif cvs_rev.op == OP_DELETE:
-      # If the previous revision was also a delete, we don't need to
-      # fill it - and there's nothing to copy to the branch, so we can't
-      # anyway.  No one seems to know how to get CVS to produce the
-      # double delete case, but it's been observed.
       if Ctx()._cvs_items_db[cvs_rev.prev_id].op == OP_DELETE:
+        # The source revision was also a delete, so we don't need to
+        # fill the branch - and there's nothing to copy to the branch,
+        # so we can't anyway.  No one seems to know how to get CVS to
+        # produce the double delete case, but it's been observed.
         return False
-      # Other deletes need fills only if the last commit affecting the
-      # file has not been filled yet:
-      return not self._persistence_manager.filled_since(
-          cvs_rev.lod,
-          self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
+      else:
+        # Otherwise, we need to fill iff the branch has not been filled
+        # since the source revision was committed:
+        return not self._persistence_manager.filled_since(
+            cvs_rev.lod,
+            self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
 
   def _pre_commit(self, cvs_revs, timestamp):
     """Generate any SVNCommits that must exist before the main commit."""
 
     # There may be multiple cvs_revs in this commit that would cause
     # branch B to be filled, but we only want to fill B once.  On the
-    # other hand, there might be multiple branches committed on in this
-    # commit.  Whatever the case, we should count exactly one commit per
-    # branch, because we only fill a branch once per primary SVNCommit.
-    # This list tracks which symbols we've already counted.
-    accounted_for_symbols = set()
+    # other hand, there might be multiple branches committed on in
+    # this commit.  Whatever the case, we should count exactly one
+    # commit per branch, because we only fill a branch once per
+    # primary SVNCommit.  This set tracks which symbols we've already
+    # filled.
+    filled_symbols = set()
 
     for cvs_rev in cvs_revs:
-      # If a commit is on a branch, we must ensure that the branch path
-      # being committed exists (in HEAD of the Subversion repository).
-      # If it doesn't exist, we will need to fill the branch.  After the
-      # fill, the path on which we're committing will exist.
+      # If a commit is on a branch, we must ensure that the branch
+      # path being committed exists (in HEAD of the Subversion
+      # repository).  If it doesn't exist, we will need to fill the
+      # branch.  After the fill, the path on which we're committing
+      # will exist.
       if isinstance(cvs_rev.lod, Branch) \
-          and cvs_rev.lod.symbol not in accounted_for_symbols \
+          and cvs_rev.lod.symbol not in filled_symbols \
           and cvs_rev.lod.symbol not in self._done_symbols \
           and self._fill_needed(cvs_rev):
-        symbol = cvs_rev.lod.symbol
         self._persistence_manager.put_svn_commit(
-            SVNSymbolCommit(symbol, timestamp))
-        accounted_for_symbols.add(symbol)
+            SVNSymbolCommit(cvs_rev.lod.symbol, timestamp))
+        filled_symbols.add(cvs_rev.lod.symbol)
 
   def _delete_needed(self, cvs_rev):
     """Return True iff the specified delete CVS_REV is really needed.
