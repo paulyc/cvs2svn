@@ -34,6 +34,7 @@ from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.line_of_development import Branch
 from cvs2svn_lib.database import Database
 from cvs2svn_lib.changeset import OrderedChangeset
+from cvs2svn_lib.changeset import SymbolChangeset
 from cvs2svn_lib.svn_commit import SVNCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
 from cvs2svn_lib.svn_commit import SVNSymbolCommit
@@ -320,6 +321,11 @@ class SVNCommitCreator:
     if not Ctx().trunk_only:
       self._commit_symbols(changeset.id, timestamp)
 
+  def _process_symbol_changeset(self, changeset, timestamp):
+    """Process SymbolChangeset CHANGESET."""
+
+    pass
+
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.
 
@@ -328,5 +334,9 @@ class SVNCommitCreator:
 
     if isinstance(changeset, OrderedChangeset):
       self._process_revision_changeset(changeset, timestamp)
+    elif isinstance(changeset, SymbolChangeset):
+      self._process_symbol_changeset(changeset, timestamp)
+    else:
+      raise TypeError('Illegal changeset %r' % changeset)
 
 
