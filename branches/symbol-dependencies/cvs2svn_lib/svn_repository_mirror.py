@@ -382,7 +382,8 @@ class SVNRepositoryMirror:
     In the youngest revision of the repository, DEST_PATH's parent
     *must* exist, but DEST_PATH *must not* exist.
 
-    Return the new node at DEST_PATH."""
+    Return the new node at DEST_PATH.  Note that this node is not
+    necessarily writable, though its parent node necessarily is."""
 
     # Get the node of our src_path
     src_node = self._open_readonly_node(src_path, src_revnum)
@@ -403,9 +404,10 @@ class SVNRepositoryMirror:
     dest_parent_node[dest_basename] = src_node
     self._invoke_delegates('copy_path', src_path, dest_path, src_revnum)
 
-    # Yes sir, src_key and src_contents are also the contents of the
-    # destination.  This is a cheap copy, remember!  :-)
-    return src_node
+    # This is a cheap copy, so src_node has the same contents as the
+    # new destination node.  But we have to get it from its parent
+    # node again so that its path is correct.
+    return dest_parent_node[dest_basename]
 
   def fill_symbol(self, symbol):
     """Perform all copies necessary to create as much of the the tag
