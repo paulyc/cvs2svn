@@ -39,6 +39,25 @@ from cvs2svn_lib.svn_revision_range import SVNRevisionRange
 from cvs2svn_lib.svn_commit_item import SVNCommitItem
 
 
+class _MirrorNode:
+  """Represent a node within the SVNRepositoryMirror.
+
+  For space efficiency, SVNRepositoryMirror does not actually use this
+  class to store the data internally, but rather constructs instances
+  of this class on demand."""
+
+  def __init__(self, repo, key, entries):
+    # The SVNRepositoryMirror containing this directory:
+    self.repo = repo
+
+    # The key of this directory:
+    self.key = key
+
+    # The entries within this directory (a map from component name to
+    # node):
+    self.entries = entries
+
+
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
   SVNCommit at a time.  The mirror is skeletal; it does not contain
@@ -54,7 +73,7 @@ class SVNRepositoryMirror:
 
   The _nodes_db database only has the keys for old revisions.  The
   revision that is being contructed is kept in memory in the new_nodes
-  hash which is cheap to access.
+  hash, which is cheap to access.
 
   You must invoke start_commit() between SVNCommits.
 
@@ -104,7 +123,7 @@ class SVNRepositoryMirror:
     # Start at revision 0 without a root node.  It will be created
     # by _open_writable_root_node.
     self.youngest = 0
-    self.new_root_key = None
+    self._new_root_node = None
     self.new_nodes = { }
 
     if not Ctx().trunk_only:
@@ -114,7 +133,7 @@ class SVNRepositoryMirror:
     """Start a new commit."""
 
     self.youngest = revnum
-    self.new_root_key = None
+    self._new_root_node = None
     self.new_nodes = { }
 
     self._invoke_delegates('start_commit', revnum, revprops)
@@ -123,13 +142,13 @@ class SVNRepositoryMirror:
     """Called at the end of each commit.  This method copies the newly
     created nodes to the on-disk nodes db."""
 
-    if self.new_root_key is None:
+    if self._new_root_node is None:
       # No changes were made in this revision, so we make the root node
       # of the new revision be the same as the last one.
       self._svn_revs_root_nodes[self.youngest] = \
           self._svn_revs_root_nodes[self.youngest - 1]
     else:
-      self._svn_revs_root_nodes[self.youngest] = self.new_root_key
+      self._svn_revs_root_nodes[self.youngest] = self._new_root_node.key
       # Copy the new nodes to the _nodes_db
       for key, value in self.new_nodes.items():
         self._nodes_db[key] = value
@@ -137,61 +156,67 @@ class SVNRepositoryMirror:
     self._invoke_delegates('end_commit')
 
   def _get_node(self, key):
-    """Returns the node contents for KEY which may refer to either
-    self._nodes_db or self.new_nodes."""
+    """Returns the node for KEY.
+
+    The node might be read from either self._nodes_db or
+    self.new_nodes.  Return an instance of _MirrorNode."""
 
     contents = self.new_nodes.get(key, None)
-    if contents is not None:
-      return contents
-    else:
-      return self._nodes_db[key]
+    if contents is None:
+      contents = self._nodes_db[key]
+    return _MirrorNode(self, key, contents)
 
   def _open_readonly_node(self, path, revnum):
     """Open a readonly node for PATH at revision REVNUM.
 
-    Return the node key if the path exists, else None."""
+    Return an instance of _MirrorNode if the path exists, else None."""
 
     # Get the root key
     if revnum == self.youngest:
-      if self.new_root_key is None:
+      if self._new_root_node is None:
         node_key = self._svn_revs_root_nodes[self.youngest - 1]
       else:
-        node_key = self.new_root_key
+        node_key = self._new_root_node.key
     else:
       node_key = self._svn_revs_root_nodes[revnum]
 
+    node = self._get_node(node_key)
     for component in path.split('/'):
-      node_contents = self._get_node(node_key)
-      node_key = node_contents.get(component, None)
+      node_key = node.entries.get(component, None)
       if node_key is None:
         return None
+      node = self._get_node(node_key)
 
-    return node_key
+    return node
 
   def _open_writable_root_node(self):
-    """Open a writable root node.  The current root node is returned
-    immeditely if it is already writable.  If not, create a new one by
-    copying the contents of the root node of the previous version."""
+    """Open and return a writable root node.
 
-    if self.new_root_key is not None:
-      return self.new_root_key, self.new_nodes[self.new_root_key]
+    The current root node is returned immeditely if it is already
+    writable.  If not, create a new one by copying the contents of the
+    root node of the previous version."""
 
-    if self.youngest < 2:
-      new_contents = { }
-    else:
-      new_contents = self._nodes_db[
-          self._svn_revs_root_nodes[self.youngest - 1]]
-    self.new_root_key = self.key_generator.gen_id()
-    self.new_nodes = { self.new_root_key: new_contents }
+    if self._new_root_node is None:
+      # Root node still has to be created for this revision:
+      if self.youngest == 1:
+        new_contents = { }
+      else:
+        new_contents = self._nodes_db[
+            self._svn_revs_root_nodes[self.youngest - 1]]
+      self._new_root_node = _MirrorNode(
+          self, self.key_generator.gen_id(), new_contents)
+      self.new_nodes = { self._new_root_node.key : new_contents }
 
-    return self.new_root_key, new_contents
+    return self._new_root_node
 
   def _open_writable_node(self, svn_path, create):
     """Open a writable node for the path SVN_PATH.
 
-    Iff CREATE is True, create SVN_PATH and any missing directories."""
+    Iff CREATE is True, create SVN_PATH and any missing directories.
+    Return an instance of _MirrorNode, or None if SVN_PATH doesn't
+    exist and CREATE is not set."""
 
-    key, contents = self._open_writable_root_node()
+    node = self._open_writable_root_node()
 
     # Walk down the path, one node at a time.
     path_so_far = None
@@ -199,7 +224,7 @@ class SVNRepositoryMirror:
     for i in range(len(components)):
       component = components[i]
       path_so_far = path_join(path_so_far, component)
-      new_key = contents.get(component, None)
+      new_key = node.entries.get(component, None)
       if new_key is not None:
         # The component exists.
         new_contents = self.new_nodes.get(new_key, None)
@@ -213,23 +238,23 @@ class SVNRepositoryMirror:
           new_contents = self._nodes_db[new_key]
           new_key = self.key_generator.gen_id()
           self.new_nodes[new_key] = new_contents
-          contents[component] = new_key
+          node.entries[component] = new_key
       elif create:
         # The component does not exist, so we create it.
         new_contents = { }
         new_key = self.key_generator.gen_id()
         self.new_nodes[new_key] = new_contents
-        contents[component] = new_key
+        node.entries[component] = new_key
         if i < len(components) - 1:
           self._invoke_delegates('mkdir', path_so_far)
       else:
         # The component does not exist and we are not instructed to
         # create it, so we give up.
-        return None, None
+        return None
 
-      key, contents = new_key, new_contents
+      node = _MirrorNode(self, new_key, new_contents)
 
-    return key, contents
+    return node
 
   def path_exists(self, path):
     """Return True iff PATH exists in self.youngest of the repository mirror.
@@ -238,13 +263,13 @@ class SVNRepositoryMirror:
 
     return self._open_readonly_node(path, self.youngest) is not None
 
-  def _fast_delete_path(self, parent_path, parent_contents, component):
+  def _fast_delete_path(self, parent_path, parent_node, component):
     """Delete COMPONENT from the parent direcory PARENT_PATH with the
-    contents PARENT_CONTENTS.  Do nothing if COMPONENT does not exist
-    in PARENT_CONTENTS."""
+    node PARENT_NODE.  Do nothing if COMPONENT does not exist in
+    PARENT_NODE."""
 
-    if component in parent_contents:
-      del parent_contents[component]
+    if component in parent_node.entries:
+      del parent_node.entries[component]
       self._invoke_delegates('delete_path', path_join(parent_path, component))
 
   def delete_path(self, svn_path, should_prune=False):
@@ -267,15 +292,15 @@ class SVNRepositoryMirror:
         return
 
     (parent_path, entry,) = path_split(svn_path)
-    parent_key, parent_contents = self._open_writable_node(parent_path, False)
+    parent_node = self._open_writable_node(parent_path, False)
 
-    self._fast_delete_path(parent_path, parent_contents, entry)
+    self._fast_delete_path(parent_path, parent_node, entry)
     # The following recursion makes pruning an O(n^2) operation in the
     # worst case (where n is the depth of SVN_PATH), but the worst case
     # is probably rare, and the constant cost is pretty low.  Another
     # drawback is that we issue a delete for each path and not just
     # a single delete for the topmost directory pruned.
-    if should_prune and len(parent_contents) == 0:
+    if should_prune and len(parent_node.entries) == 0:
       self.delete_path(parent_path, True)
 
   def mkdir(self, path):
@@ -305,33 +330,30 @@ class SVNRepositoryMirror:
     In the youngest revision of the repository, DEST_PATH's parent
     *must* exist, but DEST_PATH *must not* exist.
 
-    Return the node key and the contents of the new node at DEST_PATH
-    as a dictionary."""
+    Return the new node at DEST_PATH."""
 
-    # Get the contents of the node of our src_path
-    src_key = self._open_readonly_node(src_path, src_revnum)
-    src_contents = self._get_node(src_key)
+    # Get the node of our src_path
+    src_node = self._open_readonly_node(src_path, src_revnum)
 
     # Get the parent path and the base path of the dest_path
     (dest_parent, dest_basename,) = path_split(dest_path)
-    dest_parent_key, dest_parent_contents = \
-        self._open_writable_node(dest_parent, False)
+    dest_parent_node = self._open_writable_node(dest_parent, False)
 
-    if dest_parent_key is None:
+    if dest_parent_node is None:
       raise self.SVNRepositoryMirrorParentMissingError(
           "Attempt to add path '%s' to repository mirror, "
           "but its parent directory doesn't exist in the mirror." % dest_path)
-    elif dest_basename in dest_parent_contents:
+    elif dest_basename in dest_parent_node.entries:
       raise self.SVNRepositoryMirrorPathExistsError(
           "Attempt to add path '%s' to repository mirror "
           "when it already exists in the mirror." % dest_path)
 
-    dest_parent_contents[dest_basename] = src_key
+    dest_parent_node.entries[dest_basename] = src_node.key
     self._invoke_delegates('copy_path', src_path, dest_path, src_revnum)
 
     # Yes sir, src_key and src_contents are also the contents of the
     # destination.  This is a cheap copy, remember!  :-)
-    return src_key, src_contents
+    return src_node
 
   def fill_symbol(self, symbol):
     """Perform all copies necessary to create as much of the the tag
@@ -353,8 +375,8 @@ class SVNRepositoryMirror:
       self._fill_empty_branch(symbol)
     else:
       dest_prefix = symbol.get_path()
-      dest_key = self._open_writable_node(dest_prefix, False)[0]
-      self._fill(symbol_fill, dest_prefix, dest_key, sources)
+      dest_node = self._open_writable_node(dest_prefix, False)
+      self._fill(symbol_fill, dest_prefix, dest_node, sources)
 
   def _fill_empty_branch(self, symbol):
     """Fill a branch without any contents.
@@ -374,37 +396,35 @@ class SVNRepositoryMirror:
           )
 
     source_path = symbol.project.trunk_path
-    entries = self.copy_path(source_path, dest_path, self.youngest - 1)[1]
+    node = self.copy_path(source_path, dest_path, self.youngest - 1)
     # Now since we've just copied trunk to a branch that's
     # *supposed* to be empty, we delete any entries in the
     # copied directory.
-    for entry in entries:
-      del_path = dest_path + '/' + entry
+    for entry in node.entries:
       # Delete but don't prune.
-      self.delete_path(del_path)
+      self.delete_path(dest_path + '/' + entry)
 
-  def _prune_extra_entries(self, dest_path, dest_key, dest_entries,
-                           src_entries):
-    """Delete any entries in DEST_ENTRIES that are not in SRC_ENTRIES.
+  def _prune_extra_entries(self, dest_path, dest_node, src_entries):
+    """Delete any entries in DEST_NODE that are not in SRC_ENTRIES.
 
     This might require creating a new writable node, so return a
-    possibly-modified (dest_key, dest_entries)"""
+    possibly-modified dest_node."""
 
     delete_list = [
         entry
-        for entry in dest_entries
+        for entry in dest_node.entries
         if entry not in src_entries]
     if delete_list:
-      if dest_key not in self.new_nodes:
-        dest_key, dest_entries = self._open_writable_node(dest_path, True)
+      if dest_node.key not in self.new_nodes:
+        dest_node = self._open_writable_node(dest_path, True)
       # Sort the delete list so that the output is in a consistent
       # order:
       delete_list.sort()
       for entry in delete_list:
-        self._fast_delete_path(dest_path, dest_entries, entry)
-    return (dest_key, dest_entries)
+        self._fast_delete_path(dest_path, dest_node, entry)
+    return dest_node
 
-  def _fill(self, symbol_fill, dest_prefix, dest_key, sources,
+  def _fill(self, symbol_fill, dest_prefix, dest_node, sources,
             path = None, parent_source_prefix = None,
             preferred_revnum = None, prune_ok = False):
     """Fill the tag or branch at DEST_PREFIX + PATH with items from
@@ -450,7 +470,7 @@ class SVNRepositoryMirror:
 
     # Figure out if we shall copy to this destination and delete any
     # destination path that is in the way.
-    if dest_key is None:
+    if dest_node is None:
       # The destination does not exist at all, so it definitely has to
       # be copied:
       do_copy = True
@@ -466,11 +486,8 @@ class SVNRepositoryMirror:
       do_copy = False
 
     if do_copy:
-      dest_key, dest_entries = \
-          self.copy_path(src_path, dest_path, copy_source.revnum)
+      dest_node = self.copy_path(src_path, dest_path, copy_source.revnum)
       prune_ok = True
-    else:
-      dest_entries = self._get_node(dest_key)
 
     # Create the SRC_ENTRIES hash from SOURCES.  The keys are path
     # elements and the values are lists of FillSource classes where
@@ -484,15 +501,18 @@ class SVNRepositoryMirror:
             FillSource(source.project, source.prefix, node))
 
     if prune_ok:
-      (dest_key, dest_entries) = self._prune_extra_entries(
-          dest_path, dest_key, dest_entries, src_entries)
+      dest_node = self._prune_extra_entries(dest_path, dest_node, src_entries)
 
     # Recurse into the SRC_ENTRIES keys sorted in alphabetical order.
     src_keys = src_entries.keys()
     src_keys.sort()
     for src_key in src_keys:
-      next_dest_key = dest_entries.get(src_key, None)
-      self._fill(symbol_fill, dest_prefix, next_dest_key,
+      next_dest_key = dest_node.entries.get(src_key, None)
+      if next_dest_key is None:
+        next_dest_node = None
+      else:
+        next_dest_node = self._get_node(next_dest_key)
+      self._fill(symbol_fill, dest_prefix, next_dest_node,
                  src_entries[src_key], path_join(path, src_key),
                  copy_source.prefix, sources[0].revnum, prune_ok)
 
