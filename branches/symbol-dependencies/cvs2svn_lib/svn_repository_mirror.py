@@ -249,8 +249,8 @@ class SVNRepositoryMirror:
         # The component exists.
         new_node = self._get_node(new_key)
         if not isinstance(new_node, _WritableMirrorNode):
-          # Create a new node by copying the old node from the
-          # _nodes_db and giving it a new key:
+          # Create a new node, with entries initialized to be the same
+          # as those of the old node:
           new_node = self._create_node(new_node.entries)
           node.entries[component] = new_node.key
       elif create:
@@ -445,8 +445,8 @@ class SVNRepositoryMirror:
     DEST_PREFIX is the prefix of the destination directory, e.g.
     'tags/my_tag' or 'branches/my_branch', and SOURCES is a list of
     FillSource classes that are candidates to be copied to the
-    destination.  DEST_KEY is the key in self._nodes_db to the
-    destination, or None if the destination does not yet exist.
+    destination.  DEST_NODE is the node of the destination, or None if
+    the destination does not yet exist.
 
     PATH is the path relative to DEST_PREFIX.  If PATH is None, we
     are at the top level, e.g. 'tags/my_tag'.
