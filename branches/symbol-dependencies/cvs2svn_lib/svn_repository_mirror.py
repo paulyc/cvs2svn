@@ -112,7 +112,8 @@ class SVNRepositoryMirror:
   revision that is being contructed is kept in memory in the
   _new_nodes map, which is cheap to access.
 
-  You must invoke start_commit() between SVNCommits.
+  You must invoke start_commit() before each SVNCommit and
+  end_commit() afterwards.
 
   *** WARNING *** Path arguments to methods in this class MUST NOT
       have leading or trailing slashes."""
@@ -174,6 +175,11 @@ class SVNRepositoryMirror:
     self._new_nodes = { }
 
     self._invoke_delegates('start_commit', revnum, revprops)
+
+    if revnum == 1:
+      # For the first revision, we have to create the root directory
+      # out of thin air:
+      self._new_root_node = self._create_node()
 
   def end_commit(self):
     """Called at the end of each commit.  This method copies the newly
@@ -244,12 +250,9 @@ class SVNRepositoryMirror:
 
     if self._new_root_node is None:
       # Root node still has to be created for this revision:
-      if self._youngest == 1:
-        self._new_root_node = self._create_node()
-      else:
-        old_root_node = self._get_node(
-            self._svn_revs_root_nodes[self._youngest - 1])
-        self._new_root_node = self._create_node(old_root_node.entries)
+      old_root_node = self._get_node(
+          self._svn_revs_root_nodes[self._youngest - 1])
+      self._new_root_node = self._create_node(old_root_node.entries)
 
     return self._new_root_node
 
