@@ -46,13 +46,20 @@ class _MirrorNode:
   where component is the path name component of an item within this
   node (i.e., a file within this directory).
 
+  Instances also have a particular path, even though the same node
+  content can have multiple paths within the same repository.  The
+  path member indicates via what path the node was accessed.
+
   For space efficiency, SVNRepositoryMirror does not actually use this
   class to store the data internally, but rather constructs instances
   of this class on demand."""
 
-  def __init__(self, repo, key, entries):
+  def __init__(self, repo, path, key, entries):
     # The SVNRepositoryMirror containing this directory:
     self.repo = repo
+
+    # The path of this node within the repository:
+    self.path = path
 
     # The key of this directory:
     self.key = key
@@ -60,6 +67,9 @@ class _MirrorNode:
     # The entries within this directory (a map from component name to
     # node):
     self.entries = entries
+
+  def get_subpath(self, *components):
+    return path_join(self.path, *components)
 
   def __getitem__(self, component):
     """Return the _MirrorNode associated with the specified subnode.
@@ -70,7 +80,7 @@ class _MirrorNode:
     if key is None:
       return None
     else:
-      return self.repo._get_node(key)
+      return self.repo._get_node(self.get_subpath(component), key)
 
   def __contains__(self, component):
     return component in self.entries
@@ -179,7 +189,7 @@ class SVNRepositoryMirror:
     if revnum == 1:
       # For the first revision, we have to create the root directory
       # out of thin air:
-      self._new_root_node = self._create_node()
+      self._new_root_node = self._create_node('')
 
   def end_commit(self):
     """Called at the end of each commit.  This method copies the newly
@@ -198,26 +208,29 @@ class SVNRepositoryMirror:
 
     self._invoke_delegates('end_commit')
 
-  def _create_node(self, entries=None):
+  def _create_node(self, path, entries=None):
     if entries is None:
       entries = {}
     else:
       entries = entries.copy()
-    node = _WritableMirrorNode(self, self._key_generator.gen_id(), entries)
+
+    node = _WritableMirrorNode(
+        self, path, self._key_generator.gen_id(), entries)
+
     self._new_nodes[node.key] = node.entries
     return node
 
-  def _get_node(self, key):
-    """Returns the node for KEY.
+  def _get_node(self, path, key):
+    """Returns the node for PATH and key KEY.
 
     The node might be read from either self._nodes_db or
     self._new_nodes.  Return an instance of _MirrorNode."""
 
     contents = self._new_nodes.get(key, None)
     if contents is not None:
-      return _WritableMirrorNode(self, key, contents)
+      return _WritableMirrorNode(self, path, key, contents)
     else:
-      return _ReadOnlyMirrorNode(self, key, self._nodes_db[key])
+      return _ReadOnlyMirrorNode(self, path, key, self._nodes_db[key])
 
   def _open_readonly_node(self, path, revnum):
     """Open a readonly node for PATH at revision REVNUM.
@@ -233,7 +246,7 @@ class SVNRepositoryMirror:
     else:
       node_key = self._svn_revs_root_nodes[revnum]
 
-    node = self._get_node(node_key)
+    node = self._get_node('', node_key)
     for component in path.split('/'):
       node = node[component]
       if node is None:
@@ -251,8 +264,8 @@ class SVNRepositoryMirror:
     if self._new_root_node is None:
       # Root node still has to be created for this revision:
       old_root_node = self._get_node(
-          self._svn_revs_root_nodes[self._youngest - 1])
-      self._new_root_node = self._create_node(old_root_node.entries)
+          '', self._svn_revs_root_nodes[self._youngest - 1])
+      self._new_root_node = self._create_node('', old_root_node.entries)
 
     return self._new_root_node
 
@@ -266,25 +279,23 @@ class SVNRepositoryMirror:
     node = self._open_writable_root_node()
 
     # Walk down the path, one node at a time.
-    path_so_far = None
     components = svn_path.split('/')
     for i in range(len(components)):
       component = components[i]
-      path_so_far = path_join(path_so_far, component)
       new_node = node[component]
       if new_node is not None:
         # The component exists.
         if not isinstance(new_node, _WritableMirrorNode):
           # Create a new node, with entries initialized to be the same
           # as those of the old node:
-          new_node = self._create_node(new_node.entries)
+          new_node = self._create_node(new_node.path, new_node.entries)
           node[component] = new_node
       elif create:
         # The component does not exist, so we create it.
-        new_node = self._create_node()
+        new_node = self._create_node(path_join(node.path, component))
         node[component] = new_node
         if i < len(components) - 1:
-          self._invoke_delegates('mkdir', path_so_far)
+          self._invoke_delegates('mkdir', new_node.path)
       else:
         # The component does not exist and we are not instructed to
         # create it, so we give up.
