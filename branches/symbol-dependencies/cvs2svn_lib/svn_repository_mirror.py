@@ -189,30 +189,35 @@ class SVNRepositoryMirror:
 
     Iff CREATE is True, create SVN_PATH and any missing directories."""
 
-    parent_key, parent_contents = self._open_writable_root_node()
+    key, contents = self._open_writable_root_node()
 
-    # Walk up the path, one node at a time.
+    # Walk down the path, one node at a time.
     path_so_far = None
     components = svn_path.split('/')
     for i in range(len(components)):
       component = components[i]
       path_so_far = path_join(path_so_far, component)
-      this_key = parent_contents.get(component, None)
-      if this_key is not None:
+      new_key = contents.get(component, None)
+      if new_key is not None:
         # The component exists.
-        this_contents = self.new_nodes.get(this_key, None)
-        if this_contents is None:
-          # Suck the node from the _nodes_db, but update the key
-          this_contents = self._nodes_db[this_key]
-          this_key = self.key_generator.gen_id()
-          self.new_nodes[this_key] = this_contents
-          parent_contents[component] = this_key
+        new_contents = self.new_nodes.get(new_key, None)
+        if new_contents is not None:
+          # This node was created in this revision, therefore it is
+          # already writable.
+          pass
+        else:
+          # Create a new node by copying the old node from the
+          # _nodes_db and giving it a new key:
+          new_contents = self._nodes_db[new_key]
+          new_key = self.key_generator.gen_id()
+          self.new_nodes[new_key] = new_contents
+          contents[component] = new_key
       elif create:
         # The component does not exist, so we create it.
-        this_contents = { }
-        this_key = self.key_generator.gen_id()
-        self.new_nodes[this_key] = this_contents
-        parent_contents[component] = this_key
+        new_contents = { }
+        new_key = self.key_generator.gen_id()
+        self.new_nodes[new_key] = new_contents
+        contents[component] = new_key
         if i < len(components) - 1:
           self._invoke_delegates('mkdir', path_so_far)
       else:
@@ -220,10 +225,9 @@ class SVNRepositoryMirror:
         # create it, so we give up.
         return None, None
 
-      parent_key = this_key
-      parent_contents = this_contents
+      key, contents = new_key, new_contents
 
-    return this_key, this_contents
+    return key, contents
 
   def path_exists(self, path):
     """Return True iff PATH exists in self.youngest of the repository mirror.
@@ -261,11 +265,7 @@ class SVNRepositoryMirror:
         return
 
     (parent_path, entry,) = path_split(svn_path)
-    if parent_path:
-      parent_key, parent_contents = \
-          self._open_writable_node(parent_path, False)
-    else:
-      parent_key, parent_contents = self._open_writable_root_node()
+    parent_key, parent_contents = self._open_writable_node(parent_path, False)
 
     self._fast_delete_path(parent_path, parent_contents, entry)
     # The following recursion makes pruning an O(n^2) operation in the
