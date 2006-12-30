@@ -58,6 +58,18 @@ class _MirrorNode:
     self.entries = entries
 
 
+class _ReadOnlyMirrorNode(_MirrorNode):
+  """Represent a read-only node within the SVNRepositoryMirror."""
+
+  pass
+
+
+class _WritableMirrorNode(_MirrorNode):
+  """Represent a writable node within the SVNRepositoryMirror."""
+
+  pass
+
+
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
   SVNCommit at a time.  The mirror is skeletal; it does not contain
@@ -155,6 +167,15 @@ class SVNRepositoryMirror:
 
     self._invoke_delegates('end_commit')
 
+  def _create_node(self, entries=None):
+    if entries is None:
+      entries = {}
+    else:
+      entries = entries.copy()
+    node = _WritableMirrorNode(self, self.key_generator.gen_id(), entries)
+    self.new_nodes[node.key] = node.entries
+    return node
+
   def _get_node(self, key):
     """Returns the node for KEY.
 
@@ -162,9 +183,10 @@ class SVNRepositoryMirror:
     self.new_nodes.  Return an instance of _MirrorNode."""
 
     contents = self.new_nodes.get(key, None)
-    if contents is None:
-      contents = self._nodes_db[key]
-    return _MirrorNode(self, key, contents)
+    if contents is not None:
+      return _WritableMirrorNode(self, key, contents)
+    else:
+      return _ReadOnlyMirrorNode(self, key, self._nodes_db[key])
 
   def _open_readonly_node(self, path, revnum):
     """Open a readonly node for PATH at revision REVNUM.
@@ -199,13 +221,10 @@ class SVNRepositoryMirror:
     if self._new_root_node is None:
       # Root node still has to be created for this revision:
       if self.youngest == 1:
-        new_contents = { }
+        self._new_root_node = self._create_node({ })
       else:
-        new_contents = self._nodes_db[
-            self._svn_revs_root_nodes[self.youngest - 1]]
-      self._new_root_node = _MirrorNode(
-          self, self.key_generator.gen_id(), new_contents)
-      self.new_nodes = { self._new_root_node.key : new_contents }
+        self._new_root_node = self._create_node(self._nodes_db[
+            self._svn_revs_root_nodes[self.youngest - 1]])
 
     return self._new_root_node
 
@@ -227,24 +246,16 @@ class SVNRepositoryMirror:
       new_key = node.entries.get(component, None)
       if new_key is not None:
         # The component exists.
-        new_contents = self.new_nodes.get(new_key, None)
-        if new_contents is not None:
-          # This node was created in this revision, therefore it is
-          # already writable.
-          pass
-        else:
+        new_node = self._get_node(new_key)
+        if not isinstance(new_node, _WritableMirrorNode):
           # Create a new node by copying the old node from the
           # _nodes_db and giving it a new key:
-          new_contents = self._nodes_db[new_key]
-          new_key = self.key_generator.gen_id()
-          self.new_nodes[new_key] = new_contents
-          node.entries[component] = new_key
+          new_node = self._create_node(new_node.entries)
+          node.entries[component] = new_node.key
       elif create:
         # The component does not exist, so we create it.
-        new_contents = { }
-        new_key = self.key_generator.gen_id()
-        self.new_nodes[new_key] = new_contents
-        node.entries[component] = new_key
+        new_node = self._create_node()
+        node.entries[component] = new_node.key
         if i < len(components) - 1:
           self._invoke_delegates('mkdir', path_so_far)
       else:
@@ -252,7 +263,7 @@ class SVNRepositoryMirror:
         # create it, so we give up.
         return None
 
-      node = _MirrorNode(self, new_key, new_contents)
+      node = new_node
 
     return node
 
