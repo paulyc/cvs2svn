@@ -42,6 +42,10 @@ from cvs2svn_lib.svn_commit_item import SVNCommitItem
 class _MirrorNode:
   """Represent a node within the SVNRepositoryMirror.
 
+  Instances of this class act like a map { component : _MirrorNode },
+  where component is the path name component of an item within this
+  node (i.e., a file within this directory).
+
   For space efficiency, SVNRepositoryMirror does not actually use this
   class to store the data internally, but rather constructs instances
   of this class on demand."""
@@ -57,6 +61,23 @@ class _MirrorNode:
     # node):
     self.entries = entries
 
+  def __getitem__(self, component):
+    """Return the _MirrorNode associated with the specified subnode.
+
+    Return None if the specified subnode does not exist."""
+
+    key = self.entries.get(component, None)
+    if key is None:
+      return None
+    else:
+      return self.repo._get_node(key)
+
+  def __contains__(self, component):
+    return component in self.entries
+
+  def __iter__(self):
+    return self.entries.__iter__()
+
 
 class _ReadOnlyMirrorNode(_MirrorNode):
   """Represent a read-only node within the SVNRepositoryMirror."""
@@ -67,7 +88,11 @@ class _ReadOnlyMirrorNode(_MirrorNode):
 class _WritableMirrorNode(_MirrorNode):
   """Represent a writable node within the SVNRepositoryMirror."""
 
-  pass
+  def __setitem__(self, component, node):
+    self.entries[component] = node.key
+
+  def __delitem__(self, component):
+    del self.entries[component]
 
 
 class SVNRepositoryMirror:
@@ -204,10 +229,9 @@ class SVNRepositoryMirror:
 
     node = self._get_node(node_key)
     for component in path.split('/'):
-      node_key = node.entries.get(component, None)
-      if node_key is None:
+      node = node[component]
+      if node is None:
         return None
-      node = self._get_node(node_key)
 
     return node
 
@@ -244,19 +268,18 @@ class SVNRepositoryMirror:
     for i in range(len(components)):
       component = components[i]
       path_so_far = path_join(path_so_far, component)
-      new_key = node.entries.get(component, None)
-      if new_key is not None:
+      new_node = node[component]
+      if new_node is not None:
         # The component exists.
-        new_node = self._get_node(new_key)
         if not isinstance(new_node, _WritableMirrorNode):
           # Create a new node, with entries initialized to be the same
           # as those of the old node:
           new_node = self._create_node(new_node.entries)
-          node.entries[component] = new_node.key
+          node[component] = new_node
       elif create:
         # The component does not exist, so we create it.
         new_node = self._create_node()
-        node.entries[component] = new_node.key
+        node[component] = new_node
         if i < len(components) - 1:
           self._invoke_delegates('mkdir', path_so_far)
       else:
@@ -280,7 +303,7 @@ class SVNRepositoryMirror:
 
     COMPONENT must exist in PARENT_NODE."""
 
-    del parent_node.entries[component]
+    del parent_node[component]
     self._invoke_delegates('delete_path', path_join(parent_path, component))
 
   def delete_path(self, svn_path, should_prune=False):
@@ -354,12 +377,12 @@ class SVNRepositoryMirror:
       raise self.SVNRepositoryMirrorParentMissingError(
           "Attempt to add path '%s' to repository mirror, "
           "but its parent directory doesn't exist in the mirror." % dest_path)
-    elif dest_basename in dest_parent_node.entries:
+    elif dest_basename in dest_parent_node:
       raise self.SVNRepositoryMirrorPathExistsError(
           "Attempt to add path '%s' to repository mirror "
           "when it already exists in the mirror." % dest_path)
 
-    dest_parent_node.entries[dest_basename] = src_node.key
+    dest_parent_node[dest_basename] = src_node
     self._invoke_delegates('copy_path', src_path, dest_path, src_revnum)
 
     # Yes sir, src_key and src_contents are also the contents of the
@@ -408,12 +431,11 @@ class SVNRepositoryMirror:
 
     source_path = symbol.project.trunk_path
     node = self.copy_path(source_path, dest_path, self._youngest - 1)
-    # Now since we've just copied trunk to a branch that's
-    # *supposed* to be empty, we delete any entries in the
-    # copied directory.
-    for entry in node.entries:
+    # Now since we've just copied trunk to a branch that's *supposed*
+    # to be empty, we delete any entries in the copied directory.
+    for component in node:
       # Delete but don't prune.
-      self.delete_path(dest_path + '/' + entry)
+      self.delete_path(dest_path + '/' + component)
 
   def _prune_extra_entries(self, dest_path, dest_node, src_entries):
     """Delete any entries in DEST_NODE that are not in SRC_ENTRIES.
@@ -422,17 +444,17 @@ class SVNRepositoryMirror:
     possibly-modified dest_node."""
 
     delete_list = [
-        entry
-        for entry in dest_node.entries
-        if entry not in src_entries]
+        component
+        for component in dest_node
+        if component not in src_entries]
     if delete_list:
       if dest_node.key not in self._new_nodes:
         dest_node = self._open_writable_node(dest_path, True)
       # Sort the delete list so that the output is in a consistent
       # order:
       delete_list.sort()
-      for entry in delete_list:
-        self._fast_delete_path(dest_path, dest_node, entry)
+      for component in delete_list:
+        self._fast_delete_path(dest_path, dest_node, component)
     return dest_node
 
   def _fill(self, symbol_fill, dest_prefix, dest_node, sources,
@@ -518,12 +540,7 @@ class SVNRepositoryMirror:
     src_keys = src_entries.keys()
     src_keys.sort()
     for src_key in src_keys:
-      next_dest_key = dest_node.entries.get(src_key, None)
-      if next_dest_key is None:
-        next_dest_node = None
-      else:
-        next_dest_node = self._get_node(next_dest_key)
-      self._fill(symbol_fill, dest_prefix, next_dest_node,
+      self._fill(symbol_fill, dest_prefix, dest_node[src_key],
                  src_entries[src_key], path_join(path, src_key),
                  copy_source.prefix, sources[0].revnum, prune_ok)
 
