@@ -280,36 +280,34 @@ class SVNRepositoryMirror:
   def _open_writable_node(self, svn_path, create):
     """Open a writable node for the path SVN_PATH.
 
-    Iff CREATE is True, create SVN_PATH and any missing directories.
-    Return an instance of _MirrorNode, or None if SVN_PATH doesn't
-    exist and CREATE is not set."""
+    Iff CREATE is True, create a directory node at SVN_PATH and any
+    missing directories.  Return an instance of _WritableMirrorNode,
+    or None if SVN_PATH doesn't exist and CREATE is not set."""
 
     node = self._open_writable_root_node()
 
-    # Walk down the path, one node at a time.
-    components = svn_path.split('/')
-    for i in range(len(components)):
-      component = components[i]
-      new_node = node[component]
-      if new_node is not None:
-        # The component exists.
-        if not isinstance(new_node, _WritableMirrorNode):
-          # Create a new node, with entries initialized to be the same
-          # as those of the old node:
-          new_node = self._create_node(new_node.path, new_node.entries)
+    if svn_path:
+      # Walk down the path, one node at a time.
+      for component in svn_path.split('/'):
+        new_node = node[component]
+        if new_node is not None:
+          # The component exists.
+          if not isinstance(new_node, _WritableMirrorNode):
+            # Create a new node, with entries initialized to be the same
+            # as those of the old node:
+            new_node = self._create_node(new_node.path, new_node.entries)
+            node[component] = new_node
+        elif create:
+          # The component does not exist, so we create it.
+          new_node = self._create_node(path_join(node.path, component))
           node[component] = new_node
-      elif create:
-        # The component does not exist, so we create it.
-        new_node = self._create_node(path_join(node.path, component))
-        node[component] = new_node
-        if i < len(components) - 1:
           self._invoke_delegates('mkdir', new_node.path)
-      else:
-        # The component does not exist and we are not instructed to
-        # create it, so we give up.
-        return None
+        else:
+          # The component does not exist and we are not instructed to
+          # create it, so we give up.
+          return None
 
-      node = new_node
+        node = new_node
 
     return node
 
@@ -355,7 +353,6 @@ class SVNRepositoryMirror:
     """Create PATH in the repository mirror at the youngest revision."""
 
     self._open_writable_node(path, True)
-    self._invoke_delegates('mkdir', path)
 
   def change_path(self, cvs_rev):
     """Register a change in self._youngest for the CVS_REV's svn_path
@@ -369,7 +366,14 @@ class SVNRepositoryMirror:
   def add_path(self, cvs_rev):
     """Add the CVS_REV's svn_path to the repository mirror."""
 
-    self._open_writable_node(cvs_rev.svn_path, True)
+    (parent_path, component,) = path_split(cvs_rev.svn_path)
+    parent_node = self._open_writable_node(parent_path, True)
+
+    assert component not in parent_node
+
+    parent_node[component] = \
+        self._create_node(path_join(parent_node.path, component))
+
     self._invoke_delegates('add_path', SVNCommitItem(cvs_rev, True))
 
   def copy_path(self, src_path, dest_path, src_revnum):
