@@ -104,6 +104,14 @@ class _WritableMirrorNode(_MirrorNode):
   def __delitem__(self, component):
     del self.entries[component]
 
+  def delete_component(self, component):
+    """Delete the COMPONENT from this directory and notify delagates.
+
+    COMPONENT must exist in this node."""
+
+    del self[component]
+    self.repo._invoke_delegates('delete_path', self.get_subpath(component))
+
 
 class SVNRepositoryMirror:
   """Mirror a Subversion Repository as it is constructed, one
@@ -312,14 +320,6 @@ class SVNRepositoryMirror:
 
     return self._open_readonly_node(path, self._youngest) is not None
 
-  def _fast_delete_path(self, parent_path, parent_node, component):
-    """Delete COMPONENT from PARENT_PATH, which is represented by PARENT_NODE.
-
-    COMPONENT must exist in PARENT_NODE."""
-
-    del parent_node[component]
-    self._invoke_delegates('delete_path', path_join(parent_path, component))
-
   def delete_path(self, svn_path, should_prune=False):
     """Delete SVN_PATH from the tree.
 
@@ -342,7 +342,7 @@ class SVNRepositoryMirror:
     (parent_path, entry,) = path_split(svn_path)
     parent_node = self._open_writable_node(parent_path, False)
 
-    self._fast_delete_path(parent_path, parent_node, entry)
+    parent_node.delete_component(entry)
     # The following recursion makes pruning an O(n^2) operation in the
     # worst case (where n is the depth of SVN_PATH), but the worst case
     # is probably rare, and the constant cost is pretty low.  Another
@@ -468,7 +468,7 @@ class SVNRepositoryMirror:
       # order:
       delete_list.sort()
       for component in delete_list:
-        self._fast_delete_path(dest_path, dest_node, component)
+        dest_node.delete_component(component)
     return dest_node
 
   def _fill(self, symbol_fill, dest_prefix, dest_node, sources,
