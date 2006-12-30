@@ -427,16 +427,20 @@ class SVNRepositoryMirror:
 
     # Figure out if we shall copy to this destination and delete any
     # destination path that is in the way.
-    do_copy = False
     if dest_key is None:
+      # The destination does not exist at all, so it definitely has to
+      # be copied:
       do_copy = True
     elif prune_ok and (
           parent_source_prefix != copy_source.prefix
           or copy_source.revnum != preferred_revnum):
-      # We are about to replace the destination, so we need to remove
-      # it before we perform the copy.
+      # The parent path was copied from a different source than we
+      # need to use, so we have to delete the version that was copied
+      # with the parent before we can re-copy from the correct source:
       self.delete_path(dest_path)
       do_copy = True
+    else:
+      do_copy = False
 
     if do_copy:
       dest_key, dest_entries = \
