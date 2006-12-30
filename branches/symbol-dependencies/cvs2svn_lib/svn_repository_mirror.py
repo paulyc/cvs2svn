@@ -462,8 +462,8 @@ class SVNRepositoryMirror:
         for component in dest_node
         if component not in src_entries]
     if delete_list:
-      if dest_node.key not in self._new_nodes:
-        dest_node = self._open_writable_node(dest_path, True)
+      if not isinstance(dest_node, _WritableMirrorNode):
+        dest_node = self._open_writable_node(dest_path, False)
       # Sort the delete list so that the output is in a consistent
       # order:
       delete_list.sort()
