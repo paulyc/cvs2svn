@@ -276,13 +276,12 @@ class SVNRepositoryMirror:
     return self._open_readonly_node(path, self._youngest) is not None
 
   def _fast_delete_path(self, parent_path, parent_node, component):
-    """Delete COMPONENT from the parent direcory PARENT_PATH with the
-    node PARENT_NODE.  Do nothing if COMPONENT does not exist in
-    PARENT_NODE."""
+    """Delete COMPONENT from PARENT_PATH, which is represented by PARENT_NODE.
 
-    if component in parent_node.entries:
-      del parent_node.entries[component]
-      self._invoke_delegates('delete_path', path_join(parent_path, component))
+    COMPONENT must exist in PARENT_NODE."""
+
+    del parent_node.entries[component]
+    self._invoke_delegates('delete_path', path_join(parent_path, component))
 
   def delete_path(self, svn_path, should_prune=False):
     """Delete SVN_PATH from the tree.
