@@ -242,13 +242,17 @@ class SVNRepositoryMirror:
       self._invoke_delegates('delete_path', path_join(parent_path, component))
 
   def delete_path(self, svn_path, should_prune=False):
-    """Delete PATH from the tree.  If SHOULD_PRUNE is true, then delete
-    all ancestor directories that are made empty when SVN_PATH is deleted.
-    In other words, SHOULD_PRUNE is like the -P option to 'cvs checkout'.
+    """Delete SVN_PATH from the tree.
 
-    NOTE: This function ignores requests to delete the root directory
-    or any directory for which any project's is_unremovable() method
-    returns True, either directly or by pruning."""
+    SVN_PATH must currently exist.
+
+    If SHOULD_PRUNE is true, then delete all ancestor directories that
+    are made empty when SVN_PATH is deleted.  In other words,
+    SHOULD_PRUNE is like the -P option to 'cvs checkout'.
+
+    This function ignores requests to delete the root directory or any
+    directory for which any project's is_unremovable() method returns
+    True, either directly or by pruning."""
 
     if svn_path == '':
       return
@@ -263,15 +267,14 @@ class SVNRepositoryMirror:
     else:
       parent_key, parent_contents = self._open_writable_root_node()
 
-    if parent_key is not None:
-      self._fast_delete_path(parent_path, parent_contents, entry)
-      # The following recursion makes pruning an O(n^2) operation in the
-      # worst case (where n is the depth of SVN_PATH), but the worst case
-      # is probably rare, and the constant cost is pretty low.  Another
-      # drawback is that we issue a delete for each path and not just
-      # a single delete for the topmost directory pruned.
-      if should_prune and len(parent_contents) == 0:
-        self.delete_path(parent_path, True)
+    self._fast_delete_path(parent_path, parent_contents, entry)
+    # The following recursion makes pruning an O(n^2) operation in the
+    # worst case (where n is the depth of SVN_PATH), but the worst case
+    # is probably rare, and the constant cost is pretty low.  Another
+    # drawback is that we issue a delete for each path and not just
+    # a single delete for the topmost directory pruned.
+    if should_prune and len(parent_contents) == 0:
+      self.delete_path(parent_path, True)
 
   def mkdir(self, path):
     """Create PATH in the repository mirror at the youngest revision."""
