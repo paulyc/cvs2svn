@@ -140,8 +140,9 @@ class SVNRepositoryMirror:
     """Returns the node contents for KEY which may refer to either
     self._nodes_db or self.new_nodes."""
 
-    if key in self.new_nodes:
-      return self.new_nodes[key]
+    contents = self.new_nodes.get(key, None)
+    if contents is not None:
+      return contents
     else:
       return self._nodes_db[key]
 
