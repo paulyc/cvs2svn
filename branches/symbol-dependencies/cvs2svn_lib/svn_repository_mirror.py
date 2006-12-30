@@ -383,6 +383,27 @@ class SVNRepositoryMirror:
       # Delete but don't prune.
       self.delete_path(del_path)
 
+  def _prune_extra_entries(self, dest_path, dest_key, dest_entries,
+                           src_entries):
+    """Delete any entries in DEST_ENTRIES that are not in SRC_ENTRIES.
+
+    This might require creating a new writable node, so return a
+    possibly-modified (dest_key, dest_entries)"""
+
+    delete_list = [
+        entry
+        for entry in dest_entries
+        if entry not in src_entries]
+    if delete_list:
+      if dest_key not in self.new_nodes:
+        dest_key, dest_entries = self._open_writable_node(dest_path, True)
+      # Sort the delete list so that the output is in a consistent
+      # order:
+      delete_list.sort()
+      for entry in delete_list:
+        self._fast_delete_path(dest_path, dest_entries, entry)
+    return (dest_key, dest_entries)
+
   def _fill(self, symbol_fill, dest_prefix, dest_key, sources,
             path = None, parent_source_prefix = None,
             preferred_revnum = None, prune_ok = False):
@@ -463,18 +484,8 @@ class SVNRepositoryMirror:
             FillSource(source.project, source.prefix, node))
 
     if prune_ok:
-      # Delete the entries in DEST_ENTRIES that are not in src_entries.
-      delete_list = [ ]
-      for entry in dest_entries:
-        if entry not in src_entries:
-          delete_list.append(entry)
-      if delete_list:
-        if dest_key not in self.new_nodes:
-          dest_key, dest_entries = self._open_writable_node(dest_path, True)
-        # Sort the delete list to get "diffable" dumpfiles.
-        delete_list.sort()
-        for entry in delete_list:
-          self._fast_delete_path(dest_path, dest_entries, entry)
+      (dest_key, dest_entries) = self._prune_extra_entries(
+          dest_path, dest_key, dest_entries, src_entries)
 
     # Recurse into the SRC_ENTRIES keys sorted in alphabetical order.
     src_keys = src_entries.keys()
