@@ -146,8 +146,9 @@ class SVNRepositoryMirror:
       return self._nodes_db[key]
 
   def _open_readonly_node(self, path, revnum):
-    """Open a readonly node for PATH at revision REVNUM.  Returns the
-    node key and node contents if the path exists, else (None, None)."""
+    """Open a readonly node for PATH at revision REVNUM.
+
+    Return the node key if the path exists, else None."""
 
     # Get the root key
     if revnum == self.youngest:
