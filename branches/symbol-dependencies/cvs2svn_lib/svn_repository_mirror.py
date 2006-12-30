@@ -84,8 +84,8 @@ class SVNRepositoryMirror:
   and the _nodes_db are stored on disk and each access is expensive.
 
   The _nodes_db database only has the keys for old revisions.  The
-  revision that is being contructed is kept in memory in the new_nodes
-  hash, which is cheap to access.
+  revision that is being contructed is kept in memory in the
+  _new_nodes map, which is cheap to access.
 
   You must invoke start_commit() between SVNCommits.
 
@@ -94,8 +94,8 @@ class SVNRepositoryMirror:
 
   class SVNRepositoryMirrorParentMissingError(Exception):
     """Exception raised if an attempt is made to add a path to the
-    repository mirror but the parent's path doesn't exist in the youngest
-    revision of the repository."""
+    repository mirror but the parent's path doesn't exist in the
+    youngest revision of the repository."""
 
     pass
 
@@ -115,9 +115,9 @@ class SVNRepositoryMirror:
   def __init__(self):
     """Set up the SVNRepositoryMirror and prepare it for SVNCommits."""
 
-    self.key_generator = KeyGenerator()
+    self._key_generator = KeyGenerator()
 
-    self.delegates = [ ]
+    self._delegates = [ ]
 
     # A map from SVN revision number to root node number:
     self._svn_revs_root_nodes = RecordTable(
@@ -134,19 +134,19 @@ class SVNRepositoryMirror:
 
     # Start at revision 0 without a root node.  It will be created
     # by _open_writable_root_node.
-    self.youngest = 0
+    self._youngest = 0
     self._new_root_node = None
-    self.new_nodes = { }
+    self._new_nodes = { }
 
     if not Ctx().trunk_only:
-      self.symbolings_reader = SymbolingsReader()
+      self._symbolings_reader = SymbolingsReader()
 
   def start_commit(self, revnum, revprops):
     """Start a new commit."""
 
-    self.youngest = revnum
+    self._youngest = revnum
     self._new_root_node = None
-    self.new_nodes = { }
+    self._new_nodes = { }
 
     self._invoke_delegates('start_commit', revnum, revprops)
 
@@ -157,12 +157,12 @@ class SVNRepositoryMirror:
     if self._new_root_node is None:
       # No changes were made in this revision, so we make the root node
       # of the new revision be the same as the last one.
-      self._svn_revs_root_nodes[self.youngest] = \
-          self._svn_revs_root_nodes[self.youngest - 1]
+      self._svn_revs_root_nodes[self._youngest] = \
+          self._svn_revs_root_nodes[self._youngest - 1]
     else:
-      self._svn_revs_root_nodes[self.youngest] = self._new_root_node.key
+      self._svn_revs_root_nodes[self._youngest] = self._new_root_node.key
       # Copy the new nodes to the _nodes_db
-      for key, value in self.new_nodes.items():
+      for key, value in self._new_nodes.items():
         self._nodes_db[key] = value
 
     self._invoke_delegates('end_commit')
@@ -172,17 +172,17 @@ class SVNRepositoryMirror:
       entries = {}
     else:
       entries = entries.copy()
-    node = _WritableMirrorNode(self, self.key_generator.gen_id(), entries)
-    self.new_nodes[node.key] = node.entries
+    node = _WritableMirrorNode(self, self._key_generator.gen_id(), entries)
+    self._new_nodes[node.key] = node.entries
     return node
 
   def _get_node(self, key):
     """Returns the node for KEY.
 
     The node might be read from either self._nodes_db or
-    self.new_nodes.  Return an instance of _MirrorNode."""
+    self._new_nodes.  Return an instance of _MirrorNode."""
 
-    contents = self.new_nodes.get(key, None)
+    contents = self._new_nodes.get(key, None)
     if contents is not None:
       return _WritableMirrorNode(self, key, contents)
     else:
@@ -194,9 +194,9 @@ class SVNRepositoryMirror:
     Return an instance of _MirrorNode if the path exists, else None."""
 
     # Get the root key
-    if revnum == self.youngest:
+    if revnum == self._youngest:
       if self._new_root_node is None:
-        node_key = self._svn_revs_root_nodes[self.youngest - 1]
+        node_key = self._svn_revs_root_nodes[self._youngest - 1]
       else:
         node_key = self._new_root_node.key
     else:
@@ -220,11 +220,11 @@ class SVNRepositoryMirror:
 
     if self._new_root_node is None:
       # Root node still has to be created for this revision:
-      if self.youngest == 1:
+      if self._youngest == 1:
         self._new_root_node = self._create_node()
       else:
         old_root_node = self._get_node(
-            self._svn_revs_root_nodes[self.youngest - 1])
+            self._svn_revs_root_nodes[self._youngest - 1])
         self._new_root_node = self._create_node(old_root_node.entries)
 
     return self._new_root_node
@@ -269,11 +269,11 @@ class SVNRepositoryMirror:
     return node
 
   def path_exists(self, path):
-    """Return True iff PATH exists in self.youngest of the repository mirror.
+    """Return True iff PATH exists in self._youngest of the repository mirror.
 
     PATH must not start with '/'."""
 
-    return self._open_readonly_node(path, self.youngest) is not None
+    return self._open_readonly_node(path, self._youngest) is not None
 
   def _fast_delete_path(self, parent_path, parent_node, component):
     """Delete COMPONENT from the parent direcory PARENT_PATH with the
@@ -322,7 +322,7 @@ class SVNRepositoryMirror:
     self._invoke_delegates('mkdir', path)
 
   def change_path(self, cvs_rev):
-    """Register a change in self.youngest for the CVS_REV's svn_path
+    """Register a change in self._youngest for the CVS_REV's svn_path
     in the repository mirror."""
 
     # We do not have to update the nodes because our mirror is only
@@ -376,8 +376,8 @@ class SVNRepositoryMirror:
     repository by the end of this call, even if there are no paths
     under it."""
 
-    symbol_fill = self.symbolings_reader.filling_guide_for_symbol(
-        symbol, self.youngest)
+    symbol_fill = self._symbolings_reader.filling_guide_for_symbol(
+        symbol, self._youngest)
     # Get the list of sources for the symbolic name.
     sources = symbol_fill.get_sources()
 
@@ -408,7 +408,7 @@ class SVNRepositoryMirror:
           )
 
     source_path = symbol.project.trunk_path
-    node = self.copy_path(source_path, dest_path, self.youngest - 1)
+    node = self.copy_path(source_path, dest_path, self._youngest - 1)
     # Now since we've just copied trunk to a branch that's
     # *supposed* to be empty, we delete any entries in the
     # copied directory.
@@ -427,7 +427,7 @@ class SVNRepositoryMirror:
         for entry in dest_node.entries
         if entry not in src_entries]
     if delete_list:
-      if dest_node.key not in self.new_nodes:
+      if dest_node.key not in self._new_nodes:
         dest_node = self._open_writable_node(dest_path, True)
       # Sort the delete list so that the output is in a consistent
       # order:
@@ -529,7 +529,7 @@ class SVNRepositoryMirror:
                  copy_source.prefix, sources[0].revnum, prune_ok)
 
   def add_delegate(self, delegate):
-    """Adds DELEGATE to self.delegates.
+    """Adds DELEGATE to self._delegates.
 
     For every delegate you add, as soon as SVNRepositoryMirror
     performs a repository action method, SVNRepositoryMirror will call
@@ -537,14 +537,14 @@ class SVNRepositoryMirror:
     delegates will be called in the order that they are added.  See
     SVNRepositoryMirrorDelegate for more information."""
 
-    self.delegates.append(delegate)
+    self._delegates.append(delegate)
 
   def _invoke_delegates(self, method, *args):
     """Iterate through each of our delegates, in the order that they
     were added, and call the delegate's method named METHOD with the
     arguments in ARGS."""
 
-    for delegate in self.delegates:
+    for delegate in self._delegates:
       getattr(delegate, method)(*args)
 
   def finish(self):
