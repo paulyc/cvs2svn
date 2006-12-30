@@ -221,7 +221,7 @@ class SVNRepositoryMirror:
     if self._new_root_node is None:
       # Root node still has to be created for this revision:
       if self.youngest == 1:
-        self._new_root_node = self._create_node({ })
+        self._new_root_node = self._create_node()
       else:
         self._new_root_node = self._create_node(self._nodes_db[
             self._svn_revs_root_nodes[self.youngest - 1]])
