@@ -17,6 +17,8 @@
 """This module contains database facilities used by cvs2svn."""
 
 
+from __future__ import generators
+
 import bisect
 
 from cvs2svn_lib.boolean import *
@@ -214,21 +216,21 @@ class SymbolFillingGuide:
       return revision_ranges
 
   def get_sources(self):
-    """Return the list of sources for this symbolic name.
+    """Return the list of unscored sources for this symbolic name.
 
     The Project instance defines what are legitimate sources
     (basically, the project's trunk or any directory directly under
-    its branches path).  Return a list of FillSource objects.  Raise
-    an exception if a change occurred outside of the source
-    directories."""
+    its branches path).  Return a list of FillSource objects, one for
+    each source that is present in the node tree.  Raise an exception
+    if a change occurred outside of the source directories."""
 
-    return self._get_sub_sources('', self._node_tree)
+    return list(self._get_sub_sources('', self._node_tree))
 
   def _get_sub_sources(self, start_svn_path, start_node):
-    """Return the list of sources within SVN_START_PATH.
+    """Generate the sources within SVN_START_PATH.
 
     Start the search at path START_SVN_PATH, which is node START_NODE.
-    Return a list of FillSource objects.
+    Generate a sequence of unscored FillSource objects.
 
     This is a helper method, called by get_sources() (see)."""
 
@@ -238,18 +240,16 @@ class SymbolFillingGuide:
       raise
     elif self.symbol.project.is_source(start_svn_path):
       # This is a legitimate source.  Add it to list.
-      return [ FillSource(self.symbol.project, start_svn_path, start_node) ]
+      yield FillSource(self.symbol.project, start_svn_path, start_node)
     else:
       # This is a directory that is not a legitimate source.  (That's
-      # OK because it hasn't changed directly.)  But directories
-      # within it have been changed, so we need to search recursively
-      # to find their enclosing sources.
-      sources = []
+      # OK because it hasn't changed directly.)  But one or more
+      # directories within it have been changed, so we need to search
+      # recursively to find the sources enclosing them.
       for entry, node in start_node.items():
         svn_path = path_join(start_svn_path, entry)
-        sources.extend(self._get_sub_sources(svn_path, node))
-
-    return sources
+        for source in self._get_sub_sources(svn_path, node):
+          yield source
 
   def print_node_tree(self, node, name='/', indent_depth=0):
     """Print all nodes in TREE that are rooted at NODE to sys.stdout.
