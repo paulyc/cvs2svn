@@ -14,7 +14,7 @@
 # history and logs, available at http://cvs2svn.tigris.org/.
 # ====================================================================
 
-"""This module contains database facilities used by cvs2svn."""
+"""This module contains classes to help choose symbol sources."""
 
 
 from __future__ import generators
@@ -28,7 +28,6 @@ from cvs2svn_lib.common import FatalError
 from cvs2svn_lib.common import SVN_INVALID_REVNUM
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.svn_revision_range import SVNRevisionRange
-from cvs2svn_lib.fill_source import FillSource
 
 
 class _RevisionScores:
@@ -125,6 +124,61 @@ class _RevisionScores:
         best_score = score
         best_revnum = revnum
     return best_revnum, best_score
+
+
+class FillSource:
+  """Representation of a fill source.
+
+  A fill source is a directory (either trunk or a branches
+  subdirectory) that can be used as a source for a symbol.  A fill
+  source is initialized without a score, but can be scored later and
+  the score stored into it via the set_score() method.  Scored fill
+  sources can also be compared; the comparison is such that it sorts
+  FillSources in descending order by score (higher score implies
+  smaller).
+
+  These objects are used by the symbol filler in SVNRepositoryMirror."""
+
+  def __init__(self, project, prefix, node):
+    """Create an unscored fill source with a prefix and a key."""
+
+    # The Project to which this source belongs:
+    self.project = project
+
+    # The svn path that is the base of this source:
+    self.prefix = prefix
+
+    # The node in the SymbolFillingGuide corresponding to the prefix
+    # path:
+    self.node = node
+
+    # The score of this source, or None if it hasn't been computed yet:
+    self.score = None
+
+    # The revision number with the best score for this source, or None
+    # if it hasn't been computed yet:
+    self.revnum = None
+
+  def set_score(self, score, revnum):
+    """Set the SCORE and REVNUM."""
+
+    self.score = score
+    self.revnum = revnum
+
+  def __cmp__(self, other):
+    """Comparison operator that sorts FillSources in descending score order.
+
+    If the scores are the same, prefer trunk, or alphabetical order by
+    path - these cases are mostly useful to stabilize testsuite
+    results."""
+
+    if self.score is None or other.score is None:
+      raise TypeError('Tried to compare unscored FillSource')
+
+    return cmp(other.score, self.score) \
+           or cmp(other.prefix == self.project.trunk_path,
+                  self.prefix == self.project.trunk_path) \
+           or cmp(self.prefix, other.prefix)
 
 
 class SymbolFillingGuide:
