@@ -246,8 +246,9 @@ class SymbolingsReader:
       else:
         # Only register a CLOSING if a corresponding OPENING has
         # already been recorded:
-        if svn_path in openings_closings_map:
-          openings_closings_map[svn_path].add_closing(revnum)
+        range = openings_closings_map.get(svn_path)
+        if range is not None:
+          range.add_closing(revnum)
 
     return SymbolFillingGuide(symbol, openings_closings_map)
 
