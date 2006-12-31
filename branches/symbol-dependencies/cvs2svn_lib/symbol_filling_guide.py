@@ -166,7 +166,7 @@ class FillSource:
   def compute_score(self, preferred_revnum):
     """Compute and set the SCORE and REVNUM."""
 
-    self.revnum, self.score = self._symbol_filling_guide.get_best_revnum(
+    self.revnum, self.score = self._symbol_filling_guide._get_best_revnum(
         self.node, preferred_revnum)
 
   def __cmp__(self, other):
@@ -198,8 +198,8 @@ class SymbolFillingGuide:
   range of revisions the leaf could serve as a source.
 
   self._node_tree is the root node of the directory tree.  By walking
-  self._node_tree and calling self.get_best_revnum() on each node, the
-  caller can determine what subversion revision number to copy the
+  self._node_tree and calling self._get_best_revnum() on each node,
+  the caller can determine what subversion revision number to copy the
   path corresponding to that node from.  self._node_tree should be
   treated as read-only.
 
@@ -239,7 +239,7 @@ class SymbolFillingGuide:
 
     return node
 
-  def get_best_revnum(self, node, preferred_revnum):
+  def _get_best_revnum(self, node, preferred_revnum):
     """Determine the best subversion revision number to use when
     copying the source tree beginning at NODE.
 
