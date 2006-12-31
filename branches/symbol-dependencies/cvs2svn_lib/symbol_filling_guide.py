@@ -159,6 +159,11 @@ class FillSource:
     # if it hasn't been computed yet:
     self.revnum = None
 
+  def get_subsource(self, node):
+    """Return the FillSource for the specified NODE."""
+
+    return FillSource(self._symbol_filling_guide, self.prefix, node)
+
   def set_score(self, score, revnum):
     """Set the SCORE and REVNUM."""
 
