@@ -103,7 +103,7 @@ class SymbolingsLogger:
 
     Write out a single line to the symbol_openings_closings file
     representing that SVN_REVNUM of SVN_FILE on BRANCH_ID is either
-    the opening or closing (TYPE) of NAME (a symbolic name).
+    the opening or closing (TYPE) of the symbol with id SYMBOL_ID.
 
     TYPE should be one of the following constants: OPENING or CLOSING.
 
