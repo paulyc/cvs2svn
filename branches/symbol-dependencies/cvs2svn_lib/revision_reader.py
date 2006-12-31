@@ -55,6 +55,16 @@ class PipeStream(object):
 class RevisionReader(object):
   """An object that can read the contents of CVSRevisions."""
 
+  def register_artifacts(self, which_pass):
+    """Register artifacts that will be needed during branch exclusion.
+
+    WHICH_PASS is the pass that will call our callbacks, so it should
+    be used to do the registering (e.g., call
+    WHICH_PASS.register_temp_file() and/or
+    WHICH_PASS.register_temp_file_needed())."""
+
+    raise NotImplementedError()
+
   def get_revision_recorder(self):
     """Return a RevisionRecorder instance that can gather revision info.
 
@@ -75,6 +85,11 @@ class RevisionReader(object):
 
     raise NotImplementedError
 
+  def start(self):
+    """Prepare for calls to get_content_stream."""
+
+    raise NotImplementedError
+
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
     """Return a file-like object from which the contents of CVS_REV
     can be read.
@@ -82,6 +97,21 @@ class RevisionReader(object):
     CVS_REV is a CVSRevision.  If SUPPRESS_KEYWORD_SUBSTITUTION is
     True, then suppress the substitution of RCS/CVS keywords in the
     output."""
+
+    raise NotImplementedError
+
+  def skip_content(self, cvs_rev):
+    """Inform the reader that CVS_REV would be fetched now, but isn't
+    actually needed.
+
+    This may be used for internal housekeeping.
+    Note that this is not called for OP_DELETE revisions."""
+
+    raise NotImplementedError
+
+  def finish(self):
+    """Inform the reader that all calls to get_content_stream are done.
+    Start may be called again at a later point."""
 
     raise NotImplementedError
 
@@ -97,11 +127,17 @@ class RCSRevisionReader(RevisionReader):
                        'Please check that co is installed and in your PATH\n'
                        '(it is a part of the RCS software).' % (e,))
 
+  def register_artifacts(self, which_pass):
+    pass
+
   def get_revision_recorder(self):
     return NullRevisionRecorder()
 
   def get_revision_excluder(self):
     return NullRevisionExcluder()
+
+  def start(self):
+    pass
 
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
     pipe_cmd = [ Ctx().co_executable, '-q', '-x,v', '-p' + cvs_rev.rev ]
@@ -109,6 +145,12 @@ class RCSRevisionReader(RevisionReader):
       pipe_cmd.append('-kk')
     pipe_cmd.append(cvs_rev.cvs_file.filename)
     return PipeStream(pipe_cmd)
+
+  def skip_content(self, cvs_rev):
+    pass
+
+  def finish(self):
+    pass
 
 
 class CVSRevisionReader(RevisionReader):
@@ -132,11 +174,17 @@ class CVSRevisionReader(RevisionReader):
             '%s\n'
             'Please check that cvs is installed and in your PATH.' % (e,))
 
+  def register_artifacts(self, which_pass):
+    pass
+
   def get_revision_recorder(self):
     return NullRevisionRecorder()
 
   def get_revision_excluder(self):
     return NullRevisionExcluder()
+
+  def start(self):
+    pass
 
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
     project = cvs_rev.cvs_file.project
@@ -148,4 +196,9 @@ class CVSRevisionReader(RevisionReader):
     pipe_cmd.append(project.cvs_module + cvs_rev.cvs_path)
     return PipeStream(pipe_cmd)
 
+  def skip_content(self, cvs_rev):
+    pass
+
+  def finish(self):
+    pass
 
