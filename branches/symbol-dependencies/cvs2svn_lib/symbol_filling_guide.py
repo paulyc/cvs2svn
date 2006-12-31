@@ -137,12 +137,11 @@ class FillSource:
 
   These objects are used by the symbol filler in SVNRepositoryMirror."""
 
-  def __init__(self, symbol_filling_guide, prefix, node,
-               preferred_revnum=None):
+  def __init__(self, symbol, prefix, node, preferred_revnum=None):
     """Create an unscored fill source with a prefix and a key."""
 
     # The _SymbolFillingGuide used to obtain score information:
-    self._symbol_filling_guide = symbol_filling_guide
+    self._symbol = symbol
 
     # The svn path that is the base of this source:
     self.prefix = prefix
@@ -178,7 +177,7 @@ class FillSource:
     if best_revnum == SVN_INVALID_REVNUM:
       raise FatalError(
           "failed to find a revision to copy from when copying %s"
-          % self._symbol_filling_guide.symbol.name)
+          % self._symbol.name)
     return best_revnum, best_score
 
   def _get_revision_ranges(self, node):
@@ -200,8 +199,7 @@ class FillSource:
   def get_subsource(self, node, preferred_revnum):
     """Return the FillSource for the specified NODE."""
 
-    return FillSource(
-        self._symbol_filling_guide, self.prefix, node, preferred_revnum)
+    return FillSource(self._symbol, self.prefix, node, preferred_revnum)
 
   def __cmp__(self, other):
     """Comparison operator that sorts FillSources in descending score order.
@@ -210,7 +208,7 @@ class FillSource:
     path - these cases are mostly useful to stabilize testsuite
     results."""
 
-    trunk_path = self._symbol_filling_guide.symbol.project.trunk_path
+    trunk_path = self._symbol.project.trunk_path
     return cmp(other.score, self.score) \
            or cmp(other.prefix == trunk_path, self.prefix == trunk_path) \
            or cmp(self.prefix, other.prefix)
@@ -295,7 +293,7 @@ class _SymbolFillingGuide:
       raise
     elif self.symbol.project.is_source(start_svn_path):
       # This is a legitimate source.  Output it:
-      yield FillSource(self, start_svn_path, start_node)
+      yield FillSource(self.symbol, start_svn_path, start_node)
     else:
       # This is a directory that is not a legitimate source.  (That's
       # OK because it hasn't changed directly.)  But one or more
