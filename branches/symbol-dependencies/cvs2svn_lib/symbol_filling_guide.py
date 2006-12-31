@@ -141,13 +141,13 @@ class FillSource:
   def __init__(self, symbol_filling_guide, prefix, node):
     """Create an unscored fill source with a prefix and a key."""
 
-    # The SymbolFillingGuide used to obtain score information:
+    # The _SymbolFillingGuide used to obtain score information:
     self._symbol_filling_guide = symbol_filling_guide
 
     # The svn path that is the base of this source:
     self.prefix = prefix
 
-    # The node in the SymbolFillingGuide corresponding to the prefix
+    # The node in the _SymbolFillingGuide corresponding to the prefix
     # path:
     self.node = node
 
@@ -185,7 +185,7 @@ class FillSource:
            or cmp(self.prefix, other.prefix)
 
 
-class SymbolFillingGuide:
+class _SymbolFillingGuide:
   """A tree holding the sources that can be copied to fill a symbol.
 
   The class holds a node tree representing any parts of the svn
@@ -208,7 +208,7 @@ class SymbolFillingGuide:
   actions to 'patch up' the subtrees."""
 
   def __init__(self, symbol, openings_closings_map):
-    """Initializes a SymbolFillingGuide for SYMBOL.
+    """Initializes a _SymbolFillingGuide for SYMBOL.
 
     SYMBOL is either a BranchSymbol or a TagSymbol.  Record the
     openings and closings from OPENINGS_CLOSINGS_MAP, which is a map
@@ -330,5 +330,9 @@ class SymbolFillingGuide:
       print "TREE:", " " * (indent_depth * 2), name
       for key, value in node.items():
         self.print_node_tree(value, key, (indent_depth + 1))
+
+
+def get_sources(symbol, openings_closings_map):
+  return _SymbolFillingGuide(symbol, openings_closings_map).get_sources()
 
 

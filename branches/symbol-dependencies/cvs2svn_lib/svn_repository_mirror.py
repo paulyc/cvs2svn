@@ -423,10 +423,8 @@ class SVNRepositoryMirror:
     repository by the end of this call, even if there are no paths
     under it."""
 
-    symbol_fill = self._symbolings_reader.filling_guide_for_symbol(
-        symbol, self._youngest)
-    # Get the list of sources for the symbolic name.
-    sources = symbol_fill.get_sources()
+    # Get the list of sources for the symbolic name:
+    sources = self._symbolings_reader.get_sources(symbol, self._youngest)
 
     if not sources:
       # We can only get here for a branch whose first commit is an add
