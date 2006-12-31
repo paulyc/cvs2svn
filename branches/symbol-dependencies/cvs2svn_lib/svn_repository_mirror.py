@@ -555,7 +555,7 @@ class SVNRepositoryMirror:
       if not isinstance(source.node, SVNRevisionRange):
         for entry, node in source.node.items():
           src_entries.setdefault(entry, []).append(
-              FillSource(source.project, source.prefix, node))
+              FillSource(symbol_fill, source.prefix, node))
 
     if prune_ok:
       dest_node = self._prune_extra_entries(dest_path, dest_node, src_entries)

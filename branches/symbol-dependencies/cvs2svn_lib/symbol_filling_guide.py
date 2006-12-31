@@ -139,11 +139,11 @@ class FillSource:
 
   These objects are used by the symbol filler in SVNRepositoryMirror."""
 
-  def __init__(self, project, prefix, node):
+  def __init__(self, symbol_filling_guide, prefix, node):
     """Create an unscored fill source with a prefix and a key."""
 
-    # The Project to which this source belongs:
-    self.project = project
+    # The SymbolFillingGuide used to obtain score information:
+    self._symbol_filling_guide = symbol_filling_guide
 
     # The svn path that is the base of this source:
     self.prefix = prefix
@@ -175,9 +175,9 @@ class FillSource:
     if self.score is None or other.score is None:
       raise TypeError('Tried to compare unscored FillSource')
 
+    trunk_path = self._symbol_filling_guide.symbol.project.trunk_path
     return cmp(other.score, self.score) \
-           or cmp(other.prefix == self.project.trunk_path,
-                  self.prefix == self.project.trunk_path) \
+           or cmp(other.prefix == trunk_path, self.prefix == trunk_path) \
            or cmp(self.prefix, other.prefix)
 
 
@@ -301,7 +301,7 @@ class SymbolFillingGuide:
       raise
     elif self.symbol.project.is_source(start_svn_path):
       # This is a legitimate source.  Add it to list.
-      yield FillSource(self.symbol.project, start_svn_path, start_node)
+      yield FillSource(self, start_svn_path, start_node)
     else:
       # This is a directory that is not a legitimate source.  (That's
       # OK because it hasn't changed directly.)  But one or more
