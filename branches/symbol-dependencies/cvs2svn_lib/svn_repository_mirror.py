@@ -435,7 +435,7 @@ class SVNRepositoryMirror:
     else:
       dest_prefix = symbol.get_path()
       dest_node = self._open_writable_node(dest_prefix, False)
-      self._fill(symbol_fill, dest_prefix, dest_node, sources)
+      self._fill(dest_prefix, dest_node, sources)
 
   def _fill_empty_branch(self, symbol):
     """Fill a branch without any contents.
@@ -482,9 +482,9 @@ class SVNRepositoryMirror:
         dest_node.delete_component(component)
     return dest_node
 
-  def _fill(self, symbol_fill, dest_prefix, dest_node, sources,
-            path = None, parent_source_prefix = None,
-            preferred_revnum = None, prune_ok = False):
+  def _fill(self, dest_prefix, dest_node, sources,
+            path=None, parent_source_prefix=None,
+            preferred_revnum=None, prune_ok=False):
     """Fill the tag or branch at DEST_PREFIX + PATH with items from
     SOURCES, and recurse into the child items.
 
@@ -561,7 +561,7 @@ class SVNRepositoryMirror:
     src_keys = src_entries.keys()
     src_keys.sort()
     for src_key in src_keys:
-      self._fill(symbol_fill, dest_prefix, dest_node[src_key],
+      self._fill(dest_prefix, dest_node[src_key],
                  src_entries[src_key], path_join(path, src_key),
                  copy_source.prefix, copy_source.revnum, prune_ok)
 
