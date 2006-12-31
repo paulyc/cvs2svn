@@ -53,11 +53,14 @@ class _RevisionScores:
 
     # A list that looks like:
     #
-    #    [(REV1 SCORE1), (REV2 SCORE2), ...]
+    #    [(REV1 SCORE1), (REV2 SCORE2), (REV3 SCORE3), ...]
     #
-    # where the tuples are sorted by revision number and score is the
-    # number of correct paths that would result from using the
-    # specified revision number as a source.
+    # where the tuples are sorted by revision number and the revision
+    # numbers are distinct.  Score is the number of correct paths that
+    # would result from using the specified revision number (or any
+    # other revision preceding the next revision listed) as a source.
+    # For example, the score of any revision REV in the range REV2 <=
+    # REV < REV3 is equal to SCORE2.
     self.scores = []
 
     # First look for easy out.
@@ -125,22 +128,26 @@ class _RevisionScores:
 
 
 class SymbolFillingGuide:
-  """A node tree representing the source paths to be copied to fill a
-  symbol in the current SVNCommit.
+  """A tree holding the sources that can be copied to fill a symbol.
 
-  self._node_tree is the root of the directory tree, in the form {
-  path_component : subnode }.  Leaf nodes are instances of
-  SVNRevisionRange.  Intermediate (directory) nodes are dictionaries
-  mapping path_components to subnodes.
+  The class holds a node tree representing any parts of the svn
+  directory structure that can be used to incrementally fill the
+  symbol in the current SVNCommit.  The directory nodes in the tree
+  are dictionaries mapping pathname components to subnodes.  A leaf
+  node exists for any potential source that has had an opening since
+  the last fill of this symbol, and thus can be filled in this commit.
+  The leaves themselves are SVNRevisionRange objects telling for what
+  range of revisions the leaf could serve as a source.
 
-  By walking self._node_tree and calling self.get_best_revnum() on
-  each node, the caller can determine what subversion revision number
-  to copy the path corresponding to that node from.  self._node_tree
-  should be treated as read-only.
+  self._node_tree is the root node of the directory tree.  By walking
+  self._node_tree and calling self.get_best_revnum() on each node, the
+  caller can determine what subversion revision number to copy the
+  path corresponding to that node from.  self._node_tree should be
+  treated as read-only.
 
-  The caller can then descend to sub-nodes to see if their "best
-  revnum" differs from their parents' and if it does, take appropriate
-  actions to "patch up" the subtrees."""
+  The caller can then descend to sub-nodes to see if their 'best
+  revnum' differs from their parent's and if it does, take appropriate
+  actions to 'patch up' the subtrees."""
 
   def __init__(self, symbol, openings_closings_map):
     """Initializes a SymbolFillingGuide for SYMBOL.
