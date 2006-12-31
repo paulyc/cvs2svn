@@ -130,15 +130,15 @@ class FillSource:
   """Representation of a fill source.
 
   A fill source is a directory (either trunk or a branches
-  subdirectory) that can be used as a source for a symbol.  A fill
-  source is initialized without a score, but it can score itself later
-  when the update_score() method is called.  Scored fill sources can
-  also be compared; the comparison is such that it sorts FillSources
-  in descending order by score (higher score implies smaller).
+  subdirectory) that can be used as a source for a symbol, along with
+  the self-computed score for the source.  FillSources can be
+  compared; the comparison is such that it sorts FillSources in
+  descending order by score (higher score implies smaller).
 
   These objects are used by the symbol filler in SVNRepositoryMirror."""
 
-  def __init__(self, symbol_filling_guide, prefix, node):
+  def __init__(self, symbol_filling_guide, prefix, node,
+               preferred_revnum=None):
     """Create an unscored fill source with a prefix and a key."""
 
     # The _SymbolFillingGuide used to obtain score information:
@@ -151,23 +151,16 @@ class FillSource:
     # path:
     self.node = node
 
-    # The score of this source, or None if it hasn't been computed yet:
-    self.score = None
-
-    # The revision number with the best score for this source, or None
-    # if it hasn't been computed yet:
-    self.revnum = None
-
-  def get_subsource(self, node):
-    """Return the FillSource for the specified NODE."""
-
-    return FillSource(self._symbol_filling_guide, self.prefix, node)
-
-  def compute_score(self, preferred_revnum):
-    """Compute and set the SCORE and REVNUM."""
-
+    # SCORE is the score of this source; REVNUM is the revision number
+    # with the best score:
     self.revnum, self.score = self._symbol_filling_guide._get_best_revnum(
         self.node, preferred_revnum)
+
+  def get_subsource(self, node, preferred_revnum):
+    """Return the FillSource for the specified NODE."""
+
+    return FillSource(
+        self._symbol_filling_guide, self.prefix, node, preferred_revnum)
 
   def __cmp__(self, other):
     """Comparison operator that sorts FillSources in descending score order.
@@ -175,9 +168,6 @@ class FillSource:
     If the scores are the same, prefer trunk, or alphabetical order by
     path - these cases are mostly useful to stabilize testsuite
     results."""
-
-    if self.score is None or other.score is None:
-      raise TypeError('Tried to compare unscored FillSource')
 
     trunk_path = self._symbol_filling_guide.symbol.project.trunk_path
     return cmp(other.score, self.score) \
@@ -304,7 +294,7 @@ class _SymbolFillingGuide:
       # legitimate sources.  This should never happen.
       raise
     elif self.symbol.project.is_source(start_svn_path):
-      # This is a legitimate source.  Add it to list.
+      # This is a legitimate source.  Output it:
       yield FillSource(self, start_svn_path, start_node)
     else:
       # This is a directory that is not a legitimate source.  (That's

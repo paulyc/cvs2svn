@@ -510,10 +510,6 @@ class SVNRepositoryMirror:
     PATH, PARENT_SOURCE_PREFIX, PRUNE_OK, and PREFERRED_REVNUM should
     only be passed in by recursive calls."""
 
-    # Calculate scores and revnums for all sources
-    for source in sources:
-      source.compute_score(preferred_revnum)
-
     # Sort the sources in descending score order so that we will make
     # a eventual copy from the source with the highest score.
     sources.sort()
@@ -550,7 +546,8 @@ class SVNRepositoryMirror:
     for source in sources:
       if not isinstance(source.node, SVNRevisionRange):
         for entry, node in source.node.items():
-          src_entries.setdefault(entry, []).append(source.get_subsource(node))
+          src_entries.setdefault(entry, []).append(
+              source.get_subsource(node, copy_source.revnum))
 
     if prune_ok:
       dest_node = self._prune_extra_entries(dest_path, dest_node, src_entries)
