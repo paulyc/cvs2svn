@@ -514,9 +514,7 @@ class SVNRepositoryMirror:
 
     # Calculate scores and revnums for all sources
     for source in sources:
-      src_revnum, score = \
-          symbol_fill.get_best_revnum(source.node, preferred_revnum)
-      source.set_score(score, src_revnum)
+      source.compute_score(preferred_revnum)
 
     # Sort the sources in descending score order so that we will make
     # a eventual copy from the source with the highest score.

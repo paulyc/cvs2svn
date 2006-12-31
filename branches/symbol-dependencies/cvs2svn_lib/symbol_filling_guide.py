@@ -131,11 +131,10 @@ class FillSource:
 
   A fill source is a directory (either trunk or a branches
   subdirectory) that can be used as a source for a symbol.  A fill
-  source is initialized without a score, but can be scored later and
-  the score stored into it via the set_score() method.  Scored fill
-  sources can also be compared; the comparison is such that it sorts
-  FillSources in descending order by score (higher score implies
-  smaller).
+  source is initialized without a score, but it can score itself later
+  when the update_score() method is called.  Scored fill sources can
+  also be compared; the comparison is such that it sorts FillSources
+  in descending order by score (higher score implies smaller).
 
   These objects are used by the symbol filler in SVNRepositoryMirror."""
 
@@ -164,11 +163,11 @@ class FillSource:
 
     return FillSource(self._symbol_filling_guide, self.prefix, node)
 
-  def set_score(self, score, revnum):
-    """Set the SCORE and REVNUM."""
+  def compute_score(self, preferred_revnum):
+    """Compute and set the SCORE and REVNUM."""
 
-    self.score = score
-    self.revnum = revnum
+    self.revnum, self.score = self._symbol_filling_guide.get_best_revnum(
+        self.node, preferred_revnum)
 
   def __cmp__(self, other):
     """Comparison operator that sorts FillSources in descending score order.
