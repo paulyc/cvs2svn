@@ -552,11 +552,10 @@ class SVNRepositoryMirror:
     # this path element exists.
     src_entries = {}
     for source in sources:
-      if isinstance(source.node, SVNRevisionRange):
-        continue
-      for entry, node in source.node.items():
-        src_entries.setdefault(entry, []).append(
-            FillSource(source.project, source.prefix, node))
+      if not isinstance(source.node, SVNRevisionRange):
+        for entry, node in source.node.items():
+          src_entries.setdefault(entry, []).append(
+              FillSource(source.project, source.prefix, node))
 
     if prune_ok:
       dest_node = self._prune_extra_entries(dest_path, dest_node, src_entries)
@@ -567,7 +566,7 @@ class SVNRepositoryMirror:
     for src_key in src_keys:
       self._fill(symbol_fill, dest_prefix, dest_node[src_key],
                  src_entries[src_key], path_join(path, src_key),
-                 copy_source.prefix, sources[0].revnum, prune_ok)
+                 copy_source.prefix, copy_source.revnum, prune_ok)
 
   def add_delegate(self, delegate):
     """Adds DELEGATE to self._delegates.
