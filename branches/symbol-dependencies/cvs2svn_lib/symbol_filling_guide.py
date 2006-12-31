@@ -153,8 +153,49 @@ class FillSource:
 
     # SCORE is the score of this source; REVNUM is the revision number
     # with the best score:
-    self.revnum, self.score = self._symbol_filling_guide._get_best_revnum(
-        self.node, preferred_revnum)
+    self.revnum, self.score = self._get_best_revnum(preferred_revnum)
+
+  def _get_best_revnum(self, preferred_revnum):
+    """Determine the best subversion revision number to use when
+    copying the source tree beginning at this source.
+
+    Return (revnum, score) for the best revision found.  If
+    PREFERRED_REVNUM is not None and is among the revision numbers
+    with the best scores, return it; otherwise, return the oldest such
+    revision."""
+
+    # Aggregate openings and closings from our rev tree
+    svn_revision_ranges = self._get_revision_ranges(self.node)
+
+    # Score the lists
+    revision_scores = _RevisionScores(svn_revision_ranges)
+
+    best_revnum, best_score = revision_scores.get_best_revnum()
+    if preferred_revnum is not None \
+           and revision_scores.get_score(preferred_revnum) == best_score:
+      best_revnum = preferred_revnum
+
+    if best_revnum == SVN_INVALID_REVNUM:
+      raise FatalError(
+          "failed to find a revision to copy from when copying %s"
+          % self._symbol_filling_guide.symbol.name)
+    return best_revnum, best_score
+
+  def _get_revision_ranges(self, node):
+    """Return a list of all the SVNRevisionRanges at and under NODE.
+
+    Include duplicates.  This is a helper method used by
+    _get_best_revnum()."""
+
+    if isinstance(node, SVNRevisionRange):
+      # It is a leaf node.
+      return [ node ]
+    else:
+      # It is an intermediate node.
+      revision_ranges = []
+      for key, subnode in node.items():
+        revision_ranges.extend(self._get_revision_ranges(subnode))
+      return revision_ranges
 
   def get_subsource(self, node, preferred_revnum):
     """Return the FillSource for the specified NODE."""
@@ -228,47 +269,6 @@ class _SymbolFillingGuide:
       node = node.setdefault(component, {})
 
     return node
-
-  def _get_best_revnum(self, node, preferred_revnum):
-    """Determine the best subversion revision number to use when
-    copying the source tree beginning at NODE.
-
-    Return (revnum, score) for the best revision found.  If
-    PREFERRED_REVNUM is not None and is among the revision numbers
-    with the best scores, return it; otherwise, return the oldest such
-    revision."""
-
-    # Aggregate openings and closings from the rev tree
-    svn_revision_ranges = self._get_revision_ranges(node)
-
-    # Score the lists
-    revision_scores = _RevisionScores(svn_revision_ranges)
-
-    best_revnum, best_score = revision_scores.get_best_revnum()
-    if preferred_revnum is not None \
-           and revision_scores.get_score(preferred_revnum) == best_score:
-      best_revnum = preferred_revnum
-
-    if best_revnum == SVN_INVALID_REVNUM:
-      raise FatalError(
-          "failed to find a revision to copy from when copying %s"
-          % self.symbol.name)
-    return best_revnum, best_score
-
-  def _get_revision_ranges(self, node):
-    """Return a list of all the SVNRevisionRanges at and under NODE.
-
-    Include duplicates."""
-
-    if isinstance(node, SVNRevisionRange):
-      # It is a leaf node.
-      return [ node ]
-    else:
-      # It is an intermediate node.
-      revision_ranges = []
-      for key, subnode in node.items():
-        revision_ranges.extend(self._get_revision_ranges(subnode))
-      return revision_ranges
 
   def get_sources(self):
     """Return the list of unscored sources for this symbolic name.
