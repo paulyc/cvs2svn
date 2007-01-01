@@ -52,97 +52,6 @@ class SVNCommitCreator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CHANGESETS_DB),
           DB_OPEN_READ)
 
-    # A set containing the closed symbols.  That is, we've already
-    # encountered the last CVSRevision that is a source for that
-    # symbol, the final fill for this symbol has been done, and we
-    # never need to fill it again.
-    self._done_symbols = set()
-
-  def _commit_symbols(self, changeset_id, timestamp):
-    """Generate SVNCommits for any symbols that are closed in all files.
-
-    Generate a SVNSymbolCommit for any symbols for which the changeset
-    with id CHANGESET_ID is the last one that affects the symbol."""
-
-    symbol_ids = self._last_changesets_db.get('%x' % (changeset_id,), [])
-    symbols = set([
-        Ctx()._symbol_db.get_symbol(symbol_id)
-        for symbol_id in symbol_ids
-        ])
-
-    # Sort the closeable symbols so that we will always process the
-    # symbols in the same order, regardless of the order in which the
-    # dict hashing algorithm hands them back to us.  We do this so
-    # that our tests will get the same results on all platforms.
-    symbols = list(symbols)
-    symbols.sort(lambda a, b: cmp(a.name, b.name))
-
-    for symbol in symbols:
-      self._persistence_manager.put_svn_commit(
-          SVNSymbolCommit(symbol, timestamp))
-      self._done_symbols.add(symbol)
-
-  def _fill_needed(self, cvs_rev):
-    """Return True iff CVS_REV forces the branch to be filled.
-
-    Return True if CVS_REV is the first commit on a new branch (for this
-    file) and it requires that the branch be filled.  See comments below
-    for the detailed rules."""
-
-    if cvs_rev.first_on_branch_id is None:
-      # Only commits that are the first on their branch can force
-      # fills:
-      return False
-    elif cvs_rev.op == OP_ADD:
-      # If file F was added on branch B (thus, F on trunk is in state
-      # 'dead'), fill B iff the branch has never been filled before.
-      return not self._persistence_manager.filled(cvs_rev.lod)
-    elif cvs_rev.op == OP_CHANGE:
-      # We need to fill iff the branch has not been filled since the
-      # source revision source was committed:
-      return not self._persistence_manager.filled_since(
-          cvs_rev.lod,
-          self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
-    elif cvs_rev.op == OP_DELETE:
-      if Ctx()._cvs_items_db[cvs_rev.prev_id].op == OP_DELETE:
-        # The source revision was also a delete, so we don't need to
-        # fill the branch - and there's nothing to copy to the branch,
-        # so we can't anyway.  No one seems to know how to get CVS to
-        # produce the double delete case, but it's been observed.
-        return False
-      else:
-        # Otherwise, we need to fill iff the branch has not been filled
-        # since the source revision was committed:
-        return not self._persistence_manager.filled_since(
-            cvs_rev.lod,
-            self._persistence_manager.get_svn_revnum(cvs_rev.prev_id))
-
-  def _pre_commit(self, cvs_revs, timestamp):
-    """Generate any SVNCommits that must exist before the main commit."""
-
-    # There may be multiple cvs_revs in this commit that would cause
-    # branch B to be filled, but we only want to fill B once.  On the
-    # other hand, there might be multiple branches committed on in
-    # this commit.  Whatever the case, we should count exactly one
-    # commit per branch, because we only fill a branch once per
-    # primary SVNCommit.  This set tracks which symbols we've already
-    # filled.
-    filled_symbols = set()
-
-    for cvs_rev in cvs_revs:
-      # If a commit is on a branch, we must ensure that the branch
-      # path being committed exists (in HEAD of the Subversion
-      # repository).  If it doesn't exist, we will need to fill the
-      # branch.  After the fill, the path on which we're committing
-      # will exist.
-      if isinstance(cvs_rev.lod, Branch) \
-          and cvs_rev.lod.symbol not in filled_symbols \
-          and cvs_rev.lod.symbol not in self._done_symbols \
-          and self._fill_needed(cvs_rev):
-        self._persistence_manager.put_svn_commit(
-            SVNSymbolCommit(cvs_rev.lod.symbol, timestamp))
-        filled_symbols.add(cvs_rev.lod.symbol)
-
   def _delete_needed(self, cvs_rev):
     """Return True iff the specified delete CVS_REV is really needed.
 
@@ -283,8 +192,6 @@ class SVNCommitCreator:
       # When trunk-only, only do the primary commit:
       self._commit(timestamp, cvs_revs)
     else:
-      self._pre_commit(cvs_revs, timestamp)
-
       # If some of the commits in this txn happened on a non-trunk
       # default branch, then those files will have to be copied into
       # trunk manually after being changed on the branch (because the
@@ -303,12 +210,15 @@ class SVNCommitCreator:
       self._post_commit(
           default_branch_cvs_revisions, motivating_commit.revnum, timestamp)
 
-      self._commit_symbols(changeset.id, timestamp)
-
   def _process_symbol_changeset(self, changeset, timestamp):
-    """Process SymbolChangeset CHANGESET."""
+    """Process SymbolChangeset CHANGESET, producing a SVNSymbolCommit."""
 
-    pass
+    if not Ctx().trunk_only:
+      self._persistence_manager.put_svn_commit(
+          SVNSymbolCommit(
+              changeset.symbol, changeset.cvs_item_ids, timestamp
+              )
+          )
 
   def process_changeset(self, changeset, timestamp):
     """Process CHANGESET, using TIMESTAMP for all of its entries.

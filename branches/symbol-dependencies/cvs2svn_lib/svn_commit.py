@@ -289,12 +289,14 @@ class SVNPrimaryCommit(SVNCommit, SVNRevisionCommit):
 
 
 class SVNSymbolCommit(SVNCommit):
-  def __init__(self, symbol, date, revnum=None):
+  def __init__(self, symbol, cvs_symbol_ids, date, revnum=None):
     SVNCommit.__init__(
         self, 'copying to tag/branch %r' % symbol.name, date, revnum)
 
     # The TypedSymbol that is filled in this SVNCommit.
     self.symbol = symbol
+
+    self.cvs_symbol_ids = cvs_symbol_ids
 
   def _get_log_msg(self):
     """Return a manufactured log message for this commit."""
@@ -325,12 +327,12 @@ class SVNSymbolCommit(SVNCommit):
     repos.end_commit()
 
   def __getstate__(self):
-    return (self.revnum, self.symbol.id, self.date)
+    return (self.revnum, self.symbol.id, self.cvs_symbol_ids, self.date)
 
   def __setstate__(self, state):
-    (revnum, symbol_id, date) = state
+    (revnum, symbol_id, cvs_symbol_ids, date) = state
     symbol = Ctx()._symbol_db.get_symbol(symbol_id)
-    SVNSymbolCommit.__init__(self, symbol, date, revnum)
+    SVNSymbolCommit.__init__(self, symbol, cvs_symbol_ids, date, revnum)
 
   def __str__(self):
     """ Print a human-readable description of this SVNCommit.
