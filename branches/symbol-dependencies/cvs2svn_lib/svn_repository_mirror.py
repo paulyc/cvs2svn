@@ -24,18 +24,13 @@ from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib.common import path_join
 from cvs2svn_lib.common import path_split
 from cvs2svn_lib.context import Ctx
-from cvs2svn_lib.log import Log
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.serializer import MarshalSerializer
 from cvs2svn_lib.database import IndexedDatabase
 from cvs2svn_lib.record_table import UnsignedIntegerPacker
 from cvs2svn_lib.record_table import RecordTable
-from cvs2svn_lib.symbol import BranchSymbol
-from cvs2svn_lib.symbol import TagSymbol
 from cvs2svn_lib.openings_closings import SymbolingsReader
-from cvs2svn_lib.symbol_filling_guide import FillSource
-from cvs2svn_lib.svn_revision_range import SVNRevisionRange
 from cvs2svn_lib.svn_commit_item import SVNCommitItem
 
 
@@ -423,17 +418,17 @@ class SVNRepositoryMirror:
     repository by the end of this call, even if there are no paths
     under it."""
 
-    # Get the list of sources for the symbolic name:
-    sources = self._symbolings_reader.get_sources(symbol, self._youngest)
+    # Get the set of sources for the symbolic name:
+    source_set = \
+        self._symbolings_reader.get_source_set(symbol, self._youngest)
 
-    if not sources:
+    if not source_set:
       # We can only get here for a branch whose first commit is an add
       # (as opposed to a copy).  This case is covered by test 16.
       self._fill_empty_branch(symbol)
     else:
-      dest_prefix = symbol.get_path()
-      dest_node = self._open_writable_node(dest_prefix, False)
-      self._fill(dest_prefix, dest_node, sources)
+      dest_node = self._open_writable_node(symbol.get_path(), False)
+      self._fill(symbol, dest_node, source_set)
 
   def _fill_empty_branch(self, symbol):
     """Fill a branch without any contents.
@@ -480,43 +475,38 @@ class SVNRepositoryMirror:
         dest_node.delete_component(component)
     return dest_node
 
-  def _fill(self, dest_prefix, dest_node, sources,
-            path=None, parent_source_prefix=None,
-            preferred_revnum=None, prune_ok=False):
-    """Fill the tag or branch at DEST_PREFIX + PATH with items from
-    SOURCES, and recurse into the child items.
+  def _fill(self, symbol, dest_node, source_set,
+            parent_source=None, prune_ok=False):
+    """Fill the tag or branch SYMBOL at the path indicated by SOURCE_SET.
 
-    DEST_PREFIX is the prefix of the destination directory, e.g.
-    'tags/my_tag' or 'branches/my_branch', and SOURCES is a list of
-    FillSource classes that are candidates to be copied to the
-    destination.  DEST_NODE is the node of the destination, or None if
-    the destination does not yet exist.
+    Use items from SOURCE_SET, and recurse into the child items.
 
-    PATH is the path relative to DEST_PREFIX.  If PATH is None, we
-    are at the top level, e.g. 'tags/my_tag'.
+    Fill SYMBOL starting at the path SYMBOL.get_path(SOURCE_SET.path).
+    DEST_NODE is the node of this destination path, or None if the
+    destination does not yet exist.  All directories above this path
+    have already been filled.  SOURCE_SET is a list of FillSource
+    classes that are candidates to be copied to the destination.
 
-    PARENT_SOURCE_PREFIX is the source prefix that was used to copy
-    the parent directory, and PREFERRED_REVNUM is an int which is the
-    source revision number that the caller (who may have copied KEY's
-    parent) used to perform its copy.  If PREFERRED_REVNUM is None,
-    then no revision is preferable to any other (which probably means
-    that no copies have happened yet).
+    PARENT_SOURCE is the source that was best for the parent
+    directory.  (Note that the parent directory wasn't necessarily
+    copied in this commit, but PARENT_SOURCE was chosen anyway.)  We
+    prefer to copy from the same source as was used for the parent,
+    since it typically requires less touching-up.  If PARENT_SOURCE is
+    None, then this is the top-level directory, and no revision is
+    preferable to any other (which probably means that no copies have
+    happened yet).
 
     PRUNE_OK means that a copy has been made in this recursion, and
     it's safe to prune directories that are not in
-    SYMBOL_FILL._node_tree, provided that said directory has a source
-    prefix of one of the PARENT_SOURCE_PREFIX.
+    SYMBOL_FILL._node_tree.
 
-    PATH, PARENT_SOURCE_PREFIX, PRUNE_OK, and PREFERRED_REVNUM should
-    only be passed in by recursive calls."""
+    PARENT_SOURCE, and PRUNE_OK should only be passed in by recursive
+    calls."""
 
-    # Sort the sources in descending score order so that we will make
-    # a eventual copy from the source with the highest score.
-    sources.sort()
-    copy_source = sources[0]
+    copy_source = source_set.get_best_source()
 
-    src_path = path_join(copy_source.prefix, path)
-    dest_path = path_join(dest_prefix, path)
+    src_path = path_join(copy_source.prefix, source_set.path)
+    dest_path = symbol.get_path(source_set.path)
 
     # Figure out if we shall copy to this destination and delete any
     # destination path that is in the way.
@@ -525,8 +515,9 @@ class SVNRepositoryMirror:
       # be copied:
       do_copy = True
     elif prune_ok and (
-          parent_source_prefix != copy_source.prefix
-          or copy_source.revnum != preferred_revnum):
+          parent_source is None
+          or copy_source.prefix != parent_source.prefix
+          or copy_source.revnum != parent_source.revnum):
       # The parent path was copied from a different source than we
       # need to use, so we have to delete the version that was copied
       # with the parent before we can re-copy from the correct source:
@@ -539,26 +530,19 @@ class SVNRepositoryMirror:
       dest_node = self.copy_path(src_path, dest_path, copy_source.revnum)
       prune_ok = True
 
-    # Create the SRC_ENTRIES hash from SOURCES.  The keys are path
-    # elements and the values are lists of FillSource classes where
-    # this path element exists.
-    src_entries = {}
-    for source in sources:
-      if not isinstance(source.node, SVNRevisionRange):
-        for entry, node in source.node.items():
-          src_entries.setdefault(entry, []).append(
-              source.get_subsource(node, copy_source.revnum))
+    # Get the map {entry : FillSourceSet} for entries within this
+    # directory that need filling.
+    src_entries = source_set.get_subsource_sets(copy_source)
 
     if prune_ok:
       dest_node = self._prune_extra_entries(dest_path, dest_node, src_entries)
 
     # Recurse into the SRC_ENTRIES keys sorted in alphabetical order.
-    src_keys = src_entries.keys()
-    src_keys.sort()
-    for src_key in src_keys:
-      self._fill(dest_prefix, dest_node[src_key],
-                 src_entries[src_key], path_join(path, src_key),
-                 copy_source.prefix, copy_source.revnum, prune_ok)
+    entries = src_entries.keys()
+    entries.sort()
+    for entry in entries:
+      self._fill(symbol, dest_node[entry], src_entries[entry],
+                 copy_source, prune_ok)
 
   def add_delegate(self, delegate):
     """Adds DELEGATE to self._delegates.
