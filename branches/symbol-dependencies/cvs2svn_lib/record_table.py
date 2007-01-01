@@ -192,7 +192,7 @@ class RecordTable:
     """Return the item for index I.
 
     Raise KeyError if that item has never been set (or if it was set
-    to self.packer.emtpy_value)."""
+    to self.packer.empty_value)."""
 
     try:
       return self._cache[i]
