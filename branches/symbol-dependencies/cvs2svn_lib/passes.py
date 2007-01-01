@@ -420,7 +420,7 @@ class InitializeChangesetsPass(Pass):
         if changeset:
           yield SymbolChangeset(
               self.changeset_key_generator.gen_id(),
-              Ctx()._symbol_db.get_symbol(symbol_id), changeset)
+              Ctx()._symbol_db.get_symbol(old_symbol_id), changeset)
           changeset = []
         old_symbol_id = symbol_id
       changeset.append(cvs_item_id)
