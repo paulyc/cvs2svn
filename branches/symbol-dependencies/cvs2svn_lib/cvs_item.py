@@ -59,7 +59,7 @@ class CVSItem(object):
     raise NotImplementedError()
 
   def get_id_closed(self):
-    """Return the CVSItem.id if the CVSItem closed by this one.
+    """Return the CVSItem.id of the CVSItem closed by this one.
 
     Return None if this CVSItem doesn't close any other CVSItem."""
 
