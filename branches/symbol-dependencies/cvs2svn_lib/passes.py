@@ -716,7 +716,7 @@ class RevisionTopologicalSortPass(Pass):
       changeset = changesets_db[changeset_ids[i]]
       changesets_revordered_db.store(
           OrderedChangeset(
-              changeset.id, changeset.cvs_item_ids,
+              changeset.id, changeset.cvs_item_ids, i - 1,
               changeset_ids[i - 1], changeset_ids[i + 1]))
 
     changesets_revordered_db.close()
