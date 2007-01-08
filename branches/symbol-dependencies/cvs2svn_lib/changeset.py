@@ -149,11 +149,11 @@ class OrderedChangeset(Changeset):
     return ChangesetGraphNode(self.id, time_range, pred_ids, succ_ids)
 
   def __getstate__(self):
-    return Changeset.__getstate__(self) + (self.prev_id, self.next_id,)
+    return (Changeset.__getstate__(self), self.prev_id, self.next_id,)
 
   def __setstate__(self, state):
-    Changeset.__setstate__(self, state[:-2])
-    (self.prev_id, self.next_id,) = state[-2:]
+    (changeset_state, self.prev_id, self.next_id,) = state
+    Changeset.__setstate__(self, changeset_state)
 
   def __cmp__(self, other):
     return cmp(self._sort_order, other._sort_order) \
@@ -194,11 +194,11 @@ class SymbolChangeset(Changeset):
            or cmp(self.id, other.id)
 
   def __getstate__(self):
-    return Changeset.__getstate__(self) + (self.symbol.id,)
+    return (Changeset.__getstate__(self), self.symbol.id,)
 
   def __setstate__(self, state):
-    Changeset.__setstate__(self, state[:-1])
-    symbol_id = state[-1]
+    (changeset_state, symbol_id) = state
+    Changeset.__setstate__(self, changeset_state)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 
   def __str__(self):
