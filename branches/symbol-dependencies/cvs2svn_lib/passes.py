@@ -567,9 +567,6 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
 
-    Log().verbose('Breaking cycle: %s' % ' -> '.join([
-        '%x' % node.id for node in (cycle + [cycle[0]])]))
-
     best_i = None
     best_link = None
     for i in range(len(cycle)):
@@ -580,6 +577,11 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
       if best_i is None or link < best_link:
         best_i = i
         best_link = link
+
+    Log().verbose(
+        'Breaking cycle %s by breaking node %x' % (
+        ' -> '.join(['%x' % node.id for node in (cycle + [cycle[0]])]),
+        best_link.changeset.id,))
 
     new_changesets = best_link.break_changeset(self.changeset_key_generator)
 
@@ -699,7 +701,6 @@ class RevisionTopologicalSortPass(Pass):
         changesets_revordered_db.store(changeset)
 
     del changeset_ids
-
 
     changeset_ids = []
 
