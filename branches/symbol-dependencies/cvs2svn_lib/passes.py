@@ -737,6 +737,38 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
+  def break_segment(self, segment):
+    """Break a changeset in SEGMENT[1:-1].
+
+    The range SEGMENT[1:-1] is not empty, and all of the changesets in
+    that range are SymbolChangesets."""
+
+    best_i = None
+    best_link = None
+    for i in range(1, len(segment) - 1):
+      link = ChangesetGraphLink(
+          segment[i - 1], segment[i], segment[i + 1])
+
+      if best_i is None or link < best_link:
+        best_i = i
+        best_link = link
+
+    Log().verbose(
+        'Breaking segment %s by breaking node %x' % (
+        ' -> '.join(['%x' % node.id for node in segment]),
+        best_link.changeset.id,))
+
+    new_changesets = best_link.break_changeset(self.changeset_key_generator)
+
+    del self.changeset_graph[best_link.changeset.id]
+    del self.changesets_db[best_link.changeset.id]
+
+    for changeset in new_changesets:
+      self.changeset_graph.add_changeset(changeset)
+      self.changesets_db.store(changeset)
+      for item_id in changeset.cvs_item_ids:
+        self.cvs_item_to_changeset_id[item_id] = changeset.id
+
   def break_cycle(self, cycle):
     """Break up one or more SymbolChangesets in CYCLE to help break the cycle.
 
@@ -751,31 +783,34 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
 
-    Log().verbose('Breaking cycle: %s' % ' -> '.join([
-        '%x' % node.id for node in (cycle + [cycle[0]])]))
+    # Find the OrderedChangesets in the cycle (if any):
+    ordered_changeset_indexes = [
+        i
+        for i in range(len(cycle))
+        if isinstance(cycle[i], OrderedChangeset)]
+    if ordered_changeset_indexes:
+      # The cycle consists of one or more segments of SymbolChangesets
+      # bracketed by OrderedChangesets.  This implies that at least
+      # one pair of OrderedChangesets bracketing a segment is either
+      # in backwards order, or (if the whole cycle had only a single
+      # OrderedChangeset) the two OrderedChangesets bracketing the
+      # segment are one and the same.  To make progress on this cycle,
+      # we break each non-forwards segment.
+      ordered_changeset_indexes.append(
+          ordered_changeset_indexes[0] + len(cycle))
+      dcycle = cycle + cycle
+      for i in range(1, len(ordered_changeset_indexes)):
+        i0 = ordered_changeset_indexes[i - 1]
+        i1 = ordered_changeset_indexes[i]
+        c0 = dcycle[i0]
+        c1 = dcycle[i1]
+        if c0.ordinal >= c1.ordinal:
+          self.break_segment(dcycle[i0:i1 + 1])
 
-    best_i = None
-    best_link = None
-    for i in range(len(cycle)):
-      if isinstance(cycle[i], SymbolChangeset):
-        # It's OK if this index wraps to -1:
-        link = ChangesetGraphLink(
-            cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
-
-        if best_i is None or link < best_link:
-          best_i = i
-          best_link = link
-
-    new_changesets = best_link.break_changeset(self.changeset_key_generator)
-
-    del self.changeset_graph[best_link.changeset.id]
-    del self.changesets_db[best_link.changeset.id]
-
-    for changeset in new_changesets:
-      self.changeset_graph.add_changeset(changeset)
-      self.changesets_db.store(changeset)
-      for item_id in changeset.cvs_item_ids:
-        self.cvs_item_to_changeset_id[item_id] = changeset.id
+    else:
+      # The cycle doesn't contain any SymbolChangesets.  Break any
+      # link:
+      self.break_segment([cycle[-1]] + cycle + [cycle[0]])
 
   def run(self, stats_keeper):
     Log().quiet("Breaking CVSSymbol dependency loops...")
