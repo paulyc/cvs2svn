@@ -29,9 +29,7 @@ class Artifact:
   """An artifact that can be created, used across cvs2svn passes, then
   cleaned up."""
 
-  def __init__(self, name):
-    self.name = name
-
+  def __init__(self):
     # A set of passes that need this artifact.  This field is
     # maintained by ArtifactManager.
     self._passes_needed = set()
@@ -41,20 +39,20 @@ class Artifact:
 
     pass
 
-  def __str__(self):
-    return self.name
-
 
 class TempFileArtifact(Artifact):
   """A temporary file that can be used across cvs2svn passes."""
 
   def __init__(self, basename):
-    Artifact.__init__(self, basename)
+    Artifact.__init__(self)
     self.filename = Ctx().get_temp_filename(basename)
 
   def cleanup(self):
     Log().verbose("Deleting", self.filename)
     os.unlink(self.filename)
+
+  def __str__(self):
+    return 'Temporary file %r' % self.filename
 
 
 class ArtifactNotActiveError(Exception):
@@ -75,13 +73,18 @@ class ArtifactManager:
 
   To use this class:
 
-  - Call register_artifact() or register_temp_file() for all possible
-    artifacts (even those that should have been created by previous
-    cvs2svn runs).
+  - Call artifact_manager[name] = artifact once for each known
+    artifact.
 
-  - Call register_artifact_needed() or register_temp_file_needed() for
-    any artifact that are needed by any pass (even those passes that
-    won't be executed during this cvs2svn run).
+  - Call artifact_manager.creates(which_pass, name) to indicate that
+    WHICH_PASS is the pass that creates the artifact named NAME.
+
+  - Call artifact_manager.uses(which_pass, name) to indicate that
+    WHICH_PASS needs to use the artifact named NAME.
+
+  There are also helper methods register_temp_file(),
+  register_artifact_needed(), and register_temp_file_needed() which
+  combine some useful operations.
 
   Then, in pass order:
 
@@ -116,16 +119,51 @@ class ArtifactManager:
     # A set of passes that are currently being executed.
     self._active_passes = set()
 
-  def register_artifact(self, artifact, which_pass):
-    """Register a new ARTIFACT for management by this class.
+  def __setitem__(self, name, artifact):
+    """Add ARTIFACT to the list of artifacts that we manage.
 
-    WHICH_PASS is the pass that creates ARTIFACT, and is also assumed
-    to need it.  It is an error to registier the same artifact more
-    than once."""
+    Store it under NAME."""
 
-    assert artifact.name not in self._artifacts
-    self._artifacts[artifact.name] = artifact
-    self.register_artifact_needed(artifact.name, which_pass)
+    assert name not in self._artifacts
+    self._artifacts[name] = artifact
+
+  def __getitem__(self, name):
+    """Return the artifact with the specified name.
+
+    If the artifact does not currently exist, raise a KeyError.  If it
+    is not registered as being needed by one of the active passes,
+    raise an ArtifactNotActiveError."""
+
+    artifact = self._artifacts[name]
+    for active_pass in self._active_passes:
+      if artifact in self._pass_needs[active_pass]:
+        # OK
+        return artifact
+    else:
+      raise ArtifactNotActiveError(name)
+
+  def creates(self, which_pass, name):
+    """Register that WHICH_PASS creates the artifact named NAME.
+
+    An artifact with this name must already have been registered."""
+
+    artifact = self._artifacts[name]
+
+    # An artifact is automatically "needed" in the pass in which it is
+    # created:
+    self.uses(which_pass, name)
+
+  def uses(self, which_pass, name):
+    """Register that WHICH_PASS uses the artifact named NAME.
+
+    An artifact with this name must already have been registered."""
+
+    artifact = self._artifacts[name]
+    artifact._passes_needed.add(which_pass)
+    if which_pass in self._pass_needs:
+      self._pass_needs[which_pass].add(artifact)
+    else:
+      self._pass_needs[which_pass] = set([artifact])
 
   def register_temp_file(self, basename, which_pass):
     """Register a temporary file with base name BASENAME as an artifact.
@@ -133,25 +171,12 @@ class ArtifactManager:
     Return the filename of the temporary file."""
 
     artifact = TempFileArtifact(basename)
-    self.register_artifact(artifact, which_pass)
+    self[basename] = artifact
+    self.creates(which_pass, basename)
     return artifact.filename
 
   def get_artifact(self, artifact_name):
-    """Return the artifact with the specified name.
-
-    If the artifact does not currently exist, raise a KeyError.  If it
-    is not registered as being needed by one of the active passes,
-    raise an ArtifactNotActiveError."""
-
-    artifact = self._artifacts[artifact_name]
-    for active_pass in self._active_passes:
-      if artifact in self._pass_needs[active_pass]:
-        # OK
-        break
-    else:
-      raise ArtifactNotActiveError(artifact_name)
-
-    return artifact
+    return self[artifact_name]
 
   def get_temp_file(self, basename):
     """Return the filename of the temporary file with the specified BASENAME.
@@ -162,7 +187,7 @@ class ArtifactManager:
     return self.get_artifact(basename).filename
 
   def register_artifact_needed(self, artifact_name, which_pass):
-    """Register that WHICH_PASS needs the artifact named ARTIFACT_NAME.
+    """Register that WHICH_PASS uses the artifact named ARTIFACT_NAME.
 
     An artifact with this name must already have been registered."""
 
@@ -253,15 +278,15 @@ class ArtifactManager:
     for.  (This is mainly a consistency check, that no artifacts were
     registered under nonexistent passes.)"""
 
-    unclean_artifact_names = [
-        artifact.name
+    unclean_artifacts = [
+        str(artifact)
         for artifact in self._artifacts.values()
         if artifact._passes_needed]
 
-    if unclean_artifact_names:
+    if unclean_artifacts:
       Log().warn(
           'INTERNAL: The following artifacts were not cleaned up:\n    %s\n'
-          % ('\n    '.join(unclean_artifact_names)))
+          % ('\n    '.join(unclean_artifacts)))
 
 
 # The default ArtifactManager instance:
