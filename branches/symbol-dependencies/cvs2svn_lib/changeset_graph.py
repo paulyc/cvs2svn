@@ -160,12 +160,17 @@ class ChangesetGraph(object):
 
     # Since there are no nopred nodes in the graph, all nodes in the
     # graph must either be involved in a cycle or depend (directly or
-    # indirectly) on nodes that are in a cycle.  Pick an arbitrary
-    # node and follow it backwards until a node is seen a second time;
-    # then we have our cycle.
+    # indirectly) on nodes that are in a cycle.
+
+    # Pick an arbitrary node:
     node = self.nodes.itervalues().next()
     seen_nodes = [node]
+
+    # Follow it backwards until a node is seen a second time; then we
+    # have our cycle.
     while True:
+      # Pick an arbitrary predecessor of node.  It must exist, because
+      # there are no nopred nodes:
       node_id = node.pred_ids.__iter__().next()
       node = self[node_id]
       try:
