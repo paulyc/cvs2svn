@@ -840,7 +840,7 @@ def interleaved_commits():
   conv = ensure_conversion('main')
 
   # The initial import.
-  rev = 37
+  rev = 38
   conv.logs[rev].check('Initial revision', (
     ('/%(trunk)s/interleaved', 'A'),
     ('/%(trunk)s/interleaved/1', 'A'),
@@ -1025,7 +1025,7 @@ def mixed_time_branch_with_added_file():
 
   # A branch from the same place as T_MIXED in the previous test,
   # plus a file added directly to the branch
-  conv.logs[32].check(sym_log_msg('B_MIXED'), (
+  conv.logs[33].check(sym_log_msg('B_MIXED'), (
     ('/%(branches)s/B_MIXED (from /%(trunk)s:31)', 'A'),
     ('/%(branches)s/B_MIXED/partial-prune', 'D'),
     ('/%(branches)s/B_MIXED/single-files', 'D'),
@@ -1059,7 +1059,7 @@ def split_time_branch():
 
   rev = 42
   # First change on the branch, creating it
-  conv.logs[rev].check(sym_log_msg('B_SPLIT'), (
+  conv.logs[rev - 5].check(sym_log_msg('B_SPLIT'), (
     ('/%(branches)s/B_SPLIT (from /%(trunk)s:36)', 'A'),
     ('/%(branches)s/B_SPLIT/partial-prune', 'D'),
     ('/%(branches)s/B_SPLIT/single-files', 'D'),
