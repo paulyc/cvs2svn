@@ -24,7 +24,8 @@ from cvs2svn_lib.set_support import *
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import OrderedChangeset
-from cvs2svn_lib.changeset import SymbolChangeset
+from cvs2svn_lib.changeset import BranchChangeset
+from cvs2svn_lib.changeset import TagChangeset
 from cvs2svn_lib.changeset_graph_node import ChangesetGraphNode
 
 
@@ -215,9 +216,10 @@ class ChangesetGraph(object):
       return 'ChangesetGraph:\n  EMPTY\n'
 
   node_colors = {
-      RevisionChangeset : 'cyan',
-      OrderedChangeset : 'yellow',
-      SymbolChangeset : 'pink',
+      RevisionChangeset : 'lightgreen',
+      OrderedChangeset : 'cyan',
+      BranchChangeset : 'orange',
+      TagChangeset : 'yellow',
       }
 
   def output_coarse_dot(self, f):

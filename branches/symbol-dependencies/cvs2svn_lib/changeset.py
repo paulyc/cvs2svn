@@ -20,6 +20,8 @@
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib.symbol import BranchSymbol
+from cvs2svn_lib.symbol import TagSymbol
 from cvs2svn_lib.cvs_item import CVSRevision
 from cvs2svn_lib.time_range import TimeRange
 from cvs2svn_lib.changeset_graph_node import ChangesetGraphNode
@@ -171,8 +173,6 @@ class OrderedChangeset(Changeset):
 class SymbolChangeset(Changeset):
   """A Changeset consisting of CVSSymbols."""
 
-  _sort_order = 0
-
   def __init__(self, id, symbol, cvs_item_ids):
     Changeset.__init__(self, id, cvs_item_ids)
     self.symbol = symbol
@@ -190,9 +190,6 @@ class SymbolChangeset(Changeset):
 
     return ChangesetGraphNode(self.id, TimeRange(), pred_ids, succ_ids)
 
-  def create_split_changeset(self, id, cvs_item_ids):
-    return SymbolChangeset(id, self.symbol, cvs_item_ids)
-
   def __cmp__(self, other):
     return cmp(self._sort_order, other._sort_order) \
            or cmp(self.symbol, other.symbol) \
@@ -206,7 +203,42 @@ class SymbolChangeset(Changeset):
     Changeset.__setstate__(self, changeset_state)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 
+
+class BranchChangeset(SymbolChangeset):
+  """A Changeset consisting of CVSBranches."""
+
+  _sort_order = 0
+
+  def create_split_changeset(self, id, cvs_item_ids):
+    return BranchChangeset(id, self.symbol, cvs_item_ids)
+
   def __str__(self):
-    return 'SymbolChangeset<%x>("%s")' % (self.id, self.symbol,)
+    return 'BranchChangeset<%x>("%s")' % (self.id, self.symbol,)
+
+
+class TagChangeset(SymbolChangeset):
+  """A Changeset consisting of CVSTags."""
+
+  _sort_order = 0
+
+  def create_split_changeset(self, id, cvs_item_ids):
+    return TagChangeset(id, self.symbol, cvs_item_ids)
+
+  def __str__(self):
+    return 'TagChangeset<%x>("%s")' % (self.id, self.symbol,)
+
+
+def create_symbol_changeset(id, symbol, cvs_item_ids):
+  """Factory function for SymbolChangesets.
+
+  Return a BranchChangeset or TagChangeset, depending on the type of
+  SYMBOL.  SYMBOL must be a BranchSymbol or TagSymbol."""
+
+  if isinstance(symbol, BranchSymbol):
+    return BranchChangeset(id, symbol, cvs_item_ids)
+  if isinstance(symbol, TagSymbol):
+    return TagChangeset(id, symbol, cvs_item_ids)
+  else:
+    raise 'Unknown symbol type'
 
 
