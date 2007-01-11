@@ -52,6 +52,10 @@ class SVNCommitCreator:
           artifact_manager.get_temp_file(config.SYMBOL_LAST_CHANGESETS_DB),
           DB_OPEN_READ)
 
+  def close(self):
+    if not Ctx().trunk_only:
+      self._last_changesets_db.close()
+
   def _delete_needed(self, cvs_rev):
     """Return True iff the specified delete CVS_REV is really needed.
 

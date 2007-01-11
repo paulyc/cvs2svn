@@ -1042,9 +1042,11 @@ class CreateRevsPass(Pass):
 
     persistence_manager = PersistenceManager(DB_OPEN_NEW)
     creator = SVNCommitCreator(persistence_manager)
+
     for (changeset, timestamp) in self.get_changesets():
       creator.process_changeset(changeset, timestamp)
 
+    creator.close()
     persistence_manager.close()
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
