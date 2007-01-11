@@ -67,6 +67,12 @@ class PersistenceManager:
     # order.
     self._fills = {}
 
+  def close(self):
+    self.cvs2svn_db.close()
+    self.cvs2svn_db = None
+    self.svn_commit_db.close()
+    self.svn_commit_db = None
+
   def get_svn_revnum(self, cvs_rev_id):
     """Return the Subversion revision number in which CVS_REV_ID was
     committed, or SVN_INVALID_REVNUM if there is no mapping for

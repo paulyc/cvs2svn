@@ -1040,10 +1040,12 @@ class CreateRevsPass(Pass):
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger = SymbolingsLogger()
 
-    creator = SVNCommitCreator(PersistenceManager(DB_OPEN_NEW))
+    persistence_manager = PersistenceManager(DB_OPEN_NEW)
+    creator = SVNCommitCreator(persistence_manager)
     for (changeset, timestamp) in self.get_changesets():
       creator.process_changeset(changeset, timestamp)
 
+    persistence_manager.close()
     if not Ctx().trunk_only:
       Ctx()._symbolings_logger.close()
     Ctx()._cvs_items_db.close()
@@ -1181,6 +1183,7 @@ class OutputPass(Pass):
     Ctx().revision_reader.finish()
 
     Ctx().output_option.cleanup()
+    persistence_manager.close()
 
     Ctx()._cvs_items_db.close()
 
