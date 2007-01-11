@@ -1,0 +1,59 @@
+head	1.1;
+access;
+symbols
+	BRANCH_A:1.1.0.4
+	BRANCH_B:1.1.0.2;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2007.01.10.22.25.30;	author mhagger;	state Exp;
+branches
+	1.1.2.1
+	1.1.4.1;
+next	;
+
+1.1.2.1
+date	2007.01.10.22.34.43;	author mhagger;	state Exp;
+branches;
+next	;
+
+1.1.4.1
+date	2007.01.10.22.34.29;	author mhagger;	state Exp;
+branches;
+next	;
+
+
+desc
+@Initial revision
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Change on branch B
+@
+text
+@a0 1
+b
+@
+
+
+1.1.4.1
+log
+@Change on branch A
+@
+text
+@a0 1
+a
+@
+

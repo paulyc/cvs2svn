@@ -246,6 +246,14 @@ class _BranchData(_SymbolData):
     # sprouts (e.g., '1.5').
     self.parent = self.branch_number[:self.branch_number.rindex(".")]
 
+    # The ID of the preceding branch rooted at the same child as this
+    # branch, if any; otherwise, None.
+    self.earlier_branch_id = None
+
+    # The ID of the following branch rooted at the same child as this
+    # branch, if any; otherwise, None.
+    self.later_branch_id = None
+
     # The revision number of the first commit on this branch, if any
     # (e.g., '1.5.2.1'); otherwise, None.
     self.child = None
@@ -589,6 +597,21 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
           lambda a, b: cmp(rev_tuple(a.branch_number),
                            rev_tuple(b.branch_number)))
 
+  def _resolve_branch_order(self):
+    """Add earlier_branch_id and later_branch_id links.
+
+    This forces branches to be created in numerical order, which is
+    the order they were created in CVS."""
+
+    for rev_data in self._rev_data.values():
+      branches_data = rev_data.branches_data
+      if len(branches_data) > 1:
+        for i in range(1, len(branches_data)):
+          prev_branch = branches_data[i - 1]
+          next_branch = branches_data[i]
+          prev_branch.later_branch_id = next_branch.id
+          next_branch.earlier_branch_id = prev_branch.id
+
   def _resolve_tag_dependencies(self):
     """Resolve dependencies involving tags."""
 
@@ -658,6 +681,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
     self._resolve_primary_dependencies()
     self._resolve_branch_dependencies()
     self._sort_branches()
+    self._resolve_branch_order()
     self._resolve_tag_dependencies()
     self._determine_root_rev()
     self._register_branch_possible_parents()
@@ -880,7 +904,8 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
               branch_data.id, self.cvs_file, branch_data.symbol,
               branch_data.branch_number,
               self._get_rev_id(branch_data.parent),
-              self._get_rev_id(branch_data.child),
+              branch_data.earlier_branch_id, branch_data.later_branch_id,
+              self._get_rev_id(branch_data.child)
               ))
 
     for tags_data in self.sdc.tags_data.values():
@@ -889,6 +914,7 @@ class _FileDataCollector(cvs2svn_rcsparse.Sink):
             CVSTag(
                 tag_data.id, self.cvs_file, tag_data.symbol,
                 self._get_rev_id(tag_data.rev),
+                None, None
                 ))
 
   def parse_completed(self):

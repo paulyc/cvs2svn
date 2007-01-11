@@ -21,6 +21,7 @@ Version x.x.x (not yet released)
  * Gracefully handle tags that refer to nonexistent revisions.
  * Check and fail if revision header appears multiple times.
  * Gracefully handle multiple deltatext blocks for same revision.
+ * Create branches in the order implied by their branch numbers.
 
  Miscellaneous:
 
