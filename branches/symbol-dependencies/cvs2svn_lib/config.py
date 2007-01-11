@@ -83,6 +83,9 @@ CHANGESETS_SORTED_DATAFILE = 'cvs2svn-changesets-s.txt'
 # marshalled dictionary.
 STATISTICS_FILE = 'cvs2svn-statistics.pck'
 
+# A file holding the lifetime of every CVSItem that has been seen.
+LIFETIME_DB = 'cvs2svn-cvs-item-lifetimes.dat'
+
 # This text file contains records (1 per line) that describe svn
 # filesystem paths that are the opening and closing source revisions
 # for copies to tags and branches.  The format is as follows:

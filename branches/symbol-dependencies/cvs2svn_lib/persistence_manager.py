@@ -28,6 +28,7 @@ from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.record_table import SignedIntegerPacker
 from cvs2svn_lib.record_table import RecordTable
 from cvs2svn_lib.database import PrimedPDatabase
+from cvs2svn_lib.lifetime_database import LifetimeDatabase
 from cvs2svn_lib.svn_commit import SVNRevisionCommit
 from cvs2svn_lib.svn_commit import SVNInitialProjectCommit
 from cvs2svn_lib.svn_commit import SVNPrimaryCommit
@@ -62,12 +63,16 @@ class PersistenceManager:
         artifact_manager.get_temp_file(config.CVS_REVS_TO_SVN_REVNUMS),
         mode, SignedIntegerPacker(SVN_INVALID_REVNUM))
 
+    self.lifetime_db = LifetimeDatabase(mode)
+
     # A map {Symbol -> [svn_revnum,...]} where svn_revnums are the svn
     # revision numbers in which the symbol was filled, in numerical
     # order.
     self._fills = {}
 
   def close(self):
+    self.lifetime_db.close()
+    self.lifetime_db = None
     self.cvs2svn_db.close()
     self.cvs2svn_db = None
     self.svn_commit_db.close()
@@ -106,6 +111,12 @@ class PersistenceManager:
       for cvs_rev in svn_commit.cvs_revs:
         Log().verbose(' %s %s' % (cvs_rev.cvs_path, cvs_rev.rev,))
         self.cvs2svn_db[cvs_rev.id] = svn_commit.revnum
+
+    for cvs_item in svn_commit.get_cvs_items():
+      self.lifetime_db.set_opening(cvs_item.id, svn_commit.revnum)
+      id_closed = cvs_item.get_id_closed()
+      if id_closed is not None:
+        self.lifetime_db.set_closing(id_closed, svn_commit.revnum)
 
     # If it is a symbol commit, then record _fills.
     if isinstance(svn_commit, SVNSymbolCommit):
