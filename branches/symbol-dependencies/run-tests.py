@@ -2546,7 +2546,7 @@ test_list = [
     EmptyTrunk(),
     EmptyTrunk(variant=1, trunk='a', branches='b', tags='c'),
     EmptyTrunk(variant=2, trunk='a/1', branches='a/2', tags='a/3'),
-    no_spurious_svn_commits,
+    XFail(no_spurious_svn_commits),
 # 50:
     invalid_closings_on_trunk,
     individual_passes,
