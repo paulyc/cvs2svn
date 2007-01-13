@@ -45,6 +45,9 @@ class Lifetime:
     # hasn't been closed yet):
     self.closing = closing
 
+  def __str__(self):
+    return '[%s:%s]' % (self.opening or '', self.closing or '',)
+
 
 class _LifetimePacker(Packer):
   format = '=2I'
