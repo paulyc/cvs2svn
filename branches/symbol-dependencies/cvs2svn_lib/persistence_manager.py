@@ -59,9 +59,6 @@ class PersistenceManager:
         artifact_manager.get_temp_file(config.SVN_COMMITS_DB), mode,
         (SVNInitialProjectCommit, SVNPrimaryCommit, SVNSymbolCommit,
          SVNPostCommit,))
-    self.cvs2svn_db = RecordTable(
-        artifact_manager.get_temp_file(config.CVS_REVS_TO_SVN_REVNUMS),
-        mode, SignedIntegerPacker(SVN_INVALID_REVNUM))
 
     self.lifetime_db = LifetimeDatabase(mode)
 
@@ -73,17 +70,8 @@ class PersistenceManager:
   def close(self):
     self.lifetime_db.close()
     self.lifetime_db = None
-    self.cvs2svn_db.close()
-    self.cvs2svn_db = None
     self.svn_commit_db.close()
     self.svn_commit_db = None
-
-  def get_svn_revnum(self, cvs_rev_id):
-    """Return the Subversion revision number in which CVS_REV_ID was
-    committed, or SVN_INVALID_REVNUM if there is no mapping for
-    CVS_REV_ID."""
-
-    return self.cvs2svn_db.get(cvs_rev_id, SVN_INVALID_REVNUM)
 
   def get_svn_commit(self, svn_revnum):
     """Return an SVNCommit that corresponds to SVN_REVNUM.
@@ -110,7 +98,6 @@ class PersistenceManager:
     if isinstance(svn_commit, SVNRevisionCommit):
       for cvs_rev in svn_commit.cvs_revs:
         Log().verbose(' %s %s' % (cvs_rev.cvs_path, cvs_rev.rev,))
-        self.cvs2svn_db[cvs_rev.id] = svn_commit.revnum
 
     for cvs_item in svn_commit.get_cvs_items():
       self.lifetime_db.set_opening(cvs_item.id, svn_commit.revnum)
