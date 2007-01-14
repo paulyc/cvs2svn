@@ -2551,7 +2551,7 @@ test_list = [
     invalid_closings_on_trunk,
     individual_passes,
     resync_bug,
-    branch_from_default_branch,
+    XFail(branch_from_default_branch),
     file_in_attic_too,
     retain_file_in_attic_too,
     symbolic_name_filling_guide,
