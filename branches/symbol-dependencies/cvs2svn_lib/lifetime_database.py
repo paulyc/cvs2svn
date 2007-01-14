@@ -85,8 +85,8 @@ class LifetimeDatabase:
     lifetime = self.db.get(cvs_item_id) or Lifetime()
     if lifetime.opening is not None:
       raise FatalError(
-          'CVSItem %x was already registered to open in revision %d'
-          % (cvs_item_id, lifetime.opening,)
+          '%s was already registered to open in revision %d'
+          % (Ctx()._cvs_items_db[cvs_item_id], lifetime.opening,)
           )
     lifetime.opening = svn_revnum
     self.db[cvs_item_id] = lifetime
@@ -106,8 +106,8 @@ class LifetimeDatabase:
 
     if lifetime.closing is not None:
       raise FatalError(
-          'CVSItem %x was already registered to close in revision %d'
-          % (cvs_item_id, lifetime.closing,)
+          '%s was already registered to close in revision %d'
+          % (Ctx()._cvs_items_db[cvs_item_id], lifetime.closing,)
           )
     lifetime.closing = svn_revnum
     self.db[cvs_item_id] = lifetime
