@@ -32,6 +32,7 @@ from cvs2svn_lib.database import IndexedDatabase
 from cvs2svn_lib.record_table import UnsignedIntegerPacker
 from cvs2svn_lib.record_table import RecordTable
 from cvs2svn_lib.openings_closings import SymbolingsReader
+from cvs2svn_lib.symbol_filling_guide import get_source_set
 from cvs2svn_lib.svn_commit_item import SVNCommitItem
 
 
@@ -421,9 +422,12 @@ class SVNRepositoryMirror:
 
     symbol = svn_symbol_commit.symbol
 
+    openings_closings_map = Ctx()._lifetime_db.get_openings_closings_map(
+        svn_symbol_commit, self._youngest
+        )
+
     # Get the set of sources for the symbolic name:
-    source_set = \
-        self._symbolings_reader.get_source_set(symbol, self._youngest)
+    source_set = get_source_set(symbol, openings_closings_map)
 
     if not source_set:
       # We can only get here for a branch whose first commit is an add

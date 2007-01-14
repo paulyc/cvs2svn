@@ -1158,6 +1158,7 @@ class OutputPass(Pass):
       Ctx()._symbol_db = SymbolDatabase()
     repos = SVNRepositoryMirror()
     persistence_manager = PersistenceManager(DB_OPEN_READ)
+    Ctx()._lifetime_db = persistence_manager.lifetime_db
 
     Ctx().output_option.setup(repos)
 
