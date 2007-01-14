@@ -27,28 +27,27 @@ from cvs2svn_lib.common import path_join
 from cvs2svn_lib.common import path_split
 from cvs2svn_lib.common import FatalError
 from cvs2svn_lib.common import SVN_INVALID_REVNUM
-from cvs2svn_lib.svn_revision_range import SVNRevisionRange
+from cvs2svn_lib.lifetime_database import Lifetime
 
 
 class _RevisionScores:
   """Represent the scores for a range of revisions."""
 
-  def __init__(self, svn_revision_ranges):
-    """Initialize based on SVN_REVISION_RANGES.
+  def __init__(self, lifetimes):
+    """Initialize based on LIFETIMES.
 
-    SVN_REVISION_RANGES is a list of SVNRevisionRange objects.
+    LIFETIMES is a list of Lifetime objects.
 
     The score of an svn revision is defined to be the number of
-    SVNRevisionRanges that include the revision.  A score thus
-    indicates that copying the corresponding revision (or any
-    following revision up to the next revision in the list) of the
-    object in question would yield that many correct paths at or
-    underneath the object.  There may be other paths underneath it
-    which are not correct and would need to be deleted or recopied;
-    those can only be detected by descending and examining their
-    scores.
+    Lifetimes that include the revision.  A score thus indicates that
+    copying the corresponding revision (or any following revision up
+    to the next revision in the list) of the object in question would
+    yield that many correct paths at or underneath the object.  There
+    may be other paths underneath it which are not correct and would
+    need to be deleted or recopied; those can only be detected by
+    descending and examining their scores.
 
-    If SVN_REVISION_RANGES is empty, then all scores are undefined."""
+    If LIFETIMES is empty, then all scores are undefined."""
 
     # A list that looks like:
     #
@@ -63,23 +62,20 @@ class _RevisionScores:
     self.scores = []
 
     # First look for easy out.
-    if not svn_revision_ranges:
+    if not lifetimes:
       return
 
     # Create lists of opening and closing revisions along with the
     # corresponding delta to the total score:
-    openings = [ (x.opening_revnum, +1)
-                 for x in svn_revision_ranges ]
-    closings = [ (x.closing_revnum, -1)
-                 for x in svn_revision_ranges
-                 if x.closing_revnum is not None ]
+    openings = [ (x.opening, +1) for x in lifetimes ]
+    closings = [ (x.closing, -1) for x in lifetimes if x.closing is not None ]
 
     things = openings + closings
     # Sort by revision number:
     things.sort()
     # Initialize output list with zeroth element of things.  This
-    # element must exist, because it was verified that
-    # svn_revision_ranges (and therefore openings) is not empty.
+    # element must exist, because it was verified that lifetimes (and
+    # therefore openings) is not empty.
     self.scores = [ things[0] ]
     total = things[0][1]
     for (rev, change) in things[1:]:
@@ -169,10 +165,10 @@ class FillSource:
     otherwise, return the oldest such revision."""
 
     # Aggregate openings and closings from our rev tree
-    svn_revision_ranges = self._get_revision_ranges(self.node)
+    lifetimes = self._get_lifetimes(self.node)
 
     # Score the lists
-    revision_scores = _RevisionScores(svn_revision_ranges)
+    revision_scores = _RevisionScores(lifetimes)
 
     best_revnum, best_score = revision_scores.get_best_revnum()
 
@@ -187,21 +183,21 @@ class FillSource:
           % self._symbol.name)
     return best_revnum, best_score
 
-  def _get_revision_ranges(self, node):
-    """Return a list of all the SVNRevisionRanges at and under NODE.
+  def _get_lifetimes(self, node):
+    """Return a list of all the Lifetimes at and under NODE.
 
     Include duplicates.  This is a helper method used by
     _get_best_revnum()."""
 
-    if isinstance(node, SVNRevisionRange):
+    if isinstance(node, Lifetime):
       # It is a leaf node.
       return [ node ]
     else:
       # It is an intermediate node.
-      revision_ranges = []
+      lifetimes = []
       for key, subnode in node.items():
-        revision_ranges.extend(self._get_revision_ranges(subnode))
-      return revision_ranges
+        lifetimes.extend(self._get_lifetimes(subnode))
+      return lifetimes
 
   def _get_subsource(self, node, preferred_source):
     """Return the FillSource for the specified NODE."""
@@ -211,7 +207,7 @@ class FillSource:
   def get_subsources(self, preferred_source):
     """Generate (entry, FillSource) for all direct subsources."""
 
-    if not isinstance(self.node, SVNRevisionRange):
+    if not isinstance(self.node, Lifetime):
       for entry, node in self.node.items():
         yield entry, self._get_subsource(node, preferred_source)
 
@@ -284,8 +280,8 @@ class _SymbolFillingGuide:
   are dictionaries mapping pathname components to subnodes.  A leaf
   node exists for any potential source that has had an opening since
   the last fill of this symbol, and thus can be filled in this commit.
-  The leaves themselves are SVNRevisionRange objects telling for what
-  range of revisions the leaf could serve as a source.
+  The leaves themselves are Lifetime objects telling for what range of
+  revisions the leaf could serve as a source.
 
   self._node_tree is the root node of the directory tree.  By walking
   self._node_tree and calling self._get_best_revnum() on each node,
@@ -302,8 +298,8 @@ class _SymbolFillingGuide:
 
     SYMBOL is either a BranchSymbol or a TagSymbol.  Record the
     openings and closings from OPENINGS_CLOSINGS_MAP, which is a map
-    {svn_path : SVNRevisionRange} containing the openings and closings
-    for svn_paths."""
+    {svn_path : Lifetime} containing the openings and closings for
+    svn_paths."""
 
     self.symbol = symbol
 
@@ -312,9 +308,9 @@ class _SymbolFillingGuide:
     # the same form.
     self._node_tree = { }
 
-    for svn_path, svn_revision_range in openings_closings_map.items():
+    for svn_path, lifetime in openings_closings_map.items():
       (head, tail) = path_split(svn_path)
-      self._get_node_for_path(head)[tail] = svn_revision_range
+      self._get_node_for_path(head)[tail] = lifetime
 
     #self.print_node_tree(self._node_tree)
 
@@ -350,7 +346,7 @@ class _SymbolFillingGuide:
 
     This is a helper method, called by get_source_set() (see)."""
 
-    if isinstance(start_node, SVNRevisionRange):
+    if isinstance(start_node, Lifetime):
       # This implies that a change was found outside of the
       # legitimate sources.  This should never happen.
       raise
@@ -375,7 +371,7 @@ class _SymbolFillingGuide:
 
     if not indent_depth:
       print "TREE", "=" * 75
-    if isinstance(node, SVNRevisionRange):
+    if isinstance(node, Lifetime):
       print "TREE:", " " * (indent_depth * 2), name, node
     else:
       print "TREE:", " " * (indent_depth * 2), name
