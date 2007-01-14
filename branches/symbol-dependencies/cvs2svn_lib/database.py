@@ -288,7 +288,7 @@ class IndexedDatabase:
     return self._fetch(offset)
 
   def __delitem__(self, index):
-    offset = self.index_table[index]
+    self.index_table[index]
     self.index_table[index] = 0
 
   def close(self):
