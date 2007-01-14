@@ -921,59 +921,13 @@ class TopologicalSortPass(Pass):
     timestamp = 0
 
     for (changeset_id, time_range) in changeset_graph.consume_graph():
+      changeset = changesets_db[changeset_id]
       timestamp = max(time_range.t_max, timestamp + 1)
-      sorted_changesets.write('%x %08x\n' % (changeset_id, timestamp,))
+      sorted_changesets.write('%x %08x\n' % (changeset.id, timestamp,))
+      for cvs_item in changeset.get_cvs_items():
+        stats_keeper.record_cvs_item(cvs_item)
 
     sorted_changesets.close()
-
-    Log().quiet("Done")
-
-
-class CreateDatabasesPass(Pass):
-  """This pass was formerly known as pass4."""
-
-  def register_artifacts(self):
-    self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CHANGESETS_SYMBROKEN_DB)
-    self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
-
-  def get_changesets(self):
-    """Generate changesets in commit order."""
-
-    changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_SYMBROKEN_DB),
-        DB_OPEN_READ)
-
-    for line in file(
-            artifact_manager.get_temp_file(
-                config.CHANGESETS_SORTED_DATAFILE)):
-      [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
-      yield changesets_db[changeset_id]
-
-  def run(self, stats_keeper):
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    Ctx()._symbol_db = SymbolDatabase()
-    Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
-        DB_OPEN_READ)
-
-    if Ctx().trunk_only:
-      Log().quiet("Recording updated statistics...")
-      for changeset in self.get_changesets():
-        for cvs_item in changeset.get_cvs_items():
-          stats_keeper.record_cvs_item(cvs_item)
-    else:
-      Log().quiet("Tallying up some statistics...")
-
-      for changeset in self.get_changesets():
-        for cvs_item in changeset.get_cvs_items():
-          stats_keeper.record_cvs_item(cvs_item)
-
-    Ctx()._cvs_items_db.close()
 
     stats_keeper.set_stats_reflect_exclude(True)
 
@@ -1114,7 +1068,6 @@ passes = [
     RevisionTopologicalSortPass(),
     BreakCVSSymbolChangesetLoopsPass(),
     TopologicalSortPass(),
-    CreateDatabasesPass(),
     CreateRevsPass(),
     OutputPass(),
     ]
