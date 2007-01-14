@@ -227,9 +227,6 @@ as a group.  It does the following things:
      the results of CollateSymbolsPass, and fix up the references from
      other CVSItems.
 
-   - For each CVSRevision, record the list of symbols that the
-     revision closes.
-
    - Write the surviving CVSItems to the indexed store in files
      'cvs2svn-cvs-items-filtered-index.pck' and
      'cvs2svn-cvs-items-filtered.pck'.
@@ -241,14 +238,17 @@ as a group.  It does the following things:
 
      where TIMESTAMP is a fixed-width timestamp.  These summaries will
      be sorted in SortItemSummaryPass then used by
-     InitializeChangesetsPass to create first-draft changesets.
+     InitializeChangesetsPass to create first-draft revision
+     changesets.
 
    - Write a summary of CVSSymbols to 'cvs2svn-symbols-summary.txt'.
      Each line of the file has the format
 
          SYMBOL_ID CVS_SYMBOL_ID
 
-     Actually, this file is not used by the current code.
+     These summaries will be sorted in SortSymbolSummaryPass then used
+     by InitializeChangesetsPass to create first-draft symbol
+     changesets.
 
 
 SortRevisionSummaryPass
@@ -258,8 +258,8 @@ Sort the revision summary written by FilterSymbolsPass, creating
 'cvs2svn-revs-summary-s.txt'.  The sort groups items that might be
 added to the same changeset together and, within a group, sorts
 revisions by timestamp.  This step makes it easy for
-InitializeChangesetsPass to read the initial draft of changesets
-straight from the file.
+InitializeChangesetsPass to read the initial draft of revision
+changesets straight from the file.
 
 
 SortSymbolSummaryPass
@@ -267,34 +267,34 @@ SortSymbolSummaryPass
 
 Sort the symbol summary written by FilterSymbolsPass, creating
 'cvs2svn-symbols-summary-s.txt'.  The sort groups together symbol
-items that might be added to the same changeset.  The output of this
-pass is not used by the current code.
+items that might be added to the same changeset.  This step makes it
+easy for InitializeChangesetsPass to read the initial draft of symbol
+changesets straight from the file.
 
 
 InitializeChangesetsPass
 ========================
 
-This pass creates first-draft changesets, splitting them using
-COMMIT_THRESHOLD and breaking up any revision changesets that have
-internal dependencies.
+This pass creates first-draft revision and symbol changesets.
 
-The raw material for creating revision changesets is
-'cvs2svn-revs-summary-s.txt', which already has CVSRevisions sorted in
-such a way that potential changesets are grouped together and sorted
-by date.  The contents of this file are read line by line, and the
-corresponding CVSRevisions are accumulated into a changeset.  Whenever
-the metadata_id changes, or whenever there is a time gap of more than
-COMMIT_THRESHOLD (currently set to 5 minutes) between CVSRevisions,
-then a new changeset is started.
+Revision changesets are created from 'cvs2svn-revs-summary-s.txt',
+which already has CVSRevisions sorted in such a way that potential
+changesets are grouped together and sorted by date.  The contents of
+this file are read line by line, and the corresponding CVSRevisions
+are accumulated into a changeset.  Whenever the metadata_id changes,
+or whenever there is a time gap of more than COMMIT_THRESHOLD
+(currently set to 5 minutes) between CVSRevisions, then a new
+changeset is started.
 
 At this point a revision changeset can have internal dependencies if
 two commits were made to the same file with the same log message
 within COMMIT_THRESHOLD of each other.  The next job of this pass is
-to split up changesets in such a way to break such internal
+to split up revision changesets in such a way to break such internal
 dependencies.  This is done by sorting the CVSRevisions within a
 changeset by timestamp, then choosing the split point that breaks the
 most internal dependencies.  This procedure is continued recursively
-until there are no more dependencies internal to a single changeset.
+until there are no more dependencies internal to a single revision
+changeset.
 
 Analogously, the CVSSymbol items from 'cvs2svn-symbols-summary-s.txt'
 are grouped into symbol changesets.  (Symbol changesets cannot have
@@ -313,37 +313,29 @@ The result of this pass is two files:
 BreakCVSRevisionChangesetLoopsPass
 ==================================
 
-There can still be cycles in the graph of changesets caused by:
+There can still be cycles in the dependency graph involving only
+revision changesets.  These can be caused by:
 
    - Interleaved commits.  Since CVS commits are not atomic, it can
      happen that two commits are in progress at the same time and each
      alters the same two files, but in different orders.  These should
      be small cycles involving only a few changesets.  To resolve
-     these cycles, one or more of the blobs have to be split up
-     (eventually becoming separate svn commits).
+     these cycles, one or more of the changesets have to be split up.
 
    - Cycles involving a changeset formed by the accidental combination
      of unrelated items within a short period of time with the same
      digest.  These should also be be small cycles involving only a
      few changesets.
 
-   - Split creation of branches.  The same branch tag can be added to
-     different files at completely different times.  It is possible
-     that the revision that is tagged later depends on a changeset
-     that involves a file on the branch that was created earlier.
-     These cycles can be large, but they always involve a symbol
-     changeset.  To resolve these cycles, the symbol changeset should
-     be split up into two blobs.
-
-The job of this pass is to break up cycles of the first two types
-(those involving only CVSRevisions).
+The job of this pass is to break up such cycles (those involving only
+CVSRevisions).
 
 This pass works by building up the graph of revision changesets and
 their dependencies in memory, then attempting a topological sort of
 the changesets.  Whenever the sort stalls, that implies the existence
-of a cycle, one of which can easily be determined.  This cycle is broken
-up through the use of heuristics that try to determine an "efficient"
-way of splitting one or more of the changesets that are involved.
+of at least one cycle.  An arbitrary cycle is chosen, and this cycle
+is broken up through the use of heuristics that try to determine an
+"efficient" way of splitting one or more of the involved changesets.
 
 The new changesets are written to
 'cvs2svn-cvs-item-to-changeset-revbroken.dat' and
@@ -373,13 +365,35 @@ SymbolChangesets.
 BreakCVSSymbolChangesetLoopsPass
 ================================
 
-Read in the complete changeset graph and break any loops in the
-dependency graph by breaking up CVSBranch changesets.
+Read in the complete changeset graph (revision changesets and symbol
+changesets) and break any loops in the dependency graph by breaking up
+BranchChangesets.
 
-At this stage, all loops can be broken up by this mechanism because
-(1) all CVSRevision dependency loops were already broken in
-BreakCVSRevisionChangesetLoopsPass; (2) CVSTags cannot participate in
-dependency loops because no other CVSItem can depend on a CVSTag.
+   - Interleaved commits.  CVS branch commits are not atomic, so two
+     simultaneous branch commits could alter the same two files, but
+     in different orders.  This should create only small cycles
+     involving only a few changesets.
+
+   - Split creation of branches.  The same branch tag can be added to
+     different files at completely different times.  It is possible
+     that the revision that is tagged later depends on a changeset
+     that involves a file on the branch that was created earlier.
+     These cycles can be large, but they always involve a symbol
+     changeset.  To resolve these cycles, the symbol changeset should
+     be split up into two blobs.
+
+   - Unrelated branches with the same name.  It could be that separate
+     modules are tagged at different times and just happen to use the
+     same branch name.  (This is an extreme case of "split branches".)
+     If the modules are in different projects, then by default cvs2svn
+     considers them unrelated.  But two identically-named branches
+     within a single project might cause dependency loops.
+
+At this stage, all loops can be broken up by breaking up
+BranchChangesets because (1) all RevisionChangeset dependency loops
+were already broken in BreakCVSRevisionChangesetLoopsPass; (2)
+TagChangesets cannot participate in dependency loops because no other
+CVSItem can depend on a CVSTag.
 
 Since the input of this pass is the output of
 RevisionTopologicalSortPass, all revision loops have already been
@@ -390,6 +404,10 @@ RevisionTopologicalSortPass plus all of the symbol changesets.
 Because this pass doesn't break up any OrderedChangesets, it is
 constrained to finding places within the revision changeset sequence
 in which the symbol changeset commits can be inserted.
+
+Part of the heuristic for deciding how to break up cycles in this pass
+is that segments of a cycle that connect RevisionChangesets "in order"
+are never broken up.
 
 The new changesets are written to
 'cvs2svn-cvs-item-to-changeset-symbroken.dat' and
@@ -424,108 +442,24 @@ where CHANGESET_ID is the id of the changeset and TIMESTAMP is the
 timstamp that should be assigned to it when it is committed.  Both
 values are written in hexadecimal.
 
-For now, the SymbolChangesets are not passed on to the next step.
-
-
-CreateDatabasesPass (formerly called pass4):
-===================
-
-Find and create a database containing the last changeset that is a
-source for each symbol.  This will result in a database containing
-key-value pairs whose key is the id of a Changeset, and whose value is
-a list of symbol ids for which a CVSRevision in that Changeset is the
-last "opening."
-
-The format for this file is:
-
-    'cvs2svn-symbol-last-changesets.db':
-         Key                     Value
-         Changeset ID            array of symbol ids
-
-    For example:
-
-         5c                      --> [3, 8]
-         62                      --> [15]
-         4d                      --> [29, 5]
-         f                       --> [18, 12]
-
 
 CreateRevsPass (formerly called pass5)
 ==============
 
-Primarily, this pass gathers CVS revisions into Subversion revisions
-(a Subversion revision is comprised of one or more CVS revisions)
-before we actually begin committing (where "committing" means either
-to a Subversion repository or to a dump file).
-
-This pass does the following:
+Primarily, this pass converts Changesets into SVNCommit instances and
+stores them to the PersistenceManager.  This pass does the following:
 
 1. Creates a database file to map Subversion revision numbers to
-   SVNCommit instances ('cvs2svn-svn-commits.db').  Creates another
-   database file to map CVS Revisions to their Subversion Revision
-   numbers ('cvs2svn-cvs-revs-to-svn-revnums.db').
+   SVNCommit instances ('cvs2svn-svn-commits.db').
 
-2. When a file is copied to a symbolic name in cvs2svn, there are a
-   range of valid Subversion revisions that we can copy the file from.
-   The first valid Subversion revision number for a symbolic name is
-   called the "Opening", and the first *invalid* Subversion revision
-   number encountered after the "Opening" is called the "Closing".  In
-   this pass, the SymbolingsLogger class writes out a line (for each
-   symbolic name that it opens) to 'cvs2svn-symbolic-names.txt' if it
-   is the first possible source revision (the "opening" revision) for
-   a copy to create a branch or tag, or if it is the last possible
-   revision (the "closing" revision) for a copy to create a branch or
-   tag.  Not every opening will have a corresponding closing.
-
-   The format of each line is:
-
-       SYMBOL_ID SVN_REVNUM TYPE BRANCH_ID CVS_FILE_ID
-
-   For example:
-
-       1c 234 O * 1a7
-       34 245 O * 1a9
-       18a 241 C 34 1a7
-       122 201 O 7e 1b3
-
-   Here is what the columns mean:
-
-   SYMBOL_ID: The id of the branch or tag that starts or ends in this
-              CVS Revision (there can be multiples per CVS rev).
-
-   SVN_REVNUM: The Subversion revision number that is the opening or
-               closing for this SYMBOLIC_NAME.
-
-   TYPE: "O" for Openings and "C" for Closings.
-
-   BRANCH_ID: The id of the branch where this opening or closing
-              happened.  '*' denotes the default branch.
-
-   CVS_FILE_ID: The ID of the CVS file where this opening or closing
-                happened, in hexadecimal.
-
-   See SymbolingsLogger for more details.
-
-
-SortSymbolsPass (formerly called pass6)
-===============
-
-This pass merely sorts 'cvs2svn-symbolic-names.txt' into
-'cvs2svn-symbolic-names-s.txt'.  This orders the file first by
-symbolic name, and second by Subversion revision number, thus grouping
-all openings and closings for each symbolic name together.
-
-
-IndexSymbolsPass (formerly called pass7)
-================
-
-This pass iterates through all the lines in
-'cvs2svn-symbolic-names-s.txt', writing out a database file
-('cvs2svn-symbolic-name-offsets.db') mapping SYMBOL_ID to the file
-offset in 'cvs2svn-symbolic-names-s.txt' where SYMBOL_ID is first
-encountered.  This will allow us to seek to the various offsets in the
-file and sequentially read only the openings and closings that we
-need.
+2. Keep track of the lifetime of each CVSItem in terms of the SVN
+   revision number when it was first committed (its "opening") and the
+   SVN revision number when it was deleted or overwritten (its
+   "closing").  When the item is committed, its "opening" is recorded.
+   CVSItems also know which other CVSItems they close.  So whenever a
+   CVSItem is committed, all of the CVSItems that it closes have their
+   closing set to the current SVN revision number.  This information
+   is stored in 'cvs2svn-cvs-item-lifetimes.dat'.
 
 
 OutputPass (formerly called pass8)
@@ -533,9 +467,9 @@ OutputPass (formerly called pass8)
 
 This pass has very little "thinking" to do--it basically opens the
 svn-nums-to-cvs-revs.db and, starting with Subversion revision 2
-(revision 1 creates /trunk, /tags, and /branches), sequentially plays
-out all the commits to either a Subversion repository or to a
-dumpfile.
+(revision 1 creates all of the /trunk, /tags, and /branches
+directories), sequentially plays out all the commits to either a
+Subversion repository or to a dumpfile.
 
 In --dumpfile mode, the result of this pass is a Subversion repository
 dumpfile (suitable for input to 'svnadmin load').  The dumpfile is the
@@ -568,46 +502,32 @@ right tag by just copying revision 53, then it's better to do that
 than, say, copying revision 51 and then sub-copying in bits of
 revision 52 and 53.
 
-Also, since CVS does not version symbolic names, there is the
-secondary question of *when* to create a particular tag or branch.
-For example, a tag might have been made at any time after the youngest
-commit included in it, or might even have been made piecemeal; and the
-same is true for a branch, with the added constraint that for any
-particular file, the branch must have been created before the first
-commit on the branch.
+Also, since CVS does not record the times when symbolic names were
+created, there is the secondary question of *when* to create a
+particular tag or branch.  For example, a tag might have been made at
+any time after the youngest commit included in it, or might even have
+been made piecemeal; and the same is true for a branch, with the added
+constraint that for any particular file, the branch must have been
+created before the first commit on the branch.
 
-Answering the second question first: cvs2svn creates tags as soon as
-possible and branches as late as possible.
+All of these constraints are automatically enforced by the dependency
+graph and topological sort.  When toposorting, a tag or branch
+changeset is committed as soon as all of its dependencies have been
+committed.
 
-Tags are created as soon as cvs2svn encounters the last CVS Revision
-that is a source for that tag.  The whole tag is created in one
-Subversion commit.
+However, BranchChangesets might have been split up, so it is possible
+that the whole branch will not be created in a single commit.  In this
+case, we create some of the files to the branch in each BranchCommit.
 
-For branches, this is "just in time" creation -- the moment it sees
-the first commit on a branch, it snaps the entire branch into
-existence (or as much of it as possible), and then outputs the branch
-commit.
-
-The reason we say "as much of it as possible" is that it's possible to
-have a branch where some files have branch commits occuring earlier
-than the other files even have the source revisions from which the
-branch sprouts (this can happen if the branch was created piecemeal,
-for example).  In this case, we create as much of the branch as we
-can, that is, as much of it as there are source revisions available to
-copy, and leave the rest for later.  "Later" might mean just until
-other branch commits come in, or else during a cleanup stage that
-happens at the end of this pass (about which more later).
-
-How just-in-time branch creation works:
-
-In order to make the "best" set of copies/deletes when creating a
-branch, cvs2svn keeps track of two sets of trees while it's making
-commits:
+When a file is copied to a symbolic name in cvs2svn, there are a range
+of valid Subversion revisions that we can copy the file from.  In
+order to make the "best" set of copies/deletes when creating a branch,
+cvs2svn keeps track of two sets of trees while it's making commits:
 
    1. A skeleton mirror of the subversion repository, that is, an
       array of revisions, with a tree hanging off each revision.  (The
-      "array" is actually implemented as an anydbm database itself,
-      mapping string representations of numbers to root keys.)
+      "array" is actually implemented as a database itself, mapping
+      revision numbers to root keys.)
 
    2. A tree for each CVS symbolic name, and the svn file/directory
       revisions from which various parts of that tree could be copied.
@@ -626,9 +546,6 @@ which in turn map entry names to other unique keys:
 
 The repository mirror allows cvs2svn to remember what paths exist in
 what revisions.
-
-For details on how branches and tags are created, please see the
-docstring the SymbolingsLogger class (and its methods).
 
 -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*-
 - -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -*- -
