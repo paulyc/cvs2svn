@@ -263,16 +263,33 @@ class CVSRevision(CVSItem):
     # erroneously be filled from the current trunk, giving the
     # contents of 1.1.1.2 instead of those of 1.1.
 
+    retval = []
     if self.first_on_branch_id is not None:
       # The first CVSRevision on a branch is considered to close the
       # branch:
-      return [self.first_on_branch_id]
+      retval.append(self.first_on_branch_id)
+    elif self.default_branch_revision and self.first_on_branch_id is None:
+      # This could be the special case of a 1.1.1.2 revision, which is
+      # considered to close 1.1 in addition to its direct predecessor:
+      prev = Ctx()._cvs_items_db[self.prev_id]
+      if prev.first_on_branch_id is not None:
+        retval.append(prev.prev_id)
+      # The direct predecessor is included in any case:
+      retval.append(self.prev_id)
+    elif self.default_branch_prev_id is not None:
+      # This is the special case of a 1.2 revision that follows a
+      # non-trunk default branch.  If there was a 1.1.1.2 revision,
+      # then it closed 1.1 and we don't have to.  If there was only a
+      # 1.1.1.1 revision, it did not close 1.1, so we have to.
+      default_branch_prev = Ctx()._cvs_items_db[self.default_branch_prev_id]
+      if default_branch_prev.first_on_branch_id is not None:
+        retval.append(self.prev_id)
     elif self.prev_id is not None:
       # Since this CVSRevision is not the first on a branch, its
       # prev_id is on the same LOD and this item closes that one:
-      return [self.prev_id]
-    else:
-      return []
+      retval.append(self.prev_id)
+
+    return retval
 
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
