@@ -23,13 +23,18 @@ import struct
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib import config
+from cvs2svn_lib.common import OP_ADD
+from cvs2svn_lib.common import OP_CHANGE
 from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib.common import DB_OPEN_WRITE
 from cvs2svn_lib.common import DB_OPEN_NEW
 from cvs2svn_lib.common import FatalError
+from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.record_table import Packer
 from cvs2svn_lib.record_table import RecordTable
+from cvs2svn_lib.symbol import BranchSymbol
+from cvs2svn_lib.symbol import TagSymbol
 
 
 class Lifetime:
@@ -109,5 +114,22 @@ class LifetimeDatabase:
 
   def __getitem__(self, cvs_item_id):
     return self.db.get(cvs_item_id) or Lifetime()
+
+  def get_openings_closings_map(self, svn_symbol_commit, svn_revnum):
+    from cvs2svn_lib.svn_revision_range import SVNRevisionRange
+    openings_closings_map = {}
+    symbol = svn_symbol_commit.symbol
+    for cvs_symbol in svn_symbol_commit.get_cvs_items():
+      cvs_rev = Ctx()._cvs_items_db[cvs_symbol.rev_id]
+      if cvs_rev.op in [OP_ADD, OP_CHANGE]:
+        value = self[cvs_rev.id]
+        # @@@
+        if value.opening is not None:
+          range = SVNRevisionRange(value.opening)
+          if value.closing is not None and value.closing <= svn_revnum:
+            range.add_closing(value.closing)
+          openings_closings_map[cvs_rev.get_svn_path()] = range
+
+    return openings_closings_map
 
 
