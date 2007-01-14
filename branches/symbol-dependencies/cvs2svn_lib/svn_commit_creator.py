@@ -47,14 +47,8 @@ class SVNCommitCreator:
   def __init__(self, persistence_manager):
     self._persistence_manager = persistence_manager
 
-    if not Ctx().trunk_only:
-      self._last_changesets_db = Database(
-          artifact_manager.get_temp_file(config.SYMBOL_LAST_CHANGESETS_DB),
-          DB_OPEN_READ)
-
   def close(self):
-    if not Ctx().trunk_only:
-      self._last_changesets_db.close()
+    pass
 
   def _delete_needed(self, cvs_rev):
     """Return True iff the specified delete CVS_REV is really needed.
@@ -144,10 +138,6 @@ class SVNCommitCreator:
       # SVNCommit revision counter.
       SVNCommit.revnum -= 1
 
-    if not Ctx().trunk_only:
-      for cvs_rev in changes + deletes:
-        Ctx()._symbolings_logger.log_revision(cvs_rev, svn_commit.revnum)
-
     return svn_commit, default_branch_cvs_revisions
 
   def _post_commit(self, cvs_revs, motivating_revnum, timestamp):
@@ -165,9 +155,6 @@ class SVNCommitCreator:
     if cvs_revs:
       # Generate an SVNCommit for all of our default branch cvs_revs.
       svn_commit = SVNPostCommit(motivating_revnum, cvs_revs, timestamp)
-      for cvs_rev in cvs_revs:
-        Ctx()._symbolings_logger.log_default_branch_closing(
-            cvs_rev, svn_commit.revnum)
       self._persistence_manager.put_svn_commit(svn_commit)
 
   def _process_revision_changeset(self, changeset, timestamp):

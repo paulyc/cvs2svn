@@ -31,7 +31,6 @@ from cvs2svn_lib.serializer import MarshalSerializer
 from cvs2svn_lib.database import IndexedDatabase
 from cvs2svn_lib.record_table import UnsignedIntegerPacker
 from cvs2svn_lib.record_table import RecordTable
-from cvs2svn_lib.openings_closings import SymbolingsReader
 from cvs2svn_lib.symbol_filling_guide import get_source_set
 from cvs2svn_lib.svn_commit_item import SVNCommitItem
 
@@ -178,9 +177,6 @@ class SVNRepositoryMirror:
     self._youngest = 0
     self._new_root_node = None
     self._new_nodes = { }
-
-    if not Ctx().trunk_only:
-      self._symbolings_reader = SymbolingsReader()
 
   def start_commit(self, revnum, revprops):
     """Start a new commit."""

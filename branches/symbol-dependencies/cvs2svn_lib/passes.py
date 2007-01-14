@@ -52,9 +52,7 @@ from cvs2svn_lib.changeset_graph import ChangesetGraph
 from cvs2svn_lib.changeset_graph_link import ChangesetGraphLink
 from cvs2svn_lib.changeset_database import ChangesetDatabase
 from cvs2svn_lib.changeset_database import CVSItemToChangesetTable
-from cvs2svn_lib.last_symbolic_name_database import LastSymbolicNameDatabase
 from cvs2svn_lib.svn_commit import SVNCommit
-from cvs2svn_lib.openings_closings import SymbolingsLogger
 from cvs2svn_lib.svn_commit_creator import SVNCommitCreator
 from cvs2svn_lib.svn_repository_mirror import SVNRepositoryMirror
 from cvs2svn_lib.svn_commit import SVNInitialProjectCommit
@@ -935,8 +933,6 @@ class CreateDatabasesPass(Pass):
   """This pass was formerly known as pass4."""
 
   def register_artifacts(self):
-    if not Ctx().trunk_only:
-      self._register_temp_file(config.SYMBOL_LAST_CHANGESETS_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
@@ -971,15 +967,11 @@ class CreateDatabasesPass(Pass):
         for cvs_item in changeset.get_cvs_items():
           stats_keeper.record_cvs_item(cvs_item)
     else:
-      Log().quiet("Finding last CVS revisions for all symbolic names...")
-      last_sym_name_db = LastSymbolicNameDatabase()
+      Log().quiet("Tallying up some statistics...")
 
       for changeset in self.get_changesets():
         for cvs_item in changeset.get_cvs_items():
           stats_keeper.record_cvs_item(cvs_item)
-        last_sym_name_db.log_changeset(changeset)
-
-      last_sym_name_db.create_database()
 
     Ctx()._cvs_items_db.close()
 
@@ -993,18 +985,11 @@ class CreateDatabasesPass(Pass):
 class CreateRevsPass(Pass):
   """Generate the SVNCommit <-> CVSRevision mapping databases.
 
-  SVNCommitCreator._commit also calls SymbolingsLogger to register
-  CVSRevisions that represent an opening or closing for a path on a
-  branch or tag.  See SymbolingsLogger for more details.
-
   This pass was formerly known as pass5."""
 
   def register_artifacts(self):
     self._register_temp_file(config.SVN_COMMITS_DB)
     self._register_temp_file(config.LIFETIME_DB)
-    if not Ctx().trunk_only:
-      self._register_temp_file(config.SYMBOL_OPENINGS_CLOSINGS)
-      self._register_temp_file_needed(config.SYMBOL_LAST_CHANGESETS_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
@@ -1037,9 +1022,6 @@ class CreateRevsPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
 
-    if not Ctx().trunk_only:
-      Ctx()._symbolings_logger = SymbolingsLogger()
-
     persistence_manager = PersistenceManager(DB_OPEN_NEW)
     creator = SVNCommitCreator(persistence_manager)
 
@@ -1048,82 +1030,10 @@ class CreateRevsPass(Pass):
 
     creator.close()
     persistence_manager.close()
-    if not Ctx().trunk_only:
-      Ctx()._symbolings_logger.close()
     Ctx()._cvs_items_db.close()
     stats_keeper.set_svn_rev_count(SVNCommit.revnum - 1)
     stats_keeper.archive()
     Log().quiet("Done")
-
-
-class SortSymbolsPass(Pass):
-  """This pass was formerly known as pass6."""
-
-  def register_artifacts(self):
-    if not Ctx().trunk_only:
-      self._register_temp_file(config.SYMBOL_OPENINGS_CLOSINGS_SORTED)
-      self._register_temp_file_needed(config.SYMBOL_OPENINGS_CLOSINGS)
-
-  def run(self, stats_keeper):
-    Log().quiet("Sorting symbolic name source revisions...")
-
-    if not Ctx().trunk_only:
-      sort_file(
-          artifact_manager.get_temp_file(config.SYMBOL_OPENINGS_CLOSINGS),
-          artifact_manager.get_temp_file(
-              config.SYMBOL_OPENINGS_CLOSINGS_SORTED),
-          options='-k1,1 -k2,2n -k3')
-    Log().quiet("Done")
-
-
-class IndexSymbolsPass(Pass):
-  """This pass was formerly known as pass7."""
-
-  def register_artifacts(self):
-    if not Ctx().trunk_only:
-      self._register_temp_file(config.SYMBOL_OFFSETS_DB)
-      self._register_temp_file_needed(config.SYMBOL_DB)
-      self._register_temp_file_needed(config.SYMBOL_OPENINGS_CLOSINGS_SORTED)
-
-  def generate_offsets_for_symbolings(self):
-    """This function iterates through all the lines in
-    SYMBOL_OPENINGS_CLOSINGS_SORTED, writing out a file mapping
-    SYMBOLIC_NAME to the file offset in SYMBOL_OPENINGS_CLOSINGS_SORTED
-    where SYMBOLIC_NAME is first encountered.  This will allow us to
-    seek to the various offsets in the file and sequentially read only
-    the openings and closings that we need."""
-
-    offsets = {}
-
-    f = open(
-        artifact_manager.get_temp_file(
-            config.SYMBOL_OPENINGS_CLOSINGS_SORTED),
-        'r')
-    old_id = None
-    while True:
-      fpos = f.tell()
-      line = f.readline()
-      if not line:
-        break
-      id, svn_revnum, ignored = line.split(" ", 2)
-      id = int(id, 16)
-      if id != old_id:
-        Log().verbose(' ', Ctx()._symbol_db.get_symbol(id).name)
-        old_id = id
-        offsets[id] = fpos
-
-    offsets_db = file(
-        artifact_manager.get_temp_file(config.SYMBOL_OFFSETS_DB), 'wb')
-    cPickle.dump(offsets, offsets_db, -1)
-    offsets_db.close()
-
-  def run(self, stats_keeper):
-    Log().quiet("Determining offsets for all symbolic names...")
-
-    if not Ctx().trunk_only:
-      Ctx()._symbol_db = SymbolDatabase()
-      self.generate_offsets_for_symbolings()
-    Log().quiet("Done.")
 
 
 class OutputPass(Pass):
@@ -1140,9 +1050,6 @@ class OutputPass(Pass):
     self._register_temp_file_needed(config.METADATA_DB)
     self._register_temp_file_needed(config.SVN_COMMITS_DB)
     self._register_temp_file_needed(config.LIFETIME_DB)
-    if not Ctx().trunk_only:
-      self._register_temp_file_needed(config.SYMBOL_OPENINGS_CLOSINGS_SORTED)
-      self._register_temp_file_needed(config.SYMBOL_OFFSETS_DB)
     Ctx().revision_reader.register_artifacts(self)
 
   def run(self, stats_keeper):
@@ -1209,8 +1116,6 @@ passes = [
     TopologicalSortPass(),
     CreateDatabasesPass(),
     CreateRevsPass(),
-    SortSymbolsPass(),
-    IndexSymbolsPass(),
     OutputPass(),
     ]
 

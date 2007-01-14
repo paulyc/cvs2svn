@@ -86,41 +86,11 @@ STATISTICS_FILE = 'cvs2svn-statistics.pck'
 # A file holding the lifetime of every CVSItem that has been seen.
 LIFETIME_DB = 'cvs2svn-cvs-item-lifetimes.dat'
 
-# This text file contains records (1 per line) that describe svn
-# filesystem paths that are the opening and closing source revisions
-# for copies to tags and branches.  The format is as follows:
-#
-#     SYMBOL_ID SVN_REVNUM TYPE BRANCH_ID CVS_FILE_ID
-#
-# Where type is either OPENING or CLOSING.  The SYMBOL_ID and
-# SVN_REVNUM are the primary and secondary sorting criteria for
-# creating SYMBOL_OPENINGS_CLOSINGS_SORTED.  BRANCH_ID is the symbol
-# id of the branch where this opening or closing happened (in hex), or
-# '*' for the default branch.  CVS_FILE_ID is the id of the
-# corresponding CVSFile (in hex).
-SYMBOL_OPENINGS_CLOSINGS = 'cvs2svn-symbolic-names.txt'
-# A sorted version of the above file.
-SYMBOL_OPENINGS_CLOSINGS_SORTED = 'cvs2svn-symbolic-names-s.txt'
-
 # Skeleton version of an svn filesystem.  See class
 # SVNRepositoryMirror for how these work.
 SVN_MIRROR_REVISIONS_TABLE = 'cvs2svn-svn-revisions.dat'
 SVN_MIRROR_NODES_INDEX_TABLE = 'cvs2svn-svn-nodes-index.dat'
 SVN_MIRROR_NODES_STORE = 'cvs2svn-svn-nodes.pck'
-
-# Offsets pointing to the beginning of each symbol's records in
-# SYMBOL_OPENINGS_CLOSINGS_SORTED.  This file contains a pickled map
-# from symbol_id to file offset.
-SYMBOL_OFFSETS_DB = 'cvs2svn-symbol-offsets.pck'
-
-# Maps changeset_ids (in hex) to lists of symbol ids, where the
-# changeset is the last such that is a source for those symbols.  For
-# example, if branch B's number is 1.3.0.2 in this CVS file, and this
-# file's 1.3 is the latest (by date) revision among *all* CVS files
-# that is a source for branch B, then the changeset.id for the
-# changeset holding this file at 1.3 would list the symbol id for
-# branch B in its list.
-SYMBOL_LAST_CHANGESETS_DB = 'cvs2svn-symbol-last-changesets.db'
 
 # Pickled map of CVSFile.id to instance.
 CVS_FILES_DB = 'cvs2svn-cvs-files.pck'
