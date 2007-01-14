@@ -118,7 +118,6 @@ class LifetimeDatabase:
   def get_openings_closings_map(self, svn_symbol_commit, svn_revnum):
     from cvs2svn_lib.svn_revision_range import SVNRevisionRange
     openings_closings_map = {}
-    symbol = svn_symbol_commit.symbol
     for cvs_symbol in svn_symbol_commit.get_cvs_items():
       cvs_rev = Ctx()._cvs_items_db[cvs_symbol.rev_id]
       if cvs_rev.op in [OP_ADD, OP_CHANGE]:
