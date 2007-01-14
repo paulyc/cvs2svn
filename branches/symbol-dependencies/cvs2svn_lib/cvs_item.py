@@ -233,35 +233,31 @@ class CVSRevision(CVSItem):
     return retval
 
   def get_ids_closed(self):
-    # FIXME: Non-trunk default branches are not handled correctly.  If
-    # a file is first imported on a vendor branch, then:
+    # Special handling is needed in the case of non-trunk default
+    # branches.  If a file is first imported on a vendor branch, then
+    # revisions 1.1 and 1.1.1.1 are created but the default branch is
+    # set to 1.1.1.  Later imports become versions 1.1.1.2, etc., and
+    # are used when the default branch is checked out.  If the user
+    # later creates a (non-import) version of the file, it gets
+    # version number 1.2 and the default branch is discarded (going
+    # back to the default value, 1).
     #
-    # - If the file is then branched from trunk via 'cvs tag -b
-    #   BRANCH', the branch (surprisingly) sprouts from 1.1.1.1, not
-    #   1.1.
+    # - If the file is then branched from trunk right after being
+    #   imported via 'cvs tag -b BRANCH', the branch (surprisingly)
+    #   sprouts from 1.1.1.1, not 1.1.
     #
     # - If the file is tagged from version 1.1 explicitly via 'cvs tag
     #   -r 1.1 -b BRANCH', then the branch sprouts from 1.1.
     #
     # Therefore, if there is a revision 1.1.1.2 that is still on the
-    # default branch, I believe we should consider it to close 1.1 in
-    # addition to 1.1.1.1.  Then the 1.x branch should remain closed
-    # until 1.2 is committed.  1.2 shouldn't actually close anything
-    # (because 1.1 was already closed by 1.1.1.2).
+    # default branch, then it should be considered to close both 1.1
+    # and 1.1.1.1.  Then the 1.x branch should remain closed until 1.2
+    # is committed.  1.2 shouldn't actually close anything (because
+    # 1.1 was already closed by 1.1.1.2).
     #
-    # The correct solution for this problem is probably to manufacture
-    # 'ghost' CVSRevisions for the trunk revisions that are copied
-    # from the vendor branch, and to string those together correctly
-    # and allow them to serve as fill sources.
-    #
-    # I believe (though I am not certain) that the current code fails
-    # in the following situation:
-    #
-    # If a branch is created explicitly from revision 1.1, but it is
-    # only filled after 1.1.1.2 has been committed (thereby causing
-    # 1.1 to be overwritten), then I think the branch would
-    # erroneously be filled from the current trunk, giving the
-    # contents of 1.1.1.2 instead of those of 1.1.
+    # On the other hand, if there is no 1.1.1.2, but instead 1.1.1.1
+    # is followed directly by 1.2, then no special treatment is needed
+    # because 1.1 is closed by 1.2.
 
     retval = []
     if self.first_on_branch_id is not None:
