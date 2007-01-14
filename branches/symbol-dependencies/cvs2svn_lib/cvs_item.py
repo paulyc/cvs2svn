@@ -58,8 +58,8 @@ class CVSItem(object):
 
     raise NotImplementedError()
 
-  def get_id_closed(self):
-    """Return the CVSItem.id of the CVSItem closed by this one.
+  def get_ids_closed(self):
+    """Return the list of CVSItem.ids of CVSItems closed by this one.
 
     The definition of 'close' is as follows: When CVSItem A closes
     CVSItem B, that means that the SVN revision when A is committed is
@@ -67,9 +67,7 @@ class CVSItem(object):
     the last SVN revision number from which the contents of B can be
     copied (for example, to fill a symbol).  See the concrete
     implementations of this method for the exact rules about what
-    closes what.
-
-    Return None if this CVSItem doesn't close any other CVSItem."""
+    closes what."""
 
     raise NotImplementedError()
 
@@ -234,7 +232,7 @@ class CVSRevision(CVSItem):
       retval.add(id)
     return retval
 
-  def get_id_closed(self):
+  def get_ids_closed(self):
     # FIXME: Non-trunk default branches are not handled correctly.  If
     # a file is first imported on a vendor branch, then:
     #
@@ -268,13 +266,13 @@ class CVSRevision(CVSItem):
     if self.first_on_branch_id is not None:
       # The first CVSRevision on a branch is considered to close the
       # branch:
-      return self.first_on_branch_id
-    else:
+      return [self.first_on_branch_id]
+    elif self.prev_id is not None:
       # Since this CVSRevision is not the first on a branch, its
-      # prev_id is on the same LOD and this item closes that one.  For
-      # the very first revision prev_id is None, but that's OK because
-      # that revision doesn't close anything:
-      return self.prev_id
+      # prev_id is on the same LOD and this item closes that one:
+      return [self.prev_id]
+    else:
+      return []
 
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
@@ -317,9 +315,9 @@ class CVSSymbol(CVSItem):
     self.earlier_symbol_id = earlier_symbol_id
     self.later_symbol_id = later_symbol_id
 
-  def get_id_closed(self):
+  def get_ids_closed(self):
     # A Symbol does not close any other CVSItems:
-    return None
+    return []
 
 
 class CVSBranch(CVSSymbol):

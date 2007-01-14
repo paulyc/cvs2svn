@@ -114,8 +114,7 @@ class PersistenceManager:
 
     for cvs_item in svn_commit.get_cvs_items():
       self.lifetime_db.set_opening(cvs_item.id, svn_commit.revnum)
-      id_closed = cvs_item.get_id_closed()
-      if id_closed is not None:
+      for id_closed in cvs_item.get_ids_closed():
         self.lifetime_db.set_closing(id_closed, svn_commit.revnum)
 
     # If it is a symbol commit, then record _fills.
