@@ -24,6 +24,9 @@ from cvs2svn_lib import config
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.database import Database
+from cvs2svn_lib.database import DB_OPEN_READ
+from cvs2svn_lib.database import DB_OPEN_WRITE
+from cvs2svn_lib.database import DB_OPEN_NEW
 from cvs2svn_lib.key_generator import KeyGenerator
 
 
@@ -48,7 +51,17 @@ class MetadataDatabase:
     argument to Database or anydbm.open()).  Use CVS_FILE_DB to look
     up CVSFiles."""
 
-    self.key_generator = KeyGenerator(1)
+    if mode == DB_OPEN_NEW:
+      # A key_generator to generate keys for metadata that haven't
+      # been seen yet:
+      self.key_generator = KeyGenerator(1)
+    elif mode == DB_OPEN_READ:
+      # In this case, we don't need key_generator.
+      pass
+    elif mode == DB_OPEN_WRITE:
+      # Modifying an existing database is not supported:
+      raise NotImplementedError('Mode %r is not supported' % mode)
+
     self.db = Database(artifact_manager.get_temp_file(config.METADATA_DB),
                        mode)
 
