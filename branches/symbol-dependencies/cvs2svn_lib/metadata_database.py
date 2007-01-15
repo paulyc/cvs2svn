@@ -88,7 +88,7 @@ class MetadataDatabase:
       if not Ctx().cross_branch_commits:
         key.append(branch_name or '')
 
-      digest = sha.new('\0'.join(key)).hexdigest()
+      digest = sha.new('\0'.join(key)).digest()
       try:
           # See if it is already known:
           return self._digest_to_id[digest]
