@@ -33,16 +33,21 @@ from cvs2svn_lib.key_generator import KeyGenerator
 class MetadataDatabase:
   """A Database to store metadata about CVSRevisions.
 
-  This database has two types of entries:
+  This database manages a map
 
-      digest -> id
+      id -> (project.id, author, log_msg,)
 
-      hex(id) -> (project.id, author, log_msg,)
+  where id is a unique identifier for a set of metadata.
 
-  Digest is the digest of a string containing author, log_message, and
-  possible project_id and/or branch_name, and is used to locate
-  matching records efficiently.  id is a unique id for each record (as
-  a hex string ('%x' % id) when used as a key).
+  When the MetadataDatabase is opened in DB_OPEN_NEW mode, the mapping
+
+      { (project, branch_name, author, log_msg) -> id }
+
+  is also available.  If the requested set of metadata has never been
+  seen before, a new record is created and its id is returned.  This
+  is done by creating an SHA digest of a string containing author,
+  log_message, and possible project_id and/or branch_name, then
+  looking up the digest in the _digest_to_id map.
 
   """
 
@@ -52,11 +57,14 @@ class MetadataDatabase:
     up CVSFiles."""
 
     if mode == DB_OPEN_NEW:
+      # A map { digest : id }:
+      self._digest_to_id = {}
+
       # A key_generator to generate keys for metadata that haven't
       # been seen yet:
       self.key_generator = KeyGenerator(1)
     elif mode == DB_OPEN_READ:
-      # In this case, we don't need key_generator.
+      # In this case, we don't need key_generator or _digest_to_id.
       pass
     elif mode == DB_OPEN_WRITE:
       # Modifying an existing database is not supported:
@@ -83,13 +91,13 @@ class MetadataDatabase:
       digest = sha.new('\0'.join(key)).hexdigest()
       try:
           # See if it is already known:
-          return self.db[digest]
+          return self._digest_to_id[digest]
       except KeyError:
           pass
 
       id = self.key_generator.gen_id()
+      self._digest_to_id[digest] = id
       self.db['%x' % id] = (project.id, author, log_msg,)
-      self.db[digest] = id
       return id
 
   def __getitem__(self, id):
