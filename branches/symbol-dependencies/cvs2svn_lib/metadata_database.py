@@ -63,9 +63,9 @@ class MetadataDatabase:
 
       key = [author, log_msg]
       if not Ctx().cross_project_commits:
-        key += '%x' % project.id
+        key.append('%x' % project.id)
       if not Ctx().cross_branch_commits:
-        key += branch_name or ''
+        key.append(branch_name or '')
 
       digest = sha.new('\0'.join(key)).hexdigest()
       try:
