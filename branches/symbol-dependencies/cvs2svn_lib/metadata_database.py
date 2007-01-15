@@ -97,12 +97,12 @@ class MetadataDatabase:
 
       id = self.key_generator.gen_id()
       self._digest_to_id[digest] = id
-      self.db['%x' % id] = (project.id, author, log_msg,)
+      self.db['%x' % id] = (author, log_msg,)
       return id
 
   def __getitem__(self, id):
     """Return (author, log_msg,) for ID."""
 
-    return self.db['%x' % (id,)][1:]
+    return self.db['%x' % (id,)]
 
 

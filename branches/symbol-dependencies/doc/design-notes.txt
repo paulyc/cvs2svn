@@ -188,7 +188,7 @@ When every CVS file is done, CollectRevsPass is complete, and:
      to allow the record for a set of metadata to be located
      efficiently.  As data are collected, it stores a map
 
-       metadata_id (int as hex) -> (project_id, author, log_msg,) (tuple)
+       metadata_id (int as hex) -> (author, log_msg,) (tuple)
 
      into the database for use in future passes.  CVSRevision records
      include the metadata_id.
