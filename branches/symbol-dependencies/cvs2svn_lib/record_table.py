@@ -140,11 +140,14 @@ class RecordTable:
     else:
       raise RuntimeError('Invalid mode %r' % self.mode)
     self.packer = packer
+
     # Number of items that can be stored in the write cache:
     self._max_memory_cache = 128 * 1024 / self.packer.record_len
-    # Write cache.  Up to self._max_memory_cache items can be stored
-    # here.  When the cache fills up, it is written to disk in one go
-    # and then cleared.
+
+    # Write cache.  This is a map {i:s}, where i is an index and s is
+    # the packed value for that index.  Up to self._max_memory_cache
+    # items can be stored here.  When the cache fills up, it is
+    # written to disk in one go and then cleared.
     self._cache = {}
 
     # The index just beyond the last record ever written:
@@ -158,7 +161,7 @@ class RecordTable:
     pairs.sort()
     old_i = None
     f = self.f
-    for (i, v) in pairs:
+    for (i, s) in pairs:
       if i == old_i:
         # No seeking needed
         pass
@@ -172,7 +175,7 @@ class RecordTable:
         while self._limit_written < i:
           f.write(self.packer.empty_value)
           self._limit_written += 1
-      f.write(self.packer.pack(v))
+      f.write(s)
       old_i = i + 1
       self._limit_written = max(self._limit_written, old_i)
     self.f.flush()
@@ -183,7 +186,7 @@ class RecordTable:
       raise RecordTableAccessError()
     if i < 0:
       raise KeyError()
-    self._cache[i] = v
+    self._cache[i] = self.packer.pack(v)
     if len(self._cache) >= self._max_memory_cache:
       self.flush()
     self._limit = max(self._limit, i + 1)
@@ -195,7 +198,7 @@ class RecordTable:
     to self.packer.empty_value)."""
 
     try:
-      return self._cache[i]
+      s = self._cache[i]
     except KeyError:
       if not 0 <= i < self._limit_written:
         raise KeyError(i)
@@ -203,7 +206,8 @@ class RecordTable:
       s = self.f.read(self.packer.record_len)
       if s == self.packer.empty_value:
         raise KeyError(i)
-      return self.packer.unpack(s)
+
+    return self.packer.unpack(s)
 
   def get(self, i, default=None):
     try:
