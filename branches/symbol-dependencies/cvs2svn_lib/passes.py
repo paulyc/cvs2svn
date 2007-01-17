@@ -590,6 +590,9 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     del self.changesets_db[best_link.changeset.id]
 
     for changeset in new_changesets:
+      if Log().is_on(Log.DEBUG):
+        Log().debug(repr(changeset))
+
       self.changeset_graph.add_changeset(changeset)
       self.changesets_db.store(changeset)
       for item_id in changeset.cvs_item_ids:
@@ -767,6 +770,9 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     del self.changesets_db[best_link.changeset.id]
 
     for changeset in new_changesets:
+      if Log().is_on(Log.DEBUG):
+        Log().debug(repr(changeset))
+
       self.changeset_graph.add_changeset(changeset)
       self.changesets_db.store(changeset)
       for item_id in changeset.cvs_item_ids:
@@ -785,6 +791,12 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
 
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
+
+    if Log().is_on(Log.DEBUG):
+      Log().debug(
+          'Breaking cycle %s' % (
+          ' -> '.join(['%x' % changeset.id
+                       for changeset in cycle + [cycle[0]]]),))
 
     # Find the OrderedChangesets in the cycle (if any):
     ordered_changeset_indexes = [
