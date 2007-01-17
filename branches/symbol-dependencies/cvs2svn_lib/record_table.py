@@ -43,6 +43,7 @@ from cvs2svn_lib.boolean import *
 from cvs2svn_lib.common import DB_OPEN_READ
 from cvs2svn_lib.common import DB_OPEN_WRITE
 from cvs2svn_lib.common import DB_OPEN_NEW
+from cvs2svn_lib.log import Log
 
 
 # A unique value that can be used to stand for "unset" without
@@ -162,6 +163,7 @@ class RecordTable:
     return 'RecordTable(%r)' % (self.filename,)
 
   def flush(self):
+    Log().debug('Flushing cache for %s' % (self,))
     pairs = self._cache.items()
     pairs.sort()
     old_i = None
