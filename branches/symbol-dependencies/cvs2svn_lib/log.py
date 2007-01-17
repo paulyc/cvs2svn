@@ -56,6 +56,13 @@ class Log:
   def decrease_verbosity(self):
     self.log_level = max(self.log_level - 1, Log.WARN)
 
+  def is_on(self, level):
+    """Return True iff messages at the specified LEVEL are currently on.
+
+    LEVEL should be one of the constants Log.WARN, Log.QUIET, etc."""
+
+    return self.log_level >= level
+
   def _timestamp(self):
     """Output a detailed timestamp at the beginning of each line output."""
 
@@ -66,14 +73,13 @@ class Log:
     messages whose LOG_LEVEL is <= self.log_level will be printed.  If
     there are multiple ARGS, they will be separated by a space."""
 
-    if log_level > self.log_level:
-      return
-    if self.use_timestamps or self.log_level >= Log.DEBUG:
-      self._timestamp()
-    self.logger.write(' '.join(map(str,args)) + "\n")
-    # Ensure that log output doesn't get out-of-order with respect to
-    # stderr output.
-    self.logger.flush()
+    if self.is_on(log_level):
+      if self.use_timestamps or self.log_level >= Log.DEBUG:
+        self._timestamp()
+      self.logger.write(' '.join(map(str,args)) + "\n")
+      # Ensure that log output doesn't get out-of-order with respect to
+      # stderr output.
+      self.logger.flush()
 
   def warn(self, *args):
     """Log a message at the WARN level."""
