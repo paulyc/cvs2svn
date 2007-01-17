@@ -26,8 +26,13 @@ from cvs2svn_lib.boolean import *
 class Log:
   """A Simple logging facility.
 
-  Each line will be timestamped if self.use_timestamps is True.  This
-  class is a Borg, see
+  If self.log_level is DEBUG or higher, each line will be timestamped
+  with the number of seconds since the start of the program run.
+
+  If self.use_timestamps is True, each line will be timestamped with a
+  human-readable clock time.
+
+  This class is a Borg; see
   http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/66531."""
 
   # These constants represent the log levels that this class supports.
@@ -49,6 +54,7 @@ class Log:
     # Set this to True if you want to see timestamps on each line output.
     self.use_timestamps = False
     self.logger = sys.stdout
+    self.start_time = time.time()
 
   def increase_verbosity(self):
     self.log_level = min(self.log_level + 1, Log.DEBUG)
@@ -64,19 +70,27 @@ class Log:
     return self.log_level >= level
 
   def _timestamp(self):
-    """Output a detailed timestamp at the beginning of each line output."""
+    """Return a timestamp if needed."""
 
-    self.logger.write(time.strftime('[%Y-%m-%d %I:%m:%S %Z] - '))
+    retval = []
+
+    if self.log_level >= Log.DEBUG:
+      retval.append('%f:' % (time.time() - self.start_time,))
+
+    if self.use_timestamps:
+      retval.append(time.strftime('[%Y-%m-%d %I:%m:%S %Z] -'))
+
+    return retval
 
   def write(self, log_level, *args):
-    """This is the public method to use for writing to a file.  Only
+    """Write a message to the log at level LOG_LEVEL.
+
+    This is the public method to use for writing to a file.  Only
     messages whose LOG_LEVEL is <= self.log_level will be printed.  If
-    there are multiple ARGS, they will be separated by a space."""
+    there are multiple ARGS, they will be separated by spaces."""
 
     if self.is_on(log_level):
-      if self.use_timestamps or self.log_level >= Log.DEBUG:
-        self._timestamp()
-      self.logger.write(' '.join(map(str,args)) + "\n")
+      self.logger.write(' '.join(self._timestamp() + map(str, args)) + "\n")
       # Ensure that log output doesn't get out-of-order with respect to
       # stderr output.
       self.logger.flush()
