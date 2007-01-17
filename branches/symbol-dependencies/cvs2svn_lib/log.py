@@ -68,7 +68,7 @@ class Log:
 
     if log_level > self.log_level:
       return
-    if self.use_timestamps:
+    if self.use_timestamps or self.log_level >= self.DEBUG:
       self._timestamp()
     self.logger.write(' '.join(map(str,args)) + "\n")
     # Ensure that log output doesn't get out-of-order with respect to
