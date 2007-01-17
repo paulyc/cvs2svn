@@ -181,15 +181,20 @@ class RecordTable:
     self.f.flush()
     self._cache.clear()
 
-  def __setitem__(self, i, v):
+  def _set_packed_record(self, i, s):
+    """Set the value for index I to the packed value S."""
+
     if self.mode == DB_OPEN_READ:
       raise RecordTableAccessError()
     if i < 0:
       raise KeyError()
-    self._cache[i] = self.packer.pack(v)
+    self._cache[i] = s
     if len(self._cache) >= self._max_memory_cache:
       self.flush()
     self._limit = max(self._limit, i + 1)
+
+  def __setitem__(self, i, v):
+    self._set_packed_record(i, self.packer.pack(v))
 
   def __getitem__(self, i):
     """Return the item for index I.
