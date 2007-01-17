@@ -130,13 +130,14 @@ class RecordTableAccessError(RuntimeError):
 
 class RecordTable:
   def __init__(self, filename, mode, packer):
+    self.filename = filename
     self.mode = mode
     if self.mode == DB_OPEN_NEW:
-      self.f = open(filename, 'wb+')
+      self.f = open(self.filename, 'wb+')
     elif self.mode == DB_OPEN_WRITE:
-      self.f = open(filename, 'rb+')
+      self.f = open(self.filename, 'rb+')
     elif self.mode == DB_OPEN_READ:
-      self.f = open(filename, 'rb')
+      self.f = open(self.filename, 'rb')
     else:
       raise RuntimeError('Invalid mode %r' % self.mode)
     self.packer = packer
@@ -152,10 +153,13 @@ class RecordTable:
     self._cache = {}
 
     # The index just beyond the last record ever written:
-    self._limit = os.path.getsize(filename) // self.packer.record_len
+    self._limit = os.path.getsize(self.filename) // self.packer.record_len
 
     # The index just beyond the last record ever written to disk:
     self._limit_written = self._limit
+
+  def __str__(self):
+    return 'RecordTable(%r)' % (self.filename,)
 
   def flush(self):
     pairs = self._cache.items()
