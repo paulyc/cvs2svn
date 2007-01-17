@@ -526,11 +526,13 @@ class InitializeChangesetsPass(Pass):
 
     for changeset in self.get_revision_changesets():
       for split_changeset in self.break_internal_dependencies(changeset):
-        Log().verbose(repr(changeset))
+        if Log().is_on(Log.DEBUG):
+          Log().debug(repr(changeset))
         self.store_changeset(split_changeset)
 
     for changeset in self.get_symbol_changesets():
-      Log().verbose(repr(changeset))
+      if Log().is_on(Log.DEBUG):
+        Log().debug(repr(changeset))
       self.store_changeset(changeset)
 
     self.cvs_item_to_changeset_id.close()
@@ -576,10 +578,11 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
         best_i = i
         best_link = link
 
-    Log().verbose(
-        'Breaking cycle %s by breaking node %x' % (
-        ' -> '.join(['%x' % node.id for node in (cycle + [cycle[0]])]),
-        best_link.changeset.id,))
+    if Log().is_on(Log.DEBUG):
+      Log().debug(
+          'Breaking cycle %s by breaking node %x' % (
+          ' -> '.join(['%x' % node.id for node in (cycle + [cycle[0]])]),
+          best_link.changeset.id,))
 
     new_changesets = best_link.break_changeset(self.changeset_key_generator)
 
@@ -752,10 +755,11 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
         best_i = i
         best_link = link
 
-    Log().verbose(
-        'Breaking segment %s by breaking node %x' % (
-        ' -> '.join(['%x' % node.id for node in segment]),
-        best_link.changeset.id,))
+    if Log().is_on(Log.DEBUG):
+      Log().debug(
+          'Breaking segment %s by breaking node %x' % (
+          ' -> '.join(['%x' % node.id for node in segment]),
+          best_link.changeset.id,))
 
     new_changesets = best_link.break_changeset(self.changeset_key_generator)
 
