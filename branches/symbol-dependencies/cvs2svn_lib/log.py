@@ -51,10 +51,10 @@ class Log:
     self.logger = sys.stdout
 
   def increase_verbosity(self):
-    self.log_level = min(self.log_level + 1, self.DEBUG)
+    self.log_level = min(self.log_level + 1, Log.DEBUG)
 
   def decrease_verbosity(self):
-    self.log_level = max(self.log_level - 1, self.WARN)
+    self.log_level = max(self.log_level - 1, Log.WARN)
 
   def _timestamp(self):
     """Output a detailed timestamp at the beginning of each line output."""
@@ -68,7 +68,7 @@ class Log:
 
     if log_level > self.log_level:
       return
-    if self.use_timestamps or self.log_level >= self.DEBUG:
+    if self.use_timestamps or self.log_level >= Log.DEBUG:
       self._timestamp()
     self.logger.write(' '.join(map(str,args)) + "\n")
     # Ensure that log output doesn't get out-of-order with respect to
@@ -78,26 +78,26 @@ class Log:
   def warn(self, *args):
     """Log a message at the WARN level."""
 
-    self.write(self.WARN, *args)
+    self.write(Log.WARN, *args)
 
   def quiet(self, *args):
     """Log a message at the QUIET level."""
 
-    self.write(self.QUIET, *args)
+    self.write(Log.QUIET, *args)
 
   def normal(self, *args):
     """Log a message at the NORMAL level."""
 
-    self.write(self.NORMAL, *args)
+    self.write(Log.NORMAL, *args)
 
   def verbose(self, *args):
     """Log a message at the VERBOSE level."""
 
-    self.write(self.VERBOSE, *args)
+    self.write(Log.VERBOSE, *args)
 
   def debug(self, *args):
     """Log a message at the DEBUG level."""
 
-    self.write(self.DEBUG, *args)
+    self.write(Log.DEBUG, *args)
 
 
