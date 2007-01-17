@@ -37,6 +37,7 @@ class Log:
   QUIET = 0
   NORMAL = 1
   VERBOSE = 2
+  DEBUG = 3
 
   __shared_state = {}
 
@@ -50,7 +51,7 @@ class Log:
     self.logger = sys.stdout
 
   def increase_verbosity(self):
-    self.log_level = min(self.log_level + 1, self.VERBOSE)
+    self.log_level = min(self.log_level + 1, self.DEBUG)
 
   def decrease_verbosity(self):
     self.log_level = max(self.log_level - 1, self.WARN)
@@ -93,5 +94,10 @@ class Log:
     """Log a message at the VERBOSE level."""
 
     self.write(self.VERBOSE, *args)
+
+  def debug(self, *args):
+    """Log a message at the DEBUG level."""
+
+    self.write(self.DEBUG, *args)
 
 
