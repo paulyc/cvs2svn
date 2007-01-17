@@ -209,8 +209,9 @@ class RecordTable:
         raise KeyError(i)
       self.f.seek(i * self.packer.record_len)
       s = self.f.read(self.packer.record_len)
-      if s == self.packer.empty_value:
-        raise KeyError(i)
+
+    if s == self.packer.empty_value:
+      raise KeyError(i)
 
     return self.packer.unpack(s)
 
@@ -219,6 +220,19 @@ class RecordTable:
       return self[i]
     except KeyError:
       return default
+
+  def __delitem__(self, i):
+    """Delete the item for index I.
+
+    Raise KeyError if that item has never been set (or if it was set
+    to self.packer.empty_value)."""
+
+    if self.mode == DB_OPEN_READ:
+      raise RecordTableAccessError()
+
+    # Check that the value was set (otherwise raise KeyError):
+    self[i]
+    self._set_packed_record(i, self.packer.empty_value)
 
   def __iter__(self):
     """Yield the values in the map in key order.
