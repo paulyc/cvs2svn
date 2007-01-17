@@ -554,6 +554,17 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET)
 
+  def log_processed_changesets(self):
+    if Log().is_on(Log.DEBUG):
+      new_changeset_ids = self.processed_changeset_ids[
+          self.logged_changeset_ids:
+          ]
+      if new_changeset_ids:
+        Log().debug(
+            'Consumed changeset ids %s'
+            % (', '.join(['%x' % id for id in new_changeset_ids]),))
+        self.logged_changeset_ids = len(self.processed_changeset_ids)
+
   def break_cycle(self, cycle):
     """Break up one or more changesets in CYCLE to help break the cycle.
 
@@ -567,6 +578,7 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
 
+    self.log_processed_changesets()
     best_i = None
     best_link = None
     for i in range(len(cycle)):
@@ -645,10 +657,18 @@ class BreakCVSRevisionChangesetLoopsPass(Pass):
 
     Ctx()._changesets_db = self.changesets_db
 
+    # Keep track of the changeset_ids that have been consumed so far
+    # (for logging):
+    self.processed_changeset_ids = []
+    self.logged_changeset_ids = 0
+
     # Consume the graph, breaking cycles using self.break_cycle():
     for (changeset_id, time_range) in self.changeset_graph.consume_graph(
           cycle_breaker=self.break_cycle):
-      pass
+      self.processed_changeset_ids.append(changeset_id)
+
+    self.log_processed_changesets()
+    del self.processed_changeset_ids
 
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
@@ -742,6 +762,17 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
+  def log_processed_changesets(self):
+    if Log().is_on(Log.DEBUG):
+      new_changeset_ids = self.processed_changeset_ids[
+          self.logged_changeset_ids:
+          ]
+      if new_changeset_ids:
+        Log().debug(
+            'Consumed changeset ids %s'
+            % (', '.join(['%x' % id for id in new_changeset_ids]),))
+        self.logged_changeset_ids = len(self.processed_changeset_ids)
+
   def break_segment(self, segment):
     """Break a changeset in SEGMENT[1:-1].
 
@@ -791,6 +822,8 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
 
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
+
+    self.log_processed_changesets()
 
     if Log().is_on(Log.DEBUG):
       Log().debug(
@@ -874,10 +907,18 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
 
     Ctx()._changesets_db = self.changesets_db
 
+    # Keep track of the changeset_ids that have been consumed so far
+    # (for logging):
+    self.processed_changeset_ids = []
+    self.logged_changeset_ids = 0
+
     # Consume the graph, breaking cycles using self.break_cycle():
     for (changeset_id, time_range) in self.changeset_graph.consume_graph(
           cycle_breaker=self.break_cycle):
-      pass
+      self.processed_changeset_ids.append(changeset_id)
+
+    self.log_processed_changesets()
+    del self.processed_changeset_ids
 
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
