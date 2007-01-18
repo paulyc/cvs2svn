@@ -175,8 +175,6 @@ class SVNRepositoryMirror:
     # Start at revision 0 without a root node.  It will be created
     # by _open_writable_root_node.
     self._youngest = 0
-    self._new_root_node = None
-    self._new_nodes = { }
 
   def start_commit(self, revnum, revprops):
     """Start a new commit."""
@@ -206,6 +204,9 @@ class SVNRepositoryMirror:
       # Copy the new nodes to the _nodes_db
       for key, value in self._new_nodes.items():
         self._nodes_db[key] = value
+
+    del self._new_root_node
+    del self._new_nodes
 
     self._invoke_delegates('end_commit')
 
