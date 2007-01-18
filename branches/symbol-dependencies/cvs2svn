@@ -101,8 +101,10 @@ def main():
     else:
       pass_manager.run(run_options.start_pass, run_options.end_pass)
   finally:
-    try: os.rmdir(os.path.join(ctx.tmpdir, 'cvs2svn.lock'))
-    except: pass
+    try:
+      os.rmdir(os.path.join(ctx.tmpdir, 'cvs2svn.lock'))
+    except:
+      pass
 
 
 if __name__ == '__main__':
