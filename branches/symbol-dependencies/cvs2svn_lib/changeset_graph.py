@@ -78,6 +78,11 @@ class ChangesetGraph(object):
 
     self.nodes[node.id] = node
 
+  def __nonzero__(self):
+    """Instances are considered True iff they contain any nodes."""
+
+    return bool(self.nodes)
+
   def __getitem__(self, id):
     return self.nodes[id]
 
