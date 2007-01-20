@@ -105,7 +105,7 @@ class ChangesetGraph(object):
   def __iter__(self):
     return self.nodes.itervalues()
 
-  def _consume_nopred_nodes(self):
+  def consume_nopred_nodes(self):
     """Remove and yield changesets in dependency order.
 
     Each iteration, this generator yields a (changeset_id, time_range)
@@ -154,7 +154,7 @@ class ChangesetGraph(object):
         nopred_nodes.sort(compare)
       yield (node.id, node.time_range)
 
-  def _find_cycle(self, starting_node_id):
+  def find_cycle(self, starting_node_id):
     """Find a cycle in the dependency graph and return it.
 
     Use STARTING_NODE_ID as the place to start looking.  This routine
@@ -207,7 +207,7 @@ class ChangesetGraph(object):
     CycleInGraphException."""
 
     while True:
-      for (changeset_id, time_range) in self._consume_nopred_nodes():
+      for (changeset_id, time_range) in self.consume_nopred_nodes():
         yield (changeset_id, time_range)
 
       # If there are any nodes left in the graph, then there must be
@@ -218,7 +218,7 @@ class ChangesetGraph(object):
       # escape.
       start_node_id = self.nodes.iterkeys().next()
 
-      cycle = self._find_cycle(start_node_id)
+      cycle = self.find_cycle(start_node_id)
 
       if cycle_breaker is not None:
         cycle_breaker(cycle)
