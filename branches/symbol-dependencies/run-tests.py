@@ -2487,6 +2487,12 @@ def branch_order():
     ))
 
 
+def crossed_branches():
+  "branches created in inconsistent orders"
+
+  conv = ensure_conversion('crossed-branches')
+
+
 ########################################################################
 # Run the tests
 
@@ -2608,6 +2614,7 @@ test_list = [
     nasty_graphs,
     XFail(tagging_after_delete),
     branch_order,
+    crossed_branches,
     ]
 
 if __name__ == '__main__':
