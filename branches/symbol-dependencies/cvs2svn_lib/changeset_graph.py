@@ -154,21 +154,22 @@ class ChangesetGraph(object):
         nopred_nodes.sort(compare)
       yield (node.id, node.time_range)
 
-  def _find_cycle(self):
+  def _find_cycle(self, starting_node_id):
     """Find a cycle in the dependency graph and return it.
 
+    Use STARTING_NODE_ID as the place to start looking.  This routine
+    must only be called after all nopred_nodes have been removed.
     Return the list of changesets that are involved in the cycle
     (ordered such that cycle[n-1] is a predecessor of cycle[n] and
-    cycle[-1] is a predecessor of cycle[0]).  This routine must only
-    be called after all nopred_nodes have been removed but the node
-    list is not empty."""
+    cycle[-1] is a predecessor of cycle[0])."""
 
     # Since there are no nopred nodes in the graph, all nodes in the
     # graph must either be involved in a cycle or depend (directly or
     # indirectly) on nodes that are in a cycle.
 
     # Pick an arbitrary node:
-    node = self.nodes.itervalues().next()
+    node = self[starting_node_id]
+
     seen_nodes = [node]
 
     # Follow it backwards until a node is seen a second time; then we
@@ -209,11 +210,16 @@ class ChangesetGraph(object):
       for (changeset_id, time_range) in self._consume_nopred_nodes():
         yield (changeset_id, time_range)
 
-      if not self.nodes:
-        return
+      # If there are any nodes left in the graph, then there must be
+      # at least one cycle.  Find a cycle and process it.
 
-      # There must be a cycle; find and process it:
-      cycle = self._find_cycle()
+      # This might raise StopIteration, but that indicates that the
+      # graph has been fully consumed, so we just let the exception
+      # escape.
+      start_node_id = self.nodes.iterkeys().next()
+
+      cycle = self._find_cycle(start_node_id)
+
       if cycle_breaker is not None:
         cycle_breaker(cycle)
       else:
