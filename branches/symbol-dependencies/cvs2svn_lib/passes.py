@@ -762,16 +762,11 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
-  def log_processed_changesets(self):
-    if Log().is_on(Log.DEBUG):
-      new_changeset_ids = self.processed_changeset_ids[
-          self.logged_changeset_ids:
-          ]
-      if new_changeset_ids:
+  def log_processed_changesets(self, new_changeset_ids):
+    if Log().is_on(Log.DEBUG) and new_changeset_ids:
         Log().debug(
             'Consumed changeset ids %s'
             % (', '.join(['%x' % id for id in new_changeset_ids]),))
-        self.logged_changeset_ids = len(self.processed_changeset_ids)
 
   def break_segment(self, segment):
     """Break a changeset in SEGMENT[1:-1].
@@ -893,23 +888,23 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
 
     Ctx()._changesets_db = self.changesets_db
 
-    # Keep track of the changeset_ids that have been consumed so far
-    # (for logging):
-    self.processed_changeset_ids = []
-    self.logged_changeset_ids = 0
-
     next_ordered_changeset = 0
 
     while self.changeset_graph:
+      # Keep track of the changeset_ids that have been consumed so far
+      # (for logging):
+      processed_changeset_ids = []
+
       # Consume any nodes that don't have predecessors:
       for (changeset_id, time_range) \
               in self.changeset_graph.consume_nopred_nodes():
-        self.processed_changeset_ids.append(changeset_id)
+        processed_changeset_ids.append(changeset_id)
         if changeset_id in ordered_changeset_ids:
           next_ordered_changeset += 1
           ordered_changeset_ids.remove(changeset_id)
 
-      self.log_processed_changesets()
+      self.log_processed_changesets(processed_changeset_ids)
+      del processed_changeset_ids
 
       if not self.changeset_graph:
         break
@@ -939,8 +934,6 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
                 self.changeset_graph.nodes.iterkeys().next()
                 )
             )
-
-    del self.processed_changeset_ids
 
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
