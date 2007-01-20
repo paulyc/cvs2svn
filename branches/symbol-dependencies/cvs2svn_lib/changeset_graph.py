@@ -49,7 +49,6 @@ class ReachablePredecessors(object):
   changeset can be reached by following a chain of predecessor nodes."""
 
   def __init__(self, graph, starting_node_id):
-    print 'Computing predecessors for node %x' % (starting_node_id,) # @@@
     self.graph = graph
     self.starting_node_id = starting_node_id
 
