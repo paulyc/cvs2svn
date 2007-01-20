@@ -83,6 +83,11 @@ class ChangesetGraph(object):
 
     return bool(self.nodes)
 
+  def __contains__(self, id):
+    """Return True if the specified ID is contained in this graph."""
+
+    return id in self.nodes
+
   def __getitem__(self, id):
     return self.nodes[id]
 
