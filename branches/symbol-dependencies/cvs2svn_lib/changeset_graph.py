@@ -37,6 +37,11 @@ class CycleInGraphException(Exception):
         % ' -> '.join(map(str, cycle + [cycle[0]])))
 
 
+class NoPredNodeInGraphException(Exception):
+  def __init__(self, node):
+    Exception.__init__(self, 'Node %s has no predecessors' % (node,))
+
+
 class ChangesetGraph(object):
   """A graph of changesets and their dependencies."""
 
@@ -171,7 +176,10 @@ class ChangesetGraph(object):
     while True:
       # Pick an arbitrary predecessor of node.  It must exist, because
       # there are no nopred nodes:
-      node_id = node.pred_ids.__iter__().next()
+      try:
+        node_id = node.pred_ids.__iter__().next()
+      except StopIteration:
+        raise NoPredNodeInGraphException(node)
       node = self[node_id]
       try:
         i = seen_nodes.index(node)
