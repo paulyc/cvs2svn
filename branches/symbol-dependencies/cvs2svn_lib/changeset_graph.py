@@ -42,6 +42,72 @@ class NoPredNodeInGraphException(Exception):
     Exception.__init__(self, 'Node %s has no predecessors' % (node,))
 
 
+class ReachablePredecessors(object):
+  """Represent the changesets that a specified changeset depends on.
+
+  We consider direct and indirect dependencies in the sense that the
+  changeset can be reached by following a chain of predecessor nodes."""
+
+  def __init__(self, graph, starting_node_id):
+    print 'Computing predecessors for node %x' % (starting_node_id,) # @@@
+    self.graph = graph
+    self.starting_node_id = starting_node_id
+
+    # A map {node_id : (steps, next_node_id)} where NODE_ID can be
+    # reached from STARTING_NODE_ID in STEPS steps, and NEXT_NODE_ID
+    # is the id of the previous node in the path.  STARTING_NODE_ID is
+    # only included as a key if there is a loop leading back to it.
+    self.reachable_changesets = {}
+
+    # A list of (node_id, steps) that still have to be investigated,
+    # and STEPS is the number of steps to get to NODE_ID.
+    open_nodes = [(starting_node_id, 0)]
+    # A breadth-first search:
+    while open_nodes:
+      (id, steps) = open_nodes.pop(0)
+      steps += 1
+      node = self.graph[id]
+      for pred_id in node.pred_ids:
+        # Since the search is breadth-first, we only have to set steps
+        # that don't already exist.
+        pred_record = self.reachable_changesets.get(pred_id)
+        if pred_record is None:
+          self.reachable_changesets[pred_id] = (steps, id)
+          open_nodes.append((pred_id, steps))
+
+  def get_path(self, ending_node_id):
+    """Return the shortest path from ENDING_NODE_ID to STARTING_NODE_ID.
+
+    Return a list of changesets, where the 0th one has ENDING_NODE_ID
+    and the last one has STARTING_NODE_ID.  If there is no such path,
+    return None."""
+
+    if ending_node_id not in self.reachable_changesets:
+      return None
+
+    path = [Ctx()._changesets_db[ending_node_id]]
+    id = self.reachable_changesets[ending_node_id][1]
+    while id != self.starting_node_id:
+      path.append(Ctx()._changesets_db[id])
+      id = self.reachable_changesets[id][1]
+    path.append(Ctx()._changesets_db[self.starting_node_id])
+    return path
+
+  def __iter__(self):
+    """Iterate over all reachable nodes, in path length order.
+
+    Yield (node_id, steps) for each reachable node, where STEPS is the
+    number of steps needed to reach the node from starting_node.  The
+    nodes are yielded in ascending path-length order.  Nodes that have
+    the same path length are yielded in node_id (i.e., essentially
+    arbitrary) order."""
+
+    items = self.reachable_changesets.items()
+    items.sort(lambda a, b: cmp(a[1][0], b[1][0]))
+    for (id, (steps, next_id,)) in items:
+      yield (id, steps)
+
+
 class ChangesetGraph(object):
   """A graph of changesets and their dependencies."""
 
@@ -114,6 +180,9 @@ class ChangesetGraph(object):
 
   def __iter__(self):
     return self.nodes.itervalues()
+
+  def get_reachable_predecessors(self, id):
+    return ReachablePredecessors(self, id)
 
   def consume_nopred_nodes(self):
     """Remove and yield changesets in dependency order.
