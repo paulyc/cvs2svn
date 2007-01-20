@@ -167,7 +167,7 @@ class OrderedChangeset(Changeset):
            or cmp(self.id, other.id)
 
   def __str__(self):
-    return 'OrderedChangeset<%x>' % (self.id,)
+    return 'OrderedChangeset<%x(%d)>' % (self.id, self.ordinal,)
 
 
 class SymbolChangeset(Changeset):
