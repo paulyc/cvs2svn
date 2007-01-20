@@ -823,42 +823,15 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     It is not guaranteed that the cycle will be broken by one call to
     this routine, but at least some progress must be made."""
 
-    self.log_processed_changesets()
-
     if Log().is_on(Log.DEBUG):
       Log().debug(
           'Breaking cycle %s' % (
           ' -> '.join(['%x' % changeset.id
                        for changeset in cycle + [cycle[0]]]),))
 
-    # Find the OrderedChangesets in the cycle (if any):
-    ordered_changeset_indexes = [
-        i
-        for i in range(len(cycle))
-        if isinstance(cycle[i], OrderedChangeset)]
-    if ordered_changeset_indexes:
-      # The cycle consists of one or more segments of SymbolChangesets
-      # bracketed by OrderedChangesets.  This implies that at least
-      # one pair of OrderedChangesets bracketing a segment is either
-      # in backwards order, or (if the whole cycle had only a single
-      # OrderedChangeset) the two OrderedChangesets bracketing the
-      # segment are one and the same.  To make progress on this cycle,
-      # we break each non-forwards segment.
-      ordered_changeset_indexes.append(
-          ordered_changeset_indexes[0] + len(cycle))
-      dcycle = cycle + cycle
-      for i in range(1, len(ordered_changeset_indexes)):
-        i0 = ordered_changeset_indexes[i - 1]
-        i1 = ordered_changeset_indexes[i]
-        c0 = dcycle[i0]
-        c1 = dcycle[i1]
-        if c0.ordinal >= c1.ordinal:
-          self.break_segment(dcycle[i0:i1 + 1])
-
-    else:
-      # The cycle doesn't contain any SymbolChangesets.  Break any
-      # link:
-      self.break_segment([cycle[-1]] + cycle + [cycle[0]])
+    # The cycle doesn't contain any SymbolChangesets.  Break any
+    # link:
+    self.break_segment([cycle[-1]] + cycle + [cycle[0]])
 
   def run(self, stats_keeper):
     Log().quiet("Breaking CVSSymbol dependency loops...")
@@ -894,10 +867,23 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
 
     self.changeset_graph = ChangesetGraph()
 
+    # A map {ordinal : changeset_id}:
+    ordered_changeset_map = {}
     for changeset_id in changeset_ids:
       changeset = old_changesets_db[changeset_id]
       self.changesets_db.store(changeset)
       self.changeset_graph.add_changeset(changeset)
+      if isinstance(changeset, OrderedChangeset):
+        ordered_changeset_map[changeset.ordinal] = changeset.id
+
+    # An array of ordered_changeset ids, indexed by ordinal:
+    ordered_changesets = []
+    for ordinal in range(len(ordered_changeset_map)):
+      id = ordered_changeset_map[ordinal]
+      ordered_changesets.append(id)
+
+    ordered_changeset_ids = set(ordered_changeset_map.values())
+    del ordered_changeset_map
 
     self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
     del changeset_ids
@@ -912,12 +898,48 @@ class BreakCVSSymbolChangesetLoopsPass(Pass):
     self.processed_changeset_ids = []
     self.logged_changeset_ids = 0
 
-    # Consume the graph, breaking cycles using self.break_cycle():
-    for (changeset_id, time_range) in self.changeset_graph.consume_graph(
-          cycle_breaker=self.break_cycle):
-      self.processed_changeset_ids.append(changeset_id)
+    next_ordered_changeset = 0
 
-    self.log_processed_changesets()
+    while self.changeset_graph:
+      # Consume any nodes that don't have predecessors:
+      for (changeset_id, time_range) \
+              in self.changeset_graph.consume_nopred_nodes():
+        self.processed_changeset_ids.append(changeset_id)
+        if changeset_id in ordered_changeset_ids:
+          next_ordered_changeset += 1
+          ordered_changeset_ids.remove(changeset_id)
+
+      self.log_processed_changesets()
+
+      if not self.changeset_graph:
+        break
+
+      # Now work on the next ordered changeset that has not yet been
+      # processed:
+      if next_ordered_changeset < len(ordered_changesets):
+        id = ordered_changesets[next_ordered_changeset]
+        reachable_predecessors = \
+            self.changeset_graph.get_reachable_predecessors(id)
+
+        for (pred_id, steps) in reachable_predecessors:
+          if pred_id in ordered_changeset_ids:
+            self.break_segment(reachable_predecessors.get_path(pred_id))
+            break
+        else:
+          # There were no ordered changesets among the reachable
+          # predecessors, so do generic cycle-breaking:
+          self.break_cycle(self.changeset_graph.find_cycle(id))
+
+      else:
+        # There are no more ordered changesets in the graph; any
+        # remaining loops must be composed purely of symbol
+        # changesets:
+        self.break_cycle(
+            self.changeset_graph.find_cycle(
+                self.changeset_graph.nodes.iterkeys().next()
+                )
+            )
+
     del self.processed_changeset_ids
 
     self.cvs_item_to_changeset_id.close()
