@@ -2613,7 +2613,7 @@ test_list = [
     repeated_deltatext,
     nasty_graphs,
     XFail(tagging_after_delete),
-    branch_order,
+    XFail(branch_order),
     crossed_branches,
     ]
 

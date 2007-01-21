@@ -375,14 +375,10 @@ class CVSBranch(CVSSymbol):
   def get_pred_ids(self):
     retval = set()
     retval.add(self.rev_id)
-    if self.earlier_symbol_id is not None:
-      retval.add(self.earlier_symbol_id)
     return retval
 
   def get_succ_ids(self):
     retval = set()
-    if self.later_symbol_id is not None:
-      retval.add(self.later_symbol_id)
     if self.next_id is not None:
       retval.add(self.next_id)
     return retval
@@ -426,15 +422,11 @@ class CVSTag(CVSSymbol):
 
   def get_pred_ids(self):
     retval = set()
-    if self.earlier_symbol_id is not None:
-      retval.add(self.earlier_symbol_id)
     retval.add(self.rev_id)
     return retval
 
   def get_succ_ids(self):
     retval = set()
-    if self.later_symbol_id is not None:
-      retval.add(self.later_symbol_id)
     return retval
 
   def __str__(self):
