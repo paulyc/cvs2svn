@@ -144,7 +144,7 @@ class RecordTable:
     self.packer = packer
 
     # Number of items that can be stored in the write cache:
-    self._max_memory_cache = 128 * 1024 / self.packer.record_len
+    self._max_memory_cache = 4 * 1024 * 1024 / self.packer.record_len
 
     # Read and write cache; a map {i : (dirty, s)}, where i is an
     # index, dirty indicates whether the value has to be written to
