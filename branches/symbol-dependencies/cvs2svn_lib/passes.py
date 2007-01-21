@@ -941,30 +941,6 @@ class BreakAllChangesetCyclesPass(Pass):
       for item_id in changeset.cvs_item_ids:
         self.cvs_item_to_changeset_id[item_id] = changeset.id
 
-  def break_cycle(self, cycle):
-    """Break up one or more SymbolChangesets in CYCLE to help break the cycle.
-
-    CYCLE is a list of Changesets where
-
-        cycle[i] depends on cycle[i - 1]
-
-    and CYCLE involves at least one SymbolChangeset.  Break up one or
-    more symbol changesets in CYCLE to make progress towards breaking
-    the cycle.  Update self.changeset_graph accordingly.
-
-    It is not guaranteed that the cycle will be broken by one call to
-    this routine, but at least some progress must be made."""
-
-    if Log().is_on(Log.DEBUG):
-      Log().debug(
-          'Breaking cycle %s' % (
-          ' -> '.join(['%x' % changeset.id
-                       for changeset in cycle + [cycle[0]]]),))
-
-    # The cycle doesn't contain any SymbolChangesets.  Break any
-    # link:
-    self.break_segment([cycle[-1]] + cycle + [cycle[0]])
-
   def run(self, stats_keeper):
     Log().quiet("Breaking remaining changeset dependency cycles...")
 
@@ -1043,38 +1019,19 @@ class BreakAllChangesetCyclesPass(Pass):
       self.log_processed_changesets(processed_changeset_ids)
       del processed_changeset_ids
 
-      if not self.changeset_graph:
-        break
+      if self.changeset_graph:
+        assert next_ordered_changeset < len(ordered_changesets)
 
-      # Now work on the next ordered changeset that has not yet been
-      # processed:
-      if next_ordered_changeset < len(ordered_changesets):
+        # Work on the next ordered changeset that has not yet been
+        # processed:
         id = ordered_changesets[next_ordered_changeset]
         path = self.changeset_graph.search_for_path(id, ordered_changeset_ids)
-        if path:
-          if Log().is_on(Log.DEBUG):
-            Log().debug('Breaking path from %s to %s' % (path[0], path[-1],))
-          self.break_segment(path)
-        else:
-          # There were no ordered changesets among the reachable
-          # predecessors, so do generic cycle-breaking:
-          if Log().is_on(Log.DEBUG):
-            Log().debug(
-                'Breaking generic cycle found from %s'
-                % (Ctx()._changesets_db[id],)
-                )
-          self.break_cycle(self.changeset_graph.find_cycle(id))
 
-      else:
-        # There are no more ordered changesets in the graph; any
-        # remaining cycles must be composed purely of symbol
-        # changesets:
-        Log().debug('Breaking generic cycle found during cleanup')
-        self.break_cycle(
-            self.changeset_graph.find_cycle(
-                self.changeset_graph.nodes.iterkeys().next()
-                )
-            )
+        assert path
+
+        if Log().is_on(Log.DEBUG):
+          Log().debug('Breaking path from %s to %s' % (path[0], path[-1],))
+        self.break_segment(path)
 
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
