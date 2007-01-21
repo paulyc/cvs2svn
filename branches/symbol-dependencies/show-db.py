@@ -89,8 +89,7 @@ def show_cvsitemstore():
     items = cvs_file_items.values()
     items.sort(key=lambda i: i.id)
     for item in items:
-      print    "%6x: %r" % (item.id, item)
-      print "        %s" % (item,)
+      print    "%6x: %s" % (item.id, item,)
 
 
 def show_resynccvsitemstore(fname):
@@ -106,8 +105,7 @@ def show_resynccvsitemstore(fname):
       item = u.load()
     except EOFError:
       break
-    print    "%6s: %r" % (item.id, item)
-    print "        %s" % (item,)
+    print    "%6s: %s" % (item.id, item,)
 
 
 
