@@ -58,6 +58,11 @@ CVS_ITEM_TO_CHANGESET_REVBROKEN = \
 CVS_ITEM_TO_CHANGESET_SYMBROKEN = \
     'cvs2svn-cvs-item-to-changeset-symbroken.dat'
 
+# A mapping from CVSItem id to Changeset id, after all Changeset
+# loops have been broken.
+CVS_ITEM_TO_CHANGESET_ALLBROKEN = \
+    'cvs2svn-cvs-item-to-changeset-allbroken.dat'
+
 # A mapping from id to Changeset.
 CHANGESETS_DB = 'cvs2svn-changesets.db'
 
@@ -72,6 +77,10 @@ CHANGESETS_REVSORTED_DB = 'cvs2svn-changesets-revsorted.db'
 # A mapping from id to Changeset, after the SymbolChangeset loops have
 # been broken.
 CHANGESETS_SYMBROKEN_DB = 'cvs2svn-changesets-symbroken.db'
+
+# A mapping from id to Changeset, after all Changeset loops have been
+# broken.
+CHANGESETS_ALLBROKEN_DB = 'cvs2svn-changesets-allbroken.db'
 
 # The RevisionChangesets in commit order.  Each line contains the
 # changeset id and timestamp of one changeset, in hexadecimal, in the
