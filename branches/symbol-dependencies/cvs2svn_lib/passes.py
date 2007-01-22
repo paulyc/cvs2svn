@@ -49,6 +49,8 @@ from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.changeset import RevisionChangeset
 from cvs2svn_lib.changeset import OrderedChangeset
 from cvs2svn_lib.changeset import SymbolChangeset
+from cvs2svn_lib.changeset import BranchChangeset
+from cvs2svn_lib.changeset import TagChangeset
 from cvs2svn_lib.changeset import create_symbol_changeset
 from cvs2svn_lib.changeset_graph import ChangesetGraph
 from cvs2svn_lib.changeset_graph_link import ChangesetGraphLink
@@ -913,6 +915,12 @@ class BreakAllChangesetCyclesPass(Pass):
     for changeset_id in changeset_ids:
       changeset = old_changesets_db[changeset_id]
       self.changesets_db.store(changeset)
+
+      if isinstance(changeset, TagChangeset):
+        # TagChangesets cannot cause cycles because they have no
+        # successors.
+        continue
+
       self.changeset_graph.add_changeset(changeset)
       if isinstance(changeset, OrderedChangeset):
         self.ordered_changeset_map[changeset.id] = changeset.ordinal
