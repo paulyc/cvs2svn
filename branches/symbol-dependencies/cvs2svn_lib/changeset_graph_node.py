@@ -36,10 +36,12 @@ class ChangesetGraphNode(object):
     # The range of times of CVSItems within this Changeset.
     self.time_range = time_range
 
-    # The ids of changesets that are direct predecessors of this one.
+    # The set of changeset ids of changesets that are direct
+    # predecessors of this one.
     self.pred_ids = pred_ids
 
-    # The ids of changesets that are direct successors of this one.
+    # The set of changeset ids of changesets that are direct
+    # successors of this one.
     self.succ_ids = succ_ids
 
   def get_changeset(self):
