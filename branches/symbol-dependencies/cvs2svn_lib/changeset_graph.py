@@ -112,6 +112,9 @@ class ChangesetGraph(object):
 
     del self.nodes[node.id]
 
+  def keys(self):
+    return self.nodes.keys()
+
   def __iter__(self):
     return self.nodes.itervalues()
 
