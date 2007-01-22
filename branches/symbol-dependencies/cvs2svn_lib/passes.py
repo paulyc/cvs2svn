@@ -23,6 +23,7 @@ import sys
 import os
 import shutil
 import cPickle
+import bisect
 
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib.set_support import *
@@ -763,47 +764,115 @@ class BreakAllChangesetCyclesPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
-  def log_processed_changesets(self, new_changeset_ids):
-    if Log().is_on(Log.DEBUG) and new_changeset_ids:
-        Log().debug(
-            'Consumed changeset ids %s'
-            % (', '.join(['%x' % id for id in new_changeset_ids]),))
+  def _split_symbol_changeset(self, changeset):
+    """Split up CHANGESET to avoid any retrograde dependencies.
 
-  def break_segment(self, segment):
-    """Break a changeset in SEGMENT[1:-1].
+    Split up the SymbolChangeset CHANGESET until each new changeset as
+    a whole has no successors that precede any predecessors.  We do
+    this by repeatedly finding the lowest-numbered successor node, and
+    splitting off any CVSSymbols whose predecessor is before that one."""
 
-    The range SEGMENT[1:-1] is not empty, and all of the changesets in
-    that range are SymbolChangesets."""
+    # A list (pred_ordinal, cvs_item_id, succ_ordinal) for the items
+    # in changeset.  We treat the case of no pred_ordinal or
+    # succ_ordinal, even though currently there is always a
+    # pred_ordinal.
+    links = []
+    for cvs_symbol in changeset.get_cvs_items():
+      pred_ordinals = [
+          self.ordered_changeset_map[self.cvs_item_to_changeset_id[id]]
+          for id in cvs_symbol.get_pred_ids()
+          ]
+      if not pred_ordinals:
+        pred_ordinal = -1
+      else:
+        assert len(pred_ordinals) == 1
+        [pred_ordinal] = pred_ordinals
 
-    best_i = None
-    best_link = None
-    for i in range(1, len(segment) - 1):
-      link = ChangesetGraphLink(
-          segment[i - 1], segment[i], segment[i + 1])
+      succ_ordinals = [
+          self.ordered_changeset_map[self.cvs_item_to_changeset_id[id]]
+          for id in cvs_symbol.get_succ_ids()
+          ]
+      if not succ_ordinals:
+        succ_ordinal = sys.maxint
+      else:
+        assert len(succ_ordinals) == 1
+        [succ_ordinal] = succ_ordinals
 
-      if best_i is None or link < best_link:
-        best_i = i
-        best_link = link
+      links.append((pred_ordinal, cvs_symbol.id, succ_ordinal,))
 
-    if Log().is_on(Log.DEBUG):
-      Log().debug(
-          'Breaking segment %s by breaking node %x' % (
-          ' -> '.join(['%x' % node.id for node in segment]),
-          best_link.changeset.id,))
+    links.sort()
 
-    new_changesets = best_link.break_changeset(self.changeset_key_generator)
+    new_changesets = []
+    while links:
+      succ_ids = [link[-1] for link in links]
 
-    del self.changeset_graph[best_link.changeset.id]
-    del self.changesets_db[best_link.changeset.id]
+      first_succ_ordinal = min(succ_ids)
+      i = bisect.bisect_left(links, (first_succ_ordinal,))
+      assert i != 0
 
-    for changeset in new_changesets:
+      new_changesets.append(
+          changeset.create_split_changeset(
+              self.changeset_key_generator.gen_id(),
+              [link[1] for link in links[:i]]
+              )
+          )
+      del links[:i]
+
+    return new_changesets
+
+  def _process_symbol_changeset(self, changeset_node):
+    """Break the SymbolChangeset in CHANGESET_NODE if necessary.
+
+    At this point, the graph consists of a single linear list of
+    OrderedChangesets and a bunch of SymbolChangesets.
+
+    The CVSSymbols in the SymbolChangesets can have at most one
+    OrderedChangset as predecessor and at most one as successor.  By
+    construction, the predecessor's ordinal is always less than the
+    successor's.
+
+    If the SymbolChangeset in CHANGESET_NODE has any successors that
+    precede any predecessors, then split it up by calling
+    _split_symbol_changeset()."""
+
+    # All of the ordinals of OrderedChangesets that are predecessors
+    # of changeset_node, sorted in numerical order:
+    pred_ordinals = [
+        self.ordered_changeset_map[id]
+        for id in changeset_node.pred_ids
+        ]
+    pred_ordinals.sort()
+
+    # All of the ordinals of OrderedChangesets that are successors of
+    # changeset_node, sorted in numerical order:
+    succ_ordinals = [
+        self.ordered_changeset_map[id]
+        for id in changeset_node.succ_ids
+        ]
+    succ_ordinals.sort()
+
+    if pred_ordinals \
+           and succ_ordinals \
+           and pred_ordinals[-1] >= succ_ordinals[0]:
+      # This changeset has to be broken up:
+      changeset = changeset_node.get_changeset()
+
       if Log().is_on(Log.DEBUG):
-        Log().debug(repr(changeset))
+        Log().debug('Breaking changeset %x' % (changeset.id,))
 
-      self.changeset_graph.add_changeset(changeset)
-      self.changesets_db.store(changeset)
-      for item_id in changeset.cvs_item_ids:
-        self.cvs_item_to_changeset_id[item_id] = changeset.id
+      new_changesets = self._split_symbol_changeset(changeset)
+
+      del self.changeset_graph[changeset.id]
+      del self.changesets_db[changeset.id]
+
+      for changeset in new_changesets:
+        if Log().is_on(Log.DEBUG):
+          Log().debug(repr(changeset))
+
+        self.changeset_graph.add_changeset(changeset)
+        self.changesets_db.store(changeset)
+        for item_id in changeset.cvs_item_ids:
+          self.cvs_item_to_changeset_id[item_id] = changeset.id
 
   def run(self, stats_keeper):
     Log().quiet("Breaking remaining changeset dependency cycles...")
@@ -839,23 +908,14 @@ class BreakAllChangesetCyclesPass(Pass):
 
     self.changeset_graph = ChangesetGraph()
 
-    # A map {ordinal : changeset_id}:
-    ordered_changeset_map = {}
+    # A map {changeset_id : ordinal}:
+    self.ordered_changeset_map = {}
     for changeset_id in changeset_ids:
       changeset = old_changesets_db[changeset_id]
       self.changesets_db.store(changeset)
       self.changeset_graph.add_changeset(changeset)
       if isinstance(changeset, OrderedChangeset):
-        ordered_changeset_map[changeset.ordinal] = changeset.id
-
-    # An array of ordered_changeset ids, indexed by ordinal:
-    ordered_changesets = []
-    for ordinal in range(len(ordered_changeset_map)):
-      id = ordered_changeset_map[ordinal]
-      ordered_changesets.append(id)
-
-    ordered_changeset_ids = set(ordered_changeset_map.values())
-    del ordered_changeset_map
+        self.ordered_changeset_map[changeset.id] = changeset.ordinal
 
     self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
     del changeset_ids
@@ -865,38 +925,13 @@ class BreakAllChangesetCyclesPass(Pass):
 
     Ctx()._changesets_db = self.changesets_db
 
-    next_ordered_changeset = 0
+    for changeset_id in self.changeset_graph.keys():
+      if changeset_id not in self.ordered_changeset_map:
+        # It must be a SymbolChangeset:
+        self._process_symbol_changeset(self.changeset_graph[changeset_id])
 
-    while self.changeset_graph:
-      # Keep track of the changeset_ids that have been consumed so far
-      # (for logging):
-      processed_changeset_ids = []
-
-      # Consume any nodes that don't have predecessors:
-      for (changeset_id, time_range) \
-              in self.changeset_graph.consume_nopred_nodes():
-        processed_changeset_ids.append(changeset_id)
-        if changeset_id in ordered_changeset_ids:
-          next_ordered_changeset += 1
-          ordered_changeset_ids.remove(changeset_id)
-
-      self.log_processed_changesets(processed_changeset_ids)
-      del processed_changeset_ids
-
-      if self.changeset_graph:
-        assert next_ordered_changeset < len(ordered_changesets)
-
-        # Work on the next ordered changeset that has not yet been
-        # processed:
-        id = ordered_changesets[next_ordered_changeset]
-        path = self.changeset_graph.search_for_path(id, ordered_changeset_ids)
-
-        assert path
-
-        if Log().is_on(Log.DEBUG):
-          Log().debug('Breaking path from %s to %s' % (path[0], path[-1],))
-        self.break_segment(path)
-
+    del self.changeset_graph
+    del self.ordered_changeset_map
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
 
