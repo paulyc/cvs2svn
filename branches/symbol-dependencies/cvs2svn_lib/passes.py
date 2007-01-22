@@ -750,142 +750,6 @@ class RevisionTopologicalSortPass(Pass):
     Log().quiet("Done")
 
 
-class BreakSymbolChangesetCyclesPass(Pass):
-  """Break up any dependency cycles involving only SymbolChangesets."""
-
-  def register_artifacts(self):
-    self._register_temp_file(config.CHANGESETS_SYMBROKEN_DB)
-    self._register_temp_file(config.CVS_ITEM_TO_CHANGESET_SYMBROKEN)
-    self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
-    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
-
-  def log_processed_changesets(self):
-    if Log().is_on(Log.DEBUG):
-      new_changeset_ids = self.processed_changeset_ids[
-          self.logged_changeset_ids:
-          ]
-      if new_changeset_ids:
-        Log().debug(
-            'Consumed changeset ids %s'
-            % (', '.join(['%x' % id for id in new_changeset_ids]),))
-        self.logged_changeset_ids = len(self.processed_changeset_ids)
-
-  def break_cycle(self, cycle):
-    """Break up one or more changesets in CYCLE to help break the cycle.
-
-    CYCLE is a list of Changesets where
-
-        cycle[i] depends on cycle[i - 1]
-
-    Break up one or more changesets in CYCLE to make progress towards
-    breaking the cycle.  Update self.changeset_graph accordingly.
-
-    It is not guaranteed that the cycle will be broken by one call to
-    this routine, but at least some progress must be made."""
-
-    self.log_processed_changesets()
-    best_i = None
-    best_link = None
-    for i in range(len(cycle)):
-      # It's OK if this index wraps to -1:
-      link = ChangesetGraphLink(
-          cycle[i - 1], cycle[i], cycle[i + 1 - len(cycle)])
-
-      if best_i is None or link < best_link:
-        best_i = i
-        best_link = link
-
-    if Log().is_on(Log.DEBUG):
-      Log().debug(
-          'Breaking cycle %s by breaking node %x' % (
-          ' -> '.join(['%x' % node.id for node in (cycle + [cycle[0]])]),
-          best_link.changeset.id,))
-
-    new_changesets = best_link.break_changeset(self.changeset_key_generator)
-
-    del self.changeset_graph[best_link.changeset.id]
-    del self.changesets_db[best_link.changeset.id]
-
-    for changeset in new_changesets:
-      if Log().is_on(Log.DEBUG):
-        Log().debug(repr(changeset))
-
-      self.changeset_graph.add_changeset(changeset)
-      self.changesets_db.store(changeset)
-      for item_id in changeset.cvs_item_ids:
-        self.cvs_item_to_changeset_id[item_id] = changeset.id
-
-  def run(self, stats_keeper):
-    Log().quiet("Breaking symbol changeset dependency cycles...")
-
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    Ctx()._symbol_db = SymbolDatabase()
-    Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
-        DB_OPEN_READ)
-
-    shutil.copyfile(
-        artifact_manager.get_temp_file(
-            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
-        artifact_manager.get_temp_file(
-            config.CVS_ITEM_TO_CHANGESET_SYMBROKEN))
-    self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
-        artifact_manager.get_temp_file(
-            config.CVS_ITEM_TO_CHANGESET_SYMBROKEN),
-        DB_OPEN_WRITE)
-    Ctx()._cvs_item_to_changeset_id = self.cvs_item_to_changeset_id
-
-    old_changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_REVSORTED_DB),
-        DB_OPEN_READ)
-    Ctx()._changesets_db = old_changesets_db
-    self.changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_SYMBROKEN_DB),
-        DB_OPEN_NEW)
-
-    changeset_ids = old_changesets_db.keys()
-    changeset_ids.sort()
-
-    self.changeset_graph = ChangesetGraph()
-
-    for changeset_id in changeset_ids:
-      changeset = old_changesets_db[changeset_id]
-      self.changesets_db.store(changeset)
-      if isinstance(changeset, SymbolChangeset):
-        self.changeset_graph.add_changeset(changeset)
-
-    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
-    del changeset_ids
-
-    old_changesets_db.close()
-    del old_changesets_db
-
-    Ctx()._changesets_db = self.changesets_db
-
-    # Keep track of the changeset_ids that have been consumed so far
-    # (for logging):
-    self.processed_changeset_ids = []
-    self.logged_changeset_ids = 0
-
-    # Consume the graph, breaking cycles using self.break_cycle():
-    for (changeset_id, time_range) in self.changeset_graph.consume_graph(
-          cycle_breaker=self.break_cycle):
-      self.processed_changeset_ids.append(changeset_id)
-
-    self.log_processed_changesets()
-    del self.processed_changeset_ids
-
-    self.cvs_item_to_changeset_id.close()
-    self.changesets_db.close()
-
-    Log().quiet("Done")
-
-
 class BreakAllChangesetCyclesPass(Pass):
   """Break up any dependency cycles that are closed by SymbolChangesets."""
 
@@ -896,8 +760,8 @@ class BreakAllChangesetCyclesPass(Pass):
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.CHANGESETS_SYMBROKEN_DB)
-    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_SYMBROKEN)
+    self._register_temp_file_needed(config.CHANGESETS_REVSORTED_DB)
+    self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_REVBROKEN)
 
   def log_processed_changesets(self, new_changeset_ids):
     if Log().is_on(Log.DEBUG) and new_changeset_ids:
@@ -953,7 +817,7 @@ class BreakAllChangesetCyclesPass(Pass):
 
     shutil.copyfile(
         artifact_manager.get_temp_file(
-            config.CVS_ITEM_TO_CHANGESET_SYMBROKEN),
+            config.CVS_ITEM_TO_CHANGESET_REVBROKEN),
         artifact_manager.get_temp_file(
             config.CVS_ITEM_TO_CHANGESET_ALLBROKEN))
     self.cvs_item_to_changeset_id = CVSItemToChangesetTable(
@@ -963,7 +827,7 @@ class BreakAllChangesetCyclesPass(Pass):
     Ctx()._cvs_item_to_changeset_id = self.cvs_item_to_changeset_id
 
     old_changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(config.CHANGESETS_SYMBROKEN_DB),
+        artifact_manager.get_temp_file(config.CHANGESETS_REVSORTED_DB),
         DB_OPEN_READ)
     Ctx()._changesets_db = old_changesets_db
     self.changesets_db = ChangesetDatabase(
@@ -1236,7 +1100,6 @@ passes = [
     InitializeChangesetsPass(),
     BreakRevisionChangesetCyclesPass(),
     RevisionTopologicalSortPass(),
-    BreakSymbolChangesetCyclesPass(),
     BreakAllChangesetCyclesPass(),
     TopologicalSortPass(),
     CreateRevsPass(),
