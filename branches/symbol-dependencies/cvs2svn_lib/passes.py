@@ -942,6 +942,25 @@ class TopologicalSortPass(Pass):
     self._register_temp_file_needed(config.CHANGESETS_ALLBROKEN_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_ALLBROKEN)
 
+  def generate_sorted_changesets(self):
+    """Generate (changeset, timestamp) pairs in commit order."""
+
+    changeset_graph = ChangesetGraph()
+
+    for changeset_id in Ctx()._changesets_db.keys():
+      changeset = Ctx()._changesets_db[changeset_id]
+      changeset_graph.add_changeset(changeset)
+
+    # Ensure a monotonically-increasing timestamp series by keeping
+    # track of the previous timestamp and ensuring that the following
+    # one is larger.
+    timestamp = 0
+
+    for (changeset_id, time_range) in changeset_graph.consume_graph():
+      changeset = Ctx()._changesets_db[changeset_id]
+      timestamp = max(time_range.t_max, timestamp + 1)
+      yield (changeset, timestamp)
+
   def run(self, stats_keeper):
     Log().quiet("Generating CVSRevisions in commit order...")
 
@@ -961,24 +980,11 @@ class TopologicalSortPass(Pass):
             config.CVS_ITEM_TO_CHANGESET_ALLBROKEN),
         DB_OPEN_READ)
 
-    changeset_graph = ChangesetGraph()
-
-    for changeset_id in Ctx()._changesets_db.keys():
-      changeset = Ctx()._changesets_db[changeset_id]
-      changeset_graph.add_changeset(changeset)
-
     sorted_changesets = open(
         artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE),
         'w')
 
-    # Ensure a monotonically-increasing timestamp series by keeping
-    # track of the previous timestamp and ensuring that the following
-    # one is larger.
-    timestamp = 0
-
-    for (changeset_id, time_range) in changeset_graph.consume_graph():
-      changeset = Ctx()._changesets_db[changeset_id]
-      timestamp = max(time_range.t_max, timestamp + 1)
+    for (changeset, timestamp) in self.generate_sorted_changesets():
       sorted_changesets.write('%x %08x\n' % (changeset.id, timestamp,))
       for cvs_item in changeset.get_cvs_items():
         stats_keeper.record_cvs_item(cvs_item)
