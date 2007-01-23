@@ -821,7 +821,7 @@ class BreakAllChangesetCyclesPass(Pass):
 
     return cvs_item_id_lists
 
-  def _process_symbol_changeset(self, changeset_node):
+  def _process_symbol_changeset(self, changeset):
     """Break the SymbolChangeset in CHANGESET_NODE if necessary.
 
     At this point, the graph consists of a single linear list of
@@ -835,8 +835,6 @@ class BreakAllChangesetCyclesPass(Pass):
     If the SymbolChangeset in CHANGESET_NODE has any successors that
     precede any predecessors, then split it up by calling
     _split_symbol_changeset()."""
-
-    changeset = changeset_node.get_changeset()
 
     cvs_item_id_lists = self._split_symbol_changeset(changeset)
 
@@ -923,7 +921,8 @@ class BreakAllChangesetCyclesPass(Pass):
     for changeset_id in self.changeset_graph.keys():
       if changeset_id not in self.ordered_changeset_map:
         # It must be a SymbolChangeset:
-        self._process_symbol_changeset(self.changeset_graph[changeset_id])
+        changeset = Ctx()._changesets_db[changeset_id]
+        self._process_symbol_changeset(changeset)
 
     del self.changeset_graph
     del self.ordered_changeset_map
