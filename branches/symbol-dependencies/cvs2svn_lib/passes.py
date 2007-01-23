@@ -836,48 +836,32 @@ class BreakAllChangesetCyclesPass(Pass):
     precede any predecessors, then split it up by calling
     _split_symbol_changeset()."""
 
-    # All of the ordinals of OrderedChangesets that are predecessors
-    # of changeset_node, sorted in numerical order:
-    pred_ordinals = [
-        self.ordered_changeset_map[id]
-        for id in changeset_node.pred_ids
-        ]
-    pred_ordinals.sort()
+    changeset = changeset_node.get_changeset()
 
-    # All of the ordinals of OrderedChangesets that are successors of
-    # changeset_node, sorted in numerical order:
-    succ_ordinals = [
-        self.ordered_changeset_map[id]
-        for id in changeset_node.succ_ids
-        ]
-    succ_ordinals.sort()
+    cvs_item_id_lists = self._split_symbol_changeset(changeset)
 
-    if pred_ordinals \
-           and succ_ordinals \
-           and pred_ordinals[-1] >= succ_ordinals[0]:
-      # This changeset has to be broken up:
-      changeset = changeset_node.get_changeset()
+    if len(cvs_item_id_lists) == 1:
+      # No splitting was needed:
+      return
+
+    if Log().is_on(Log.DEBUG):
+      Log().debug('Breaking changeset %x' % (changeset.id,))
+
+    del self.changeset_graph[changeset.id]
+    del self.changesets_db[changeset.id]
+
+    for cvs_item_id_list in cvs_item_id_lists:
+      new_changeset = changeset.create_split_changeset(
+          self.changeset_key_generator.gen_id(), cvs_item_id_list
+          )
 
       if Log().is_on(Log.DEBUG):
-        Log().debug('Breaking changeset %x' % (changeset.id,))
+        Log().debug(repr(new_changeset))
 
-      cvs_item_id_lists = self._split_symbol_changeset(changeset)
-
-      del self.changeset_graph[changeset.id]
-      del self.changesets_db[changeset.id]
-
-      for cvs_item_id_list in cvs_item_id_lists:
-        new_changeset = changeset.create_split_changeset(
-            self.changeset_key_generator.gen_id(), cvs_item_id_list
-            )
-
-        if Log().is_on(Log.DEBUG):
-          Log().debug(repr(new_changeset))
-
-        self.changeset_graph.add_changeset(new_changeset)
-        self.changesets_db.store(new_changeset)
-        for item_id in new_changeset.cvs_item_ids:
-          self.cvs_item_to_changeset_id[item_id] = new_changeset.id
+      self.changeset_graph.add_changeset(new_changeset)
+      self.changesets_db.store(new_changeset)
+      for item_id in new_changeset.cvs_item_ids:
+        self.cvs_item_to_changeset_id[item_id] = new_changeset.id
 
   def run(self, stats_keeper):
     Log().quiet("Breaking remaining changeset dependency cycles...")
