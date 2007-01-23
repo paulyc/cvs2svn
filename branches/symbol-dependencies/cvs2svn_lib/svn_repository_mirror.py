@@ -569,10 +569,12 @@ class SVNRepositoryMirror:
       getattr(delegate, method)(*args)
 
   def finish(self):
-    """Calls the delegate finish method."""
+    """Call the delegate finish methods and close databases."""
 
     self._invoke_delegates('finish')
+    self._svn_revs_root_nodes.close()
     self._svn_revs_root_nodes = None
+    self._nodes_db.close()
     self._nodes_db = None
 
 
