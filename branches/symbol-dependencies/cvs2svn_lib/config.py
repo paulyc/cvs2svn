@@ -73,11 +73,6 @@ CHANGESETS_REVSORTED_DB = 'cvs2svn-changesets-revsorted.db'
 # broken.
 CHANGESETS_ALLBROKEN_DB = 'cvs2svn-changesets-allbroken.db'
 
-# The RevisionChangesets in commit order.  Each line contains the
-# changeset id and timestamp of one changeset, in hexadecimal, in the
-# order that the changesets should be committed to svn.
-CHANGESETS_SORTED_DATAFILE = 'cvs2svn-changesets-s.txt'
-
 # This file contains a marshalled copy of all the statistics that we
 # gather throughout the various runs of cvs2svn.  The data stored as a
 # marshalled dictionary.

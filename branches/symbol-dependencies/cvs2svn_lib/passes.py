@@ -930,20 +930,29 @@ class BreakAllChangesetCyclesPass(Pass):
     Log().quiet("Done")
 
 
-class TopologicalSortPass(Pass):
-  """Sort changesets into commit order."""
+class CreateRevsPass(Pass):
+  """Generate the SVNCommit <-> CVSRevision mapping databases.
+
+  This pass was formerly known as pass5."""
 
   def register_artifacts(self):
-    self._register_temp_file(config.CHANGESETS_SORTED_DATAFILE)
-    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file(config.SVN_COMMITS_INDEX_TABLE)
+    self._register_temp_file(config.SVN_COMMITS_STORE)
+    self._register_temp_file(config.LIFETIME_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
+    self._register_temp_file_needed(config.SYMBOL_DB)
+    self._register_temp_file_needed(config.METADATA_DB)
     self._register_temp_file_needed(config.CHANGESETS_ALLBROKEN_DB)
     self._register_temp_file_needed(config.CVS_ITEM_TO_CHANGESET_ALLBROKEN)
 
   def generate_sorted_changesets(self):
-    """Generate (changeset, timestamp) pairs in commit order."""
+    """Generate (changeset, timestamp) pairs in commit order.
+
+    This is done by putting all of the changesets into a
+    ChangesetGraph, then pulling them off in topologically-sorted
+    order."""
 
     changeset_graph = ChangesetGraph()
 
@@ -962,10 +971,11 @@ class TopologicalSortPass(Pass):
       yield (changeset, timestamp)
 
   def run(self, stats_keeper):
-    Log().quiet("Generating CVSRevisions in commit order...")
+    Log().quiet("Generating Subversion commits in proper order...")
 
     Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
     Ctx()._symbol_db = SymbolDatabase()
+    Ctx()._metadata_db = MetadataDatabase(DB_OPEN_READ)
     Ctx()._cvs_items_db = IndexedCVSItemStore(
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
@@ -980,72 +990,20 @@ class TopologicalSortPass(Pass):
             config.CVS_ITEM_TO_CHANGESET_ALLBROKEN),
         DB_OPEN_READ)
 
-    sorted_changesets = open(
-        artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE),
-        'w')
+    persistence_manager = PersistenceManager(DB_OPEN_NEW)
+    creator = SVNCommitCreator(persistence_manager)
 
     for (changeset, timestamp) in self.generate_sorted_changesets():
-      sorted_changesets.write('%x %08x\n' % (changeset.id, timestamp,))
       for cvs_item in changeset.get_cvs_items():
         stats_keeper.record_cvs_item(cvs_item)
-
-    sorted_changesets.close()
+      creator.process_changeset(changeset, timestamp)
 
     stats_keeper.set_stats_reflect_exclude(True)
 
     stats_keeper.archive()
 
-    Log().quiet("Done")
-
-
-class CreateRevsPass(Pass):
-  """Generate the SVNCommit <-> CVSRevision mapping databases.
-
-  This pass was formerly known as pass5."""
-
-  def register_artifacts(self):
-    self._register_temp_file(config.SVN_COMMITS_INDEX_TABLE)
-    self._register_temp_file(config.SVN_COMMITS_STORE)
-    self._register_temp_file(config.LIFETIME_DB)
-    self._register_temp_file_needed(config.CVS_FILES_DB)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
-    self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
-    self._register_temp_file_needed(config.SYMBOL_DB)
-    self._register_temp_file_needed(config.METADATA_DB)
-    self._register_temp_file_needed(config.CHANGESETS_ALLBROKEN_DB)
-    self._register_temp_file_needed(config.CHANGESETS_SORTED_DATAFILE)
-
-  def get_changesets(self):
-    """Generate (changeset,timestamp,) tuples in commit order."""
-
-    changesets_db = ChangesetDatabase(
-        artifact_manager.get_temp_file(
-            config.CHANGESETS_ALLBROKEN_DB), DB_OPEN_READ)
-
-    for line in file(
-            artifact_manager.get_temp_file(
-                config.CHANGESETS_SORTED_DATAFILE)):
-      [changeset_id, timestamp] = [int(s, 16) for s in line.strip().split()]
-      yield (changesets_db[changeset_id], timestamp)
-
-  def run(self, stats_keeper):
-    Log().quiet("Mapping CVS revisions to Subversion commits...")
-
-    Ctx()._cvs_file_db = CVSFileDatabase(DB_OPEN_READ)
-    Ctx()._symbol_db = SymbolDatabase()
-    Ctx()._metadata_db = MetadataDatabase(DB_OPEN_READ)
-    Ctx()._cvs_items_db = IndexedCVSItemStore(
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_STORE),
-        artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
-        DB_OPEN_READ)
-
-    persistence_manager = PersistenceManager(DB_OPEN_NEW)
-    creator = SVNCommitCreator(persistence_manager)
-
-    for (changeset, timestamp) in self.get_changesets():
-      creator.process_changeset(changeset, timestamp)
-
     creator.close()
+
     persistence_manager.close()
     Ctx()._cvs_items_db.close()
     stats_keeper.set_svn_rev_count(SVNCommit.revnum - 1)
@@ -1131,7 +1089,6 @@ passes = [
     BreakRevisionChangesetCyclesPass(),
     RevisionTopologicalSortPass(),
     BreakAllChangesetCyclesPass(),
-    TopologicalSortPass(),
     CreateRevsPass(),
     OutputPass(),
     ]
