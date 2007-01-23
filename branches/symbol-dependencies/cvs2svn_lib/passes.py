@@ -845,7 +845,6 @@ class BreakAllChangesetCyclesPass(Pass):
     if Log().is_on(Log.DEBUG):
       Log().debug('Breaking changeset %x' % (changeset.id,))
 
-    del self.changeset_graph[changeset.id]
     del self.changesets_db[changeset.id]
 
     for cvs_item_id_list in cvs_item_id_lists:
@@ -856,7 +855,6 @@ class BreakAllChangesetCyclesPass(Pass):
       if Log().is_on(Log.DEBUG):
         Log().debug(repr(new_changeset))
 
-      self.changeset_graph.add_changeset(new_changeset)
       self.changesets_db.store(new_changeset)
       for item_id in new_changeset.cvs_item_ids:
         self.cvs_item_to_changeset_id[item_id] = new_changeset.id
@@ -893,22 +891,26 @@ class BreakAllChangesetCyclesPass(Pass):
     changeset_ids = old_changesets_db.keys()
     changeset_ids.sort()
 
-    self.changeset_graph = ChangesetGraph()
-
     # A map {changeset_id : ordinal}:
     self.ordered_changeset_map = {}
+
+    # A list of BranchChangeset ids:
+    branch_changeset_ids = []
+
     for changeset_id in changeset_ids:
       changeset = old_changesets_db[changeset_id]
       self.changesets_db.store(changeset)
 
-      if isinstance(changeset, TagChangeset):
-        # TagChangesets cannot cause cycles because they have no
-        # successors.
-        continue
-
-      self.changeset_graph.add_changeset(changeset)
       if isinstance(changeset, OrderedChangeset):
         self.ordered_changeset_map[changeset.id] = changeset.ordinal
+      elif isinstance(changeset, BranchChangeset):
+        branch_changeset_ids.append(changeset_id)
+      elif isinstance(changeset, TagChangeset):
+        # TagChangesets cannot cause cycles because they have no
+        # successors.
+        pass
+      else:
+        raise RuntimeError()
 
     self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
     del changeset_ids
@@ -918,13 +920,10 @@ class BreakAllChangesetCyclesPass(Pass):
 
     Ctx()._changesets_db = self.changesets_db
 
-    for changeset_id in self.changeset_graph.keys():
-      if changeset_id not in self.ordered_changeset_map:
-        # It must be a SymbolChangeset:
-        changeset = Ctx()._changesets_db[changeset_id]
-        self._process_symbol_changeset(changeset)
+    for changeset_id in branch_changeset_ids:
+      changeset = Ctx()._changesets_db[changeset_id]
+      self._process_symbol_changeset(changeset)
 
-    del self.changeset_graph
     del self.ordered_changeset_map
     self.cvs_item_to_changeset_id.close()
     self.changesets_db.close()
