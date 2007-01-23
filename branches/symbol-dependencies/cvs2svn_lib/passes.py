@@ -1003,7 +1003,8 @@ class CreateRevsPass(Pass):
   This pass was formerly known as pass5."""
 
   def register_artifacts(self):
-    self._register_temp_file(config.SVN_COMMITS_DB)
+    self._register_temp_file(config.SVN_COMMITS_INDEX_TABLE)
+    self._register_temp_file(config.SVN_COMMITS_STORE)
     self._register_temp_file(config.LIFETIME_DB)
     self._register_temp_file_needed(config.CVS_FILES_DB)
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_STORE)
@@ -1063,7 +1064,8 @@ class OutputPass(Pass):
     self._register_temp_file_needed(config.CVS_ITEMS_FILTERED_INDEX_TABLE)
     self._register_temp_file_needed(config.SYMBOL_DB)
     self._register_temp_file_needed(config.METADATA_DB)
-    self._register_temp_file_needed(config.SVN_COMMITS_DB)
+    self._register_temp_file_needed(config.SVN_COMMITS_INDEX_TABLE)
+    self._register_temp_file_needed(config.SVN_COMMITS_STORE)
     self._register_temp_file_needed(config.LIFETIME_DB)
     Ctx().revision_reader.register_artifacts(self)
 
