@@ -46,12 +46,6 @@ class SVNCommit:
   # to create trunk, tags, and branches.
   revnum = 2
 
-  class SVNCommitInternalInconsistencyError(Exception):
-    """Exception raised if we encounter an impossible state in the
-    SVNCommit Databases."""
-
-    pass
-
   def __init__(self, description, date, revnum=None):
     """Instantiate an SVNCommit.  DESCRIPTION is for debugging only.
     If REVNUM, the SVNCommit will correspond to that revision number;
