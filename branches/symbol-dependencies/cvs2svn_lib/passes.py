@@ -889,7 +889,6 @@ class BreakAllChangesetCyclesPass(Pass):
         DB_OPEN_NEW)
 
     changeset_ids = old_changesets_db.keys()
-    changeset_ids.sort()
 
     # A map {changeset_id : ordinal}:
     self.ordered_changeset_map = {}
@@ -912,7 +911,7 @@ class BreakAllChangesetCyclesPass(Pass):
       else:
         raise RuntimeError()
 
-    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
+    self.changeset_key_generator = KeyGenerator(max(changeset_ids) + 1)
     del changeset_ids
 
     old_changesets_db.close()
