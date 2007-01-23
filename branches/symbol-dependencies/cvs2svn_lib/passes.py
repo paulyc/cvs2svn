@@ -952,25 +952,20 @@ class TopologicalSortPass(Pass):
         artifact_manager.get_temp_file(config.CVS_ITEMS_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
 
-    changesets_db = ChangesetDatabase(
+    Ctx()._changesets_db = ChangesetDatabase(
         artifact_manager.get_temp_file(config.CHANGESETS_ALLBROKEN_DB),
         DB_OPEN_READ)
-    Ctx()._changesets_db = changesets_db
 
     Ctx()._cvs_item_to_changeset_id = CVSItemToChangesetTable(
         artifact_manager.get_temp_file(
             config.CVS_ITEM_TO_CHANGESET_ALLBROKEN),
         DB_OPEN_READ)
 
-    changeset_ids = changesets_db.keys()
-
     changeset_graph = ChangesetGraph()
 
-    for changeset_id in changeset_ids:
-      changeset = changesets_db[changeset_id]
+    for changeset_id in Ctx()._changesets_db.keys():
+      changeset = Ctx()._changesets_db[changeset_id]
       changeset_graph.add_changeset(changeset)
-
-    del changeset_ids
 
     sorted_changesets = open(
         artifact_manager.get_temp_file(config.CHANGESETS_SORTED_DATAFILE),
@@ -982,7 +977,7 @@ class TopologicalSortPass(Pass):
     timestamp = 0
 
     for (changeset_id, time_range) in changeset_graph.consume_graph():
-      changeset = changesets_db[changeset_id]
+      changeset = Ctx()._changesets_db[changeset_id]
       timestamp = max(time_range.t_max, timestamp + 1)
       sorted_changesets.write('%x %08x\n' % (changeset.id, timestamp,))
       for cvs_item in changeset.get_cvs_items():
