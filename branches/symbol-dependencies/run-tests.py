@@ -2459,34 +2459,6 @@ def tagging_after_delete():
   log.check_changes(expected)
 
 
-def branch_order():
-  "determine branch creation order from numbers"
-
-  # Test that branches are created in the order implied by their
-  # relative branch numbers.  file1.txt is created on trunk, branched
-  # first onto BRANCH_B then onto BRANCH_A, and then modified on each
-  # of those branches in the same order.  file2.txt is the same except
-  # that it is never modified on the branches.  We check that cvs2svn
-  # is smart enough to create BRANCH_B before BRANCH_A for both files.
-
-  conv = ensure_conversion('branch-order')
-
-  conv.logs[3].check(sym_log_msg('BRANCH_B'), (
-    ('/%(branches)s/BRANCH_B (from /%(trunk)s:2)', 'A'),
-    ))
-  conv.logs[4].check(sym_log_msg('BRANCH_A'), (
-    ('/%(branches)s/BRANCH_A (from /%(trunk)s:2)', 'A'),
-    ))
-  conv.logs[8].check(sym_log_msg('BRANCH_B'), (
-    ('/%(branches)s/BRANCH_B/proj/file2.txt '
-     '(from /%(trunk)s/proj/file2.txt:7)', 'A'),
-    ))
-  conv.logs[9].check(sym_log_msg('BRANCH_A'), (
-    ('/%(branches)s/BRANCH_A/proj/file2.txt '
-     '(from /%(trunk)s/proj/file2.txt:7)', 'A'),
-    ))
-
-
 def crossed_branches():
   "branches created in inconsistent orders"
 
@@ -2613,7 +2585,6 @@ test_list = [
     repeated_deltatext,
     nasty_graphs,
     XFail(tagging_after_delete),
-    XFail(branch_order),
     crossed_branches,
     ]
 
