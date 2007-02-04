@@ -298,35 +298,19 @@ class CVSSymbol(CVSItem):
 
   This is the base class for CVSBranch and CVSTag."""
 
-  def __init__(self, id, cvs_file, symbol, rev_id,
-               earlier_symbol_id, later_symbol_id):
+  def __init__(self, id, cvs_file, symbol, rev_id):
     """Initialize a CVSSymbol object.
 
     Arguments:
        ID              -->  (string) unique ID for this item
        CVS_FILE        -->  (CVSFile) CVSFile affected by this revision
        SYMBOL          -->  (Symbol) the corresponding symbol
-       REV_ID          -->  (int) the ID of the revision being tagged
-       EARLIER_SYMBOL_ID --> (int or None) the ID of the symbol rooted at the
-                            same REV_ID that was created earlier, if any
-       LATER_SYMBOL_ID --> (int or None) the ID of the symbol rooted at the
-                            same REV_ID that was created later, if any
-
-    EARLIER_SYMBOL_ID and LATER_SYMBOL_ID are for branches like
-    [1.2.2, 1.2.4, 1.2.6].  Each of the branches is rooted at revision
-    1.2, but it is clear from the numbering that they were created in
-    the specified order.  In this case, '1.2.2' has
-    earlier_symbol_id=None and later_symbol_id='1.2.4', etc.  We
-    include these fields in CVSSymbol (rather than just CVSBranch)
-    because we want to preserve the information even if a branch is
-    converted into a tag."""
+       REV_ID          -->  (int) the ID of the revision being tagged"""
 
     CVSItem.__init__(self, id, cvs_file)
 
     self.symbol = symbol
     self.rev_id = rev_id
-    self.earlier_symbol_id = earlier_symbol_id
-    self.later_symbol_id = later_symbol_id
 
   def get_ids_closed(self):
     # A Symbol does not close any other CVSItems:
@@ -336,8 +320,7 @@ class CVSSymbol(CVSItem):
 class CVSBranch(CVSSymbol):
   """Represent the creation of a branch in a particular CVSFile."""
 
-  def __init__(self, id, cvs_file, symbol, branch_number, rev_id,
-               earlier_symbol_id, later_symbol_id, next_id):
+  def __init__(self, id, cvs_file, symbol, branch_number, rev_id, next_id):
     """Initialize a CVSBranch.
 
     Arguments:
@@ -348,14 +331,9 @@ class CVSBranch(CVSSymbol):
                             or None if this is a converted tag
        REV_ID          -->  (int) id of CVSRevision from which this branch
                             sprouts
-       EARLIER_SYMBOL_ID --> (int or None) the ID of the symbol rooted at the
-                            same REV_ID that was created earlier, if any
-       LATER_SYMBOL_ID --> (int or None) the ID of the symbol rooted at the
-                            same REV_ID that was created later, if any
        NEXT_ID         -->  (int or None) id of first rev on this branch"""
 
-    CVSSymbol.__init__(self, id, cvs_file, symbol, rev_id,
-                       earlier_symbol_id, later_symbol_id)
+    CVSSymbol.__init__(self, id, cvs_file, symbol, rev_id)
     self.branch_number = branch_number
     self.next_id = next_id
 
@@ -363,12 +341,12 @@ class CVSBranch(CVSSymbol):
     return (
         self.id, self.cvs_file.id,
         self.symbol.id, self.branch_number, self.rev_id,
-        self.earlier_symbol_id, self.later_symbol_id, self.next_id)
+        self.next_id)
 
   def __setstate__(self, data):
     (self.id, cvs_file_id,
      symbol_id, self.branch_number, self.rev_id,
-     self.earlier_symbol_id, self.later_symbol_id, self.next_id) = data
+     self.next_id) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 
@@ -393,30 +371,22 @@ class CVSBranch(CVSSymbol):
 class CVSTag(CVSSymbol):
   """Represent the creation of a tag on a particular CVSFile."""
 
-  def __init__(self, id, cvs_file, symbol, rev_id,
-               earlier_symbol_id, later_symbol_id):
+  def __init__(self, id, cvs_file, symbol, rev_id):
     """Initialize a CVSTag.
 
     Arguments:
        ID              -->  (string) unique ID for this item
        CVS_FILE        -->  (CVSFile) CVSFile affected by this revision
        SYMBOL          -->  (Symbol) the corresponding symbol
-       REV_ID          -->  (int) id of CVSRevision being tagged
-       EARLIER_SYMBOL_ID --> (int or None) the ID of the symbol rooted at the
-                            same REV_ID that was created earlier, if any
-       LATER_SYMBOL_ID --> (int or None) the ID of the symbol rooted at the
-                            same REV_ID that was created later, if any"""
+       REV_ID          -->  (int) id of CVSRevision being tagged"""
 
-    CVSSymbol.__init__(self, id, cvs_file, symbol, rev_id,
-                       earlier_symbol_id, later_symbol_id)
+    CVSSymbol.__init__(self, id, cvs_file, symbol, rev_id)
 
   def __getstate__(self):
-    return (self.id, self.cvs_file.id, self.symbol.id, self.rev_id,
-            self.earlier_symbol_id, self.later_symbol_id)
+    return (self.id, self.cvs_file.id, self.symbol.id, self.rev_id)
 
   def __setstate__(self, data):
-    (self.id, cvs_file_id, symbol_id, self.rev_id,
-     self.earlier_symbol_id, self.later_symbol_id) = data
+    (self.id, cvs_file_id, symbol_id, self.rev_id) = data
     self.cvs_file = Ctx()._cvs_file_db.get_file(cvs_file_id)
     self.symbol = Ctx()._symbol_db.get_symbol(symbol_id)
 

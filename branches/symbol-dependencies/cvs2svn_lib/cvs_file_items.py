@@ -121,21 +121,6 @@ class CVSFileItems(object):
 
     yield (cvs_branch, cvs_revisions, cvs_branches, cvs_tags)
 
-  def _exclude_symbol(self, cvs_symbol):
-    """Do the actions common to excluding CVSTags and CVSBranches.
-
-    This involves decoupling it from its earlier_symbol and later_symbol."""
-
-    if cvs_symbol.earlier_symbol_id is not None:
-      earlier_symbol = self[cvs_symbol.earlier_symbol_id]
-      assert earlier_symbol.later_symbol_id == cvs_symbol.id
-      earlier_symbol.later_symbol_id = None
-
-    if cvs_symbol.later_symbol_id is not None:
-      later_symbol = self[cvs_symbol.later_symbol_id]
-      assert later_symbol.earlier_symbol_id == cvs_symbol.id
-      later_symbol.earlier_symbol_id = None
-
   def _exclude_tag(self, cvs_tag):
     """Exclude the specified CVS_TAG."""
 
@@ -145,8 +130,6 @@ class CVSFileItems(object):
     # sprouts from.  Delete this tag from that revision's
     # tag_ids:
     self[cvs_tag.rev_id].tag_ids.remove(cvs_tag.id)
-
-    self._exclude_symbol(cvs_tag)
 
   def _exclude_branch(self, cvs_branch, cvs_revisions):
     """Exclude the specified CVS_BRANCH.
@@ -174,8 +157,6 @@ class CVSFileItems(object):
     # sprouts from.  Delete this branch from that revision's
     # branch_ids:
     self[cvs_branch.rev_id].branch_ids.remove(cvs_branch.id)
-
-    self._exclude_symbol(cvs_branch)
 
   def filter_excluded_symbols(self, revision_excluder):
     """Delete any excluded symbols and references to them.
@@ -243,7 +224,7 @@ class CVSFileItems(object):
           cvs_item = CVSTag(
               cvs_item.id, cvs_item.cvs_file, cvs_item.symbol,
               cvs_item.rev_id,
-              cvs_item.earlier_symbol_id, cvs_item.later_symbol_id)
+              )
           self[cvs_item.id] = cvs_item
           cvs_revision = self[cvs_item.rev_id]
           cvs_revision.branch_ids.remove(cvs_item.id)
@@ -254,7 +235,8 @@ class CVSFileItems(object):
           cvs_item = CVSBranch(
               cvs_item.id, cvs_item.cvs_file, cvs_item.symbol,
               None, cvs_item.rev_id,
-              cvs_item.earlier_symbol_id, cvs_item.later_symbol_id, None)
+              None,
+              )
           self[cvs_item.id] = cvs_item
           cvs_revision = self[cvs_item.rev_id]
           cvs_revision.tag_ids.remove(cvs_item.id)
