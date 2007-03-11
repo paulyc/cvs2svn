@@ -2,7 +2,7 @@
 # (Be in -*- python -*- mode.)
 #
 # ====================================================================
-# Copyright (c) 2000-2006 CollabNet.  All rights reserved.
+# Copyright (c) 2007 CollabNet.  All rights reserved.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution.  The terms
@@ -15,22 +15,13 @@
 # history and logs, available at http://cvs2svn.tigris.org/.
 # ====================================================================
 
-import sys
-
-# Make sure this Python is recent enough.  Do this as early as possible,
-# using only code compatible with Python 1.5.2 before the check.
-if sys.hexversion < 0x02020000:
-  sys.stderr.write("ERROR: Python 2.2 or higher required.\n")
-  sys.exit(1)
-
-from cvs2svn_lib.common import FatalException
-from cvs2svn_lib.main import main
+# The version of cvs2svn:
+VERSION = '1.6.0-dev'
 
 
-try:
-  main(sys.argv[0], sys.argv[1:])
-except FatalException, e:
-  sys.stderr.write(str(e))
-  sys.exit(1)
+# If this file is run as a script, print the cvs2svn version number to
+# stdout:
+if __name__ == '__main__':
+    print VERSION
 
 

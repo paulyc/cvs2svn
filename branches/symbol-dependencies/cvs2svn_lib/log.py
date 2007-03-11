@@ -19,6 +19,7 @@
 
 import sys
 import time
+import threading
 
 from cvs2svn_lib.boolean import *
 
@@ -27,10 +28,13 @@ class Log:
   """A Simple logging facility.
 
   If self.log_level is DEBUG or higher, each line will be timestamped
-  with the number of seconds since the start of the program run.
+  with the number of wall-clock seconds since the time when this
+  module was first imported.
 
   If self.use_timestamps is True, each line will be timestamped with a
   human-readable clock time.
+
+  The public methods of this class are thread-safe.
 
   This class is a Borg; see
   http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/66531."""
@@ -44,6 +48,8 @@ class Log:
   VERBOSE = 2
   DEBUG = 3
 
+  start_time = time.time()
+
   __shared_state = {}
 
   def __init__(self):
@@ -54,13 +60,22 @@ class Log:
     # Set this to True if you want to see timestamps on each line output.
     self.use_timestamps = False
     self.logger = sys.stdout
-    self.start_time = time.time()
+    # Lock to serialize writes to the log:
+    self.lock = threading.Lock()
 
   def increase_verbosity(self):
-    self.log_level = min(self.log_level + 1, Log.DEBUG)
+    self.lock.acquire()
+    try:
+      self.log_level = min(self.log_level + 1, Log.DEBUG)
+    finally:
+      self.lock.release()
 
   def decrease_verbosity(self):
-    self.log_level = max(self.log_level - 1, Log.WARN)
+    self.lock.acquire()
+    try:
+      self.log_level = max(self.log_level - 1, Log.WARN)
+    finally:
+      self.lock.release()
 
   def is_on(self, level):
     """Return True iff messages at the specified LEVEL are currently on.
@@ -82,42 +97,49 @@ class Log:
 
     return retval
 
-  def write(self, log_level, *args):
-    """Write a message to the log at level LOG_LEVEL.
+  def write(self, *args):
+    """Write a message to the log.
 
-    This is the public method to use for writing to a file.  Only
-    messages whose LOG_LEVEL is <= self.log_level will be printed.  If
-    there are multiple ARGS, they will be separated by spaces."""
+    This is the public method to use for writing to a file.  If there
+    are multiple ARGS, they will be separated by spaces."""
 
-    if self.is_on(log_level):
+    self.lock.acquire()
+    try:
       self.logger.write(' '.join(self._timestamp() + map(str, args)) + "\n")
       # Ensure that log output doesn't get out-of-order with respect to
       # stderr output.
       self.logger.flush()
+    finally:
+      self.lock.release()
 
   def warn(self, *args):
     """Log a message at the WARN level."""
 
-    self.write(Log.WARN, *args)
+    if self.is_on(Log.WARN):
+      self.write(*args)
 
   def quiet(self, *args):
     """Log a message at the QUIET level."""
 
-    self.write(Log.QUIET, *args)
+    if self.is_on(Log.QUIET):
+      self.write(*args)
 
   def normal(self, *args):
     """Log a message at the NORMAL level."""
 
-    self.write(Log.NORMAL, *args)
+    if self.is_on(Log.NORMAL):
+      self.write(*args)
 
   def verbose(self, *args):
     """Log a message at the VERBOSE level."""
 
-    self.write(Log.VERBOSE, *args)
+    if self.is_on(Log.VERBOSE):
+      self.write(*args)
 
   def debug(self, *args):
     """Log a message at the DEBUG level."""
 
-    self.write(Log.DEBUG, *args)
+    if self.is_on(Log.DEBUG):
+      self.write(*args)
 
 

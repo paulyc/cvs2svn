@@ -131,7 +131,15 @@ class RecordTableAccessError(RuntimeError):
 
 
 class RecordTable:
-  def __init__(self, filename, mode, packer):
+  # The approximate amount of memory that should be used for the cache
+  # for each instance of this class:
+  CACHE_MEMORY = 4 * 1024 * 1024
+
+  # Empirically, each entry in the cache table has an overhead of
+  # about 96 bytes on a 32-bit computer.
+  CACHE_OVERHEAD_PER_ENTRY = 96
+
+  def __init__(self, filename, mode, packer, cache_memory=CACHE_MEMORY):
     self.filename = filename
     self.mode = mode
     if self.mode == DB_OPEN_NEW:
@@ -143,9 +151,12 @@ class RecordTable:
     else:
       raise RuntimeError('Invalid mode %r' % self.mode)
     self.packer = packer
+    self.cache_memory = cache_memory
 
-    # Number of items that can be stored in the write cache:
-    self._max_memory_cache = 4 * 1024 * 1024 / self.packer.record_len
+    # Number of items that can be stored in the write cache.
+    self._max_memory_cache = (
+        self.cache_memory
+        / (self.CACHE_OVERHEAD_PER_ENTRY + self.packer.record_len))
 
     # Read and write cache; a map {i : (dirty, s)}, where i is an
     # index, dirty indicates whether the value has to be written to
@@ -220,6 +231,8 @@ class RecordTable:
       self.f.seek(i * self.packer.record_len)
       s = self.f.read(self.packer.record_len)
       self._cache[i] = (False, s)
+      if len(self._cache) >= self._max_memory_cache:
+        self.flush()
 
     if s == self.packer.empty_value:
       raise KeyError(i)

@@ -30,6 +30,7 @@ except AttributeError:
   my_getopt = getopt.getopt
 
 from cvs2svn_lib.boolean import *
+from cvs2svn_lib.version import VERSION
 from cvs2svn_lib import config
 from cvs2svn_lib.common import warning_prefix
 from cvs2svn_lib.common import error_prefix
@@ -127,29 +128,25 @@ USAGE: %(progname)s [-v] [-s svn-repos-path] [-p pass] cvs-repos-path
   --sort=PATH          path to the GNU "sort" program
 """
 
-def usage():
-  sys.stdout.write(usage_message_template % {
-      'progname' : os.path.basename(sys.argv[0]),
-      'trunk_base' : config.DEFAULT_TRUNK_BASE,
-      'branches_base' : config.DEFAULT_BRANCHES_BASE,
-      'tags_base' : config.DEFAULT_TAGS_BASE,
-      'svn_keywords_value' : config.SVN_KEYWORDS_VALUE,
-      })
-
-
 class RunOptions:
   """A place to store meta-options that are used to start the conversion."""
 
-  def __init__(self, pass_manager):
-    """Process the command-line options, storing run options to SELF."""
+  def __init__(self, progname, cmd_args, pass_manager):
+    """Process the command-line options, storing run options to SELF.
+
+    PROGNAME is the name of the program, used in the usage string.
+    CMD_ARGS is the list of command-line arguments passed to the
+    program.  PASS_MANAGER is an instance of PassManager, needed to
+    help process the -p and --help-passes options."""
 
     self.pass_manager = pass_manager
     self.start_pass = 1
     self.end_pass = self.pass_manager.num_passes
     self.profiling = False
+    self.progname = progname
 
     try:
-      self.opts, self.args = my_getopt(sys.argv[1:], 'hvqs:p:', [
+      self.opts, self.args = my_getopt(cmd_args, 'hvqs:p:', [
           "help", "help-passes", "version",
           "verbose", "quiet",
           "existing-svnrepos", "dumpfile=", "dry-run",
@@ -178,7 +175,7 @@ class RunOptions:
           ])
     except getopt.GetoptError, e:
       sys.stderr.write(error_prefix + ': ' + str(e) + '\n\n')
-      usage()
+      self.usage()
       sys.exit(1)
 
     # First look for any 'help'-type options, as they just cause the
@@ -222,13 +219,13 @@ class RunOptions:
     """Process any help-type options."""
 
     if self.get_options('-h', '--help'):
-      usage()
+      self.usage()
       sys.exit(0)
     elif self.get_options('--help-passes'):
       self.pass_manager.help_passes()
       sys.exit(0)
     elif self.get_options('--version'):
-      print '%s version %s' % (os.path.basename(sys.argv[0]), Ctx().VERSION)
+      print '%s version %s' % (os.path.basename(self.progname), VERSION)
       sys.exit(0)
 
   def process_common_options(self):
@@ -377,13 +374,13 @@ class RunOptions:
 
     # Consistency check for options and arguments.
     if len(self.args) == 0:
-      usage()
+      self.usage()
       sys.exit(1)
 
     if len(self.args) > 1:
       sys.stderr.write(error_prefix +
                        ": must pass only one CVS repository.\n")
-      usage()
+      self.usage()
       sys.exit(1)
 
     cvsroot = self.args[0]
@@ -552,5 +549,14 @@ class RunOptions:
       'run_options' : self,
       }
     execfile(options_filename, g, l)
+
+  def usage(self):
+    sys.stdout.write(usage_message_template % {
+        'progname' : self.progname,
+        'trunk_base' : config.DEFAULT_TRUNK_BASE,
+        'branches_base' : config.DEFAULT_BRANCHES_BASE,
+        'tags_base' : config.DEFAULT_TAGS_BASE,
+        'svn_keywords_value' : config.SVN_KEYWORDS_VALUE,
+        })
 
 
