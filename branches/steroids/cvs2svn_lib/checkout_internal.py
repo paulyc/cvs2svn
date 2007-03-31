@@ -109,16 +109,15 @@ class InternalRevisionRecorder(RevisionRecorder):
 
   def finish_file(self, revisions_data, root_rev):
     self._rcs_trees[self._cvs_file.id] = list(
-        self._get_lods(revisions_data, root_rev, None, not Ctx().trunk_only))
+        self._get_lods(revisions_data, root_rev, not Ctx().trunk_only))
     del self._cvs_file
 
-  def _get_lods(self, revs_data, revision, parent, do_branch):
+  def _get_lods(self, revs_data, revision, do_branch):
     """Generate an efficient representation of the revision tree of a
     LOD and its subbranches.
 
     REVS_DATA is a map { rev : _RevisionData }, REVISION the first
-    revision on a LOD, PARENT the revision this LOD sprouts from (or
-    None for trunk), and DO_BRANCH a flag indicating whether
+    revision number on a LOD, and DO_BRANCH a flag indicating whether
     subbranches should be entered recursively.
 
     Yield the LODs under REVISION, one LOD at a time, from leaf
@@ -138,7 +137,7 @@ class InternalRevisionRecorder(RevisionRecorder):
       lod_revs_data.append(rev_data)
       if do_branch:
         for branch in rev_data.branches_revs_data:
-          for sub_lod in self._get_lods(revs_data, branch, revision, True):
+          for sub_lod in self._get_lods(revs_data, branch, True):
             yield sub_lod
             last_used_rev = rev_data
       revision = rev_data.child
@@ -152,8 +151,8 @@ class InternalRevisionRecorder(RevisionRecorder):
     if lod_revs_data:
       lod_rev_ids = [rev_data.cvs_rev_id for rev_data in lod_revs_data]
       lod_rev_ids.reverse()
-      if parent is not None:
-        lod_rev_ids.append(revs_data[parent].cvs_rev_id)
+      if lod_revs_data[0].parent is not None:
+        lod_rev_ids.append(revs_data[lod_revs_data[0].parent].cvs_rev_id)
       yield lod_rev_ids
 
   def finish(self):
