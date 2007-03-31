@@ -257,24 +257,24 @@ class InternalRevisionReader(RevisionReader):
     """Read in the revision tree of the CVSFile with the id ID."""
 
     revs = {}
-    for line in self._tree_db[id]:
-      prv = None
-      for r in line:
-        rev = revs.get(r, None)
+    for lod in self._tree_db[id]:
+      succ_cvs_rev_id = None
+      for cvs_rev_id in lod:
+        rev = revs.get(cvs_rev_id, None)
         if rev is None:
           rev = InternalRevisionReader._Rev()
-          revs[r] = rev
-        if prv:
-          revs[prv].prev = r
+          revs[cvs_rev_id] = rev
+        if succ_cvs_rev_id is not None:
+          revs[succ_cvs_rev_id].prev = cvs_rev_id
           rev.ref += 1
-        prv = r
+        succ_cvs_rev_id = cvs_rev_id
     return revs
 
-  def _checkout_rev(self, revs, r, deref):
+  def _checkout_rev(self, revs, cvs_rev_id, deref):
     """Workhorse of the checkout process. Recurses if a revision was skipped.
     """
 
-    rev = revs[r]
+    rev = revs[cvs_rev_id]
     if rev.prev:
       # This is not the root revision so we need an ancestor.
       prev = revs[rev.prev]
@@ -291,31 +291,31 @@ class InternalRevisionReader(RevisionReader):
           # The previous revision will not be needed any more.
           del revs[rev.prev]
           del self._co_db[str(rev.prev)]
-      co.apply_diff(self._delta_db[r])
+      co.apply_diff(self._delta_db[cvs_rev_id])
     else:
       # Root revision - initialize checkout.
-      co = RCSStream(self._delta_db[r])
+      co = RCSStream(self._delta_db[cvs_rev_id])
     rev.ref -= deref
     if rev.ref:
       # Revision has descendants.
       text = co.get_text()
-      self._co_db[str(r)] = text
+      self._co_db[str(cvs_rev_id)] = text
       if not deref:
         return text
     else:
       # Revision is branch head.
-      del revs[r]
+      del revs[cvs_rev_id]
       if not deref:
         return co.get_text()
     return co
 
-  def _do_checkout(self, c_rev, revs, suppress_keyword_substitution):
-    rv = self._checkout_rev(revs, c_rev.id, 0)
+  def _do_checkout(self, cvs_rev, revs, suppress_keyword_substitution):
+    rv = self._checkout_rev(revs, cvs_rev.id, 0)
     if suppress_keyword_substitution:
       return re.sub(self._kw_re, r'$\1$', rv)
     return rv
 
-  def _checkout(self, c_rev, suppress_keyword_substitution):
+  def _checkout(self, cvs_rev, suppress_keyword_substitution):
     """Check out the revision C_REV from the repository.
 
     If SUPPRESS_KEYWORD_SUBSTITUTION is True, any RCS keywords will be
@@ -327,19 +327,19 @@ class InternalRevisionReader(RevisionReader):
     Each revision may be requested only once."""
 
     try:
-      revs = self._files[c_rev.cvs_file.id]
+      revs = self._files[cvs_rev.cvs_file.id]
       # The file is already active ...
-      rv = self._do_checkout(c_rev, revs, suppress_keyword_substitution)
+      rv = self._do_checkout(cvs_rev, revs, suppress_keyword_substitution)
       if not revs:
         # ... and will not be needed any more.
-        del self._files[c_rev.cvs_file.id]
+        del self._files[cvs_rev.cvs_file.id]
     except KeyError:
       # The file is not active yet ...
-      revs = self._init_file(c_rev.cvs_file.id)
-      rv = self._do_checkout(c_rev, revs, suppress_keyword_substitution)
+      revs = self._init_file(cvs_rev.cvs_file.id)
+      rv = self._do_checkout(cvs_rev, revs, suppress_keyword_substitution)
       if revs:
         # ... and will be needed again.
-        self._files[c_rev.cvs_file.id] = revs
+        self._files[cvs_rev.cvs_file.id] = revs
     return rv
 
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
