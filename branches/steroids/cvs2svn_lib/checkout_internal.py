@@ -206,8 +206,8 @@ class InternalRevisionExcluder(RevisionExcluder):
     self._new_tree_db.close()
 
 
-class InternalRevisionReader(RevisionReader):
-  """A RevisionReader that reads the contents from an own delta store."""
+class _FileTree:
+  """A representation of the file tree of delta dependencies."""
 
   _kw_re = re.compile(
       r'\$(' +
@@ -222,6 +222,87 @@ class InternalRevisionReader(RevisionReader):
       # The cvs_rev_id of the revision that this one is defined
       # relative to, or None if it is the head revision.
       self.prev = None
+
+  def __init__(self, delta_db, co_db, cvs_file, lods):
+    self._delta_db = delta_db
+    self._co_db = co_db
+    self._cvs_file = cvs_file
+    self._revs = {}
+    for lod in lods:
+      succ_cvs_rev_id = None
+      for cvs_rev_id in lod:
+        rev = self._revs.get(cvs_rev_id, None)
+        if rev is None:
+          rev = _FileTree._Rev()
+          self._revs[cvs_rev_id] = rev
+        if succ_cvs_rev_id is not None:
+          self._revs[succ_cvs_rev_id].prev = cvs_rev_id
+          rev.ref += 1
+        succ_cvs_rev_id = cvs_rev_id
+
+  def __nonzero__(self):
+    return bool(self._revs)
+
+  def _checkout_rev(self, cvs_rev_id, deref):
+    """Workhorse of the checkout process. Recurses if a revision was skipped.
+    """
+
+    rev = self._revs[cvs_rev_id]
+    if rev.prev:
+      # This is not the root revision so we need an ancestor.
+      prev = self._revs[rev.prev]
+      try:
+        text = self._co_db[str(rev.prev)]
+      except KeyError:
+        # The previous revision was skipped. Fetch it now.
+        co = self._checkout_rev(rev.prev, 1)
+      else:
+        # The previous revision was already checked out.
+        co = RCSStream(text)
+        prev.ref -= 1
+        if not prev.ref:
+          # The previous revision will not be needed any more.
+          del self._revs[rev.prev]
+          del self._co_db[str(rev.prev)]
+      co.apply_diff(self._delta_db[cvs_rev_id])
+    else:
+      # Root revision - initialize checkout.
+      co = RCSStream(self._delta_db[cvs_rev_id])
+    rev.ref -= deref
+    if rev.ref:
+      # Revision has descendants.
+      text = co.get_text()
+      self._co_db[str(cvs_rev_id)] = text
+      if not deref:
+        return text
+    else:
+      # Revision is branch head.
+      del self._revs[cvs_rev_id]
+      if not deref:
+        return co.get_text()
+    return co
+
+  def checkout(self, cvs_rev, suppress_keyword_substitution):
+    rv = self._checkout_rev(cvs_rev.id, 0)
+    if suppress_keyword_substitution:
+      return re.sub(self._kw_re, r'$\1$', rv)
+    return rv
+
+  def log_leftovers(self):
+    """If any revisions are still in the checkout cache, log them."""
+
+    msg = self._cvs_file.cvs_path + ':'
+    for r in self._revs:
+      # This does not work, as we have only the filtered item database
+      # at hand.  The non-filtered one is long gone and is not indexed
+      # anyway.
+      #msg += " %s" % Ctx()._cvs_items_db[r].rev
+      msg += " %d" % r
+    Log().warn(msg)
+
+
+class InternalRevisionReader(RevisionReader):
+  """A RevisionReader that reads the contents from an own delta store."""
 
   def __init__(self):
     pass
@@ -250,70 +331,11 @@ class InternalRevisionReader(RevisionReader):
         artifact_manager.get_temp_file(config.RCS_TREES_FILTERED_INDEX_TABLE),
         DB_OPEN_READ)
     self._co_db = SDatabase(
-          artifact_manager.get_temp_file(config.CVS_CHECKOUT_DB), DB_OPEN_NEW)
-    self._files = {}
+        artifact_manager.get_temp_file(config.CVS_CHECKOUT_DB), DB_OPEN_NEW)
 
-  def _init_file(self, id):
-    """Read in the revision tree of the CVSFile with the id ID."""
-
-    revs = {}
-    for lod in self._tree_db[id]:
-      succ_cvs_rev_id = None
-      for cvs_rev_id in lod:
-        rev = revs.get(cvs_rev_id, None)
-        if rev is None:
-          rev = InternalRevisionReader._Rev()
-          revs[cvs_rev_id] = rev
-        if succ_cvs_rev_id is not None:
-          revs[succ_cvs_rev_id].prev = cvs_rev_id
-          rev.ref += 1
-        succ_cvs_rev_id = cvs_rev_id
-    return revs
-
-  def _checkout_rev(self, revs, cvs_rev_id, deref):
-    """Workhorse of the checkout process. Recurses if a revision was skipped.
-    """
-
-    rev = revs[cvs_rev_id]
-    if rev.prev:
-      # This is not the root revision so we need an ancestor.
-      prev = revs[rev.prev]
-      try:
-        text = self._co_db[str(rev.prev)]
-      except KeyError:
-        # The previous revision was skipped. Fetch it now.
-        co = self._checkout_rev(revs, rev.prev, 1)
-      else:
-        # The previous revision was already checked out.
-        co = RCSStream(text)
-        prev.ref -= 1
-        if not prev.ref:
-          # The previous revision will not be needed any more.
-          del revs[rev.prev]
-          del self._co_db[str(rev.prev)]
-      co.apply_diff(self._delta_db[cvs_rev_id])
-    else:
-      # Root revision - initialize checkout.
-      co = RCSStream(self._delta_db[cvs_rev_id])
-    rev.ref -= deref
-    if rev.ref:
-      # Revision has descendants.
-      text = co.get_text()
-      self._co_db[str(cvs_rev_id)] = text
-      if not deref:
-        return text
-    else:
-      # Revision is branch head.
-      del revs[cvs_rev_id]
-      if not deref:
-        return co.get_text()
-    return co
-
-  def _do_checkout(self, cvs_rev, revs, suppress_keyword_substitution):
-    rv = self._checkout_rev(revs, cvs_rev.id, 0)
-    if suppress_keyword_substitution:
-      return re.sub(self._kw_re, r'$\1$', rv)
-    return rv
+    # A map { CVSFILE : _FileTree } for files that currently have live
+    # revisions:
+    self._file_trees = {}
 
   def _checkout(self, cvs_rev, suppress_keyword_substitution):
     """Check out the revision C_REV from the repository.
@@ -327,19 +349,21 @@ class InternalRevisionReader(RevisionReader):
     Each revision may be requested only once."""
 
     try:
-      revs = self._files[cvs_rev.cvs_file.id]
+      file_tree = self._file_trees[cvs_rev.cvs_file]
       # The file is already active ...
-      rv = self._do_checkout(cvs_rev, revs, suppress_keyword_substitution)
-      if not revs:
+      rv = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
+      if not file_tree:
         # ... and will not be needed any more.
-        del self._files[cvs_rev.cvs_file.id]
+        del self._file_trees[cvs_rev.cvs_file]
     except KeyError:
       # The file is not active yet ...
-      revs = self._init_file(cvs_rev.cvs_file.id)
-      rv = self._do_checkout(cvs_rev, revs, suppress_keyword_substitution)
-      if revs:
+      file_tree = _FileTree(
+          self._delta_db, self._co_db,
+          cvs_rev.cvs_file, self._tree_db[cvs_rev.cvs_file.id])
+      rv = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
+      if file_tree:
         # ... and will be needed again.
-        self._files[cvs_rev.cvs_file.id] = revs
+        self._file_trees[cvs_rev.cvs_file] = file_tree
     return rv
 
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
@@ -351,20 +375,14 @@ class InternalRevisionReader(RevisionReader):
     self._checkout(cvs_rev, False)
 
   def finish(self):
-    if self._files:
+    if self._file_trees:
       Log().warn(
           "%s: internal problem: leftover revisions in the checkout cache:"
           % warning_prefix)
-      for file in self._files:
-        msg = Ctx()._cvs_file_db.get_file(file).cvs_path + ':'
-        for r in self._files[file]:
-          # This does not work, as we have only the filtered item database
-          # at hand.  The non-filtered one is long gone and is not indexed
-          # anyway.
-          #msg += " %s" % Ctx()._cvs_items_db[r].rev
-          msg += " %d" % r
-        Log().warn(msg)
+      for file_tree in self._file_trees.itervalues():
+        file_tree.log_leftovers()
 
+    del self._file_trees
     self._delta_db.close()
     self._tree_db.close()
     self._co_db.close()
