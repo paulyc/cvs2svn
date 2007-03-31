@@ -214,7 +214,14 @@ class InternalRevisionReader(RevisionReader):
       r'Author|Date|Header|Id|Name|Locker|Log|RCSfile|Revision|Source|State' +
       r'):[^$\n]*\$')
 
-  class _Rev: pass
+  class _Rev:
+    def __init__(self):
+      # The number of revisions defined relative to this revision.
+      self.ref = 0
+
+      # The cvs_rev_id of the revision that this one is defined
+      # relative to, or None if it is the head revision.
+      self.prev = None
 
   def __init__(self):
     pass
@@ -256,8 +263,6 @@ class InternalRevisionReader(RevisionReader):
         rev = revs.get(r, None)
         if rev is None:
           rev = InternalRevisionReader._Rev()
-          rev.ref = 0
-          rev.prev = None
           revs[r] = rev
         if prv:
           revs[prv].prev = r
