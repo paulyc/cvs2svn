@@ -38,11 +38,12 @@ So InternalRevisionRecorder skips deleted revisions at the ends of LODs,
 InternalRevisionExcluder skips excluded branches and InternalRevisionReader
 provides the skip_content method to skip unused 1.1.1.1 revisions."""
 
+from __future__ import generators
+
 import cStringIO
 import re
 import types
 
-from cvs2svn_lib.set_support import *
 from cvs2svn_lib import config
 from cvs2svn_lib.common import DB_OPEN_NEW
 from cvs2svn_lib.common import DB_OPEN_READ
@@ -107,47 +108,53 @@ class InternalRevisionRecorder(RevisionRecorder):
     self._rcs_deltas[revision_data.cvs_rev_id] = text
 
   def finish_file(self, revisions_data, root_rev):
-    self._rcs_trees[self._cvs_file.id] = \
-        self._get_tree(revisions_data, root_rev, None, not Ctx().trunk_only)
+    self._rcs_trees[self._cvs_file.id] = list(
+        self._get_lods(revisions_data, root_rev, None, not Ctx().trunk_only))
     del self._cvs_file
 
-  def _get_tree(self, revs_data, revision, parent, do_branch):
-    """Record the revision tree of a branch and its subbranches.
+  def _get_lods(self, revs_data, revision, parent, do_branch):
+    """Generate an efficient representation of the revision tree of a
+    LOD and its subbranches.
 
     REVS_DATA is a map { rev : _RevisionData }, REVISION the first
     revision on a LOD, PARENT the revision this LOD sprouts from (or
     None for trunk), and DO_BRANCH a flag indicating whether
-    subbranches should be recorded recursively."""
+    subbranches should be entered recursively.
 
-    # List of LODs.
-    lods = []
+    Yield the LODs under REVISION, one LOD at a time, from leaf
+    towards trunk.  Each LOD is returned as a list of cvs_revision_ids
+    of revisions on the LOD, in reverse chronological order.
+    Revisions that represent deletions at the end of an LOD are
+    omitted.  For non-trunk LODs, the last item in the list is the cvs
+    revision id of the revision from which the LOD sprouted."""
+
     # The last CVSItem on the current LOD from which live branches sprout.
     last_used_rev = None
     # List of CVSItems on current LOD.
     lod_revs_data = []
+
     while revision is not None:
       rev_data = revs_data[revision]
       lod_revs_data.append(rev_data)
       if do_branch:
         for branch in rev_data.branches_revs_data:
-          st = self._get_tree(revs_data, branch, revision, True)
-          if st:
-            lods += st
+          for sub_lod in self._get_lods(revs_data, branch, revision, True):
+            yield sub_lod
             last_used_rev = rev_data
       revision = rev_data.child
+
     # Pop revisions that will never be fetched off the branch ends as
     # otherwise they would fill up the checkout.
     while lod_revs_data and lod_revs_data[-1].state == 'dead' \
         and lod_revs_data[-1] is not last_used_rev:
       del lod_revs_data[-1]
+
     if lod_revs_data:
       lod_rev_ids = [rev_data.cvs_rev_id for rev_data in lod_revs_data]
       lod_rev_ids.reverse()
       if parent is not None:
-        id = revs_data[parent].cvs_rev_id
-        lod_rev_ids.append(id)
-      lods.append(lod_rev_ids)
-    return lods
+        lod_rev_ids.append(revs_data[parent].cvs_rev_id)
+      yield lod_rev_ids
 
   def finish(self):
     self._rcs_deltas.close()
