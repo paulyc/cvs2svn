@@ -123,28 +123,25 @@ class InternalRevisionRecorder(RevisionRecorder):
     lods = []
     # The last CVSItem on the current LOD from which live branches sprout.
     last_used_rev = None
-    # List of CVSItem ids on current LOD.
-    lod_rev_ids = []
     # List of CVSItems on current LOD.
     lod_revs_data = []
     while revision is not None:
       rev_data = revs_data[revision]
-      lod_rev_ids.append(rev_data.cvs_rev_id)
       lod_revs_data.append(rev_data)
       if do_branch:
         for branch in rev_data.branches_revs_data:
           st = self._get_tree(revs_data, branch, revision, True)
           if st:
             lods += st
-            last_used_rev = rev_data.cvs_rev_id
+            last_used_rev = rev_data
       revision = rev_data.child
     # Pop revisions that will never be fetched off the branch ends as
     # otherwise they would fill up the checkout.
-    while lod_rev_ids and lod_revs_data[-1].state == 'dead' \
-        and lod_rev_ids[-1] != last_used_rev:
-      del lod_rev_ids[-1]
+    while lod_revs_data and lod_revs_data[-1].state == 'dead' \
+        and lod_revs_data[-1] is not last_used_rev:
       del lod_revs_data[-1]
-    if lod_rev_ids:
+    if lod_revs_data:
+      lod_rev_ids = [rev_data.cvs_rev_id for rev_data in lod_revs_data]
       lod_rev_ids.reverse()
       if parent is not None:
         id = revs_data[parent].cvs_rev_id
