@@ -353,8 +353,8 @@ class InternalRevisionReader(RevisionReader):
   def finish(self):
     if self._files:
       Log().warn(
-         "%s: internal problem: leftover revisions in the checkout cache:" % \
-         warning_prefix)
+          "%s: internal problem: leftover revisions in the checkout cache:"
+          % warning_prefix)
       for file in self._files:
         msg = Ctx()._cvs_file_db.get_file(file).cvs_path + ':'
         for r in self._files[file]:
