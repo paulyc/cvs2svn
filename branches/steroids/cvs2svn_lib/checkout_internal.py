@@ -213,6 +213,21 @@ class _Rev:
     # The number of revisions defined relative to this revision.
     self.ref = 0
 
+  def checkout(self, file_tree, deref):
+    """Workhorse of the checkout process.
+
+    Recurse if a revision was skipped.  FILE_TREE is the _FileTree
+    that manages this revision."""
+
+    raise NotImplementedError()
+
+
+class _PendingRev(_Rev):
+  """A _Rev that hasn't been retrieved yet."""
+
+  def __init__(self, cvs_rev_id):
+    _Rev.__init__(self, cvs_rev_id)
+
     # The cvs_rev_id of the revision that this one is defined
     # relative to, or None if it is the head revision.
     self.prev = None
@@ -271,7 +286,7 @@ class _FileTree:
       for cvs_rev_id in lod:
         rev = self._revs.get(cvs_rev_id, None)
         if rev is None:
-          rev = _Rev(cvs_rev_id)
+          rev = _PendingRev(cvs_rev_id)
           self[cvs_rev_id] = rev
         if succ_cvs_rev_id is not None:
           self[succ_cvs_rev_id].prev = rev.cvs_rev_id
