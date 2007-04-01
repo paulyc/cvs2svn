@@ -225,7 +225,7 @@ class _Rev:
 
     if self.prev is not None:
       # This is not the root revision so we need an ancestor.
-      prev = file_tree._revs[self.prev]
+      prev = file_tree[self.prev]
       try:
         text = file_tree._co_db[str(prev.cvs_rev_id)]
       except KeyError:
@@ -237,7 +237,7 @@ class _Rev:
         prev.ref -= 1
         if not prev.ref:
           # The previous revision will not be needed any more.
-          del file_tree._revs[prev.cvs_rev_id]
+          del file_tree[prev.cvs_rev_id]
           del file_tree._co_db[str(prev.cvs_rev_id)]
       co.apply_diff(file_tree._delta_db[self.cvs_rev_id])
     else:
@@ -252,7 +252,7 @@ class _Rev:
         return text
     else:
       # Revision is branch head.
-      del file_tree._revs[self.cvs_rev_id]
+      del file_tree[self.cvs_rev_id]
       if not deref:
         return co.get_text()
     return co
@@ -277,17 +277,34 @@ class _FileTree:
         rev = self._revs.get(cvs_rev_id, None)
         if rev is None:
           rev = _Rev(cvs_rev_id)
-          self._revs[cvs_rev_id] = rev
+          self[cvs_rev_id] = rev
         if succ_cvs_rev_id is not None:
-          self._revs[succ_cvs_rev_id].prev = rev.cvs_rev_id
+          self[succ_cvs_rev_id].prev = rev.cvs_rev_id
           rev.ref += 1
         succ_cvs_rev_id = cvs_rev_id
 
   def __nonzero__(self):
+    """Return True iff any revisions are still stored in this instance."""
+
     return bool(self._revs)
 
+  def __setitem__(self, cvs_rev_id, rev):
+    """Set the _Rev instance for the specified CVS_REV_ID."""
+
+    self._revs[cvs_rev_id] = rev
+
+  def __getitem__(self, cvs_rev_id):
+    """Return the _Rev instance for the specified CVS_REV_ID."""
+
+    return self._revs[cvs_rev_id]
+
+  def __delitem__(self, cvs_rev_id):
+    """Remove the _Rev instance for the specified CVS_REV_ID."""
+
+    del self._revs[cvs_rev_id]
+
   def checkout(self, cvs_rev, suppress_keyword_substitution):
-    rev = self._revs[cvs_rev.id]
+    rev = self[cvs_rev.id]
     text = rev.checkout(self, 0)
     if suppress_keyword_substitution:
       return re.sub(self._kw_re, r'$\1$', text)
