@@ -261,11 +261,6 @@ class _Rev:
 class _FileTree:
   """A representation of the file tree of delta dependencies."""
 
-  _kw_re = re.compile(
-      r'\$(' +
-      r'Author|Date|Header|Id|Name|Locker|Log|RCSfile|Revision|Source|State' +
-      r'):[^$\n]*\$')
-
   def __init__(self, delta_db, co_db, cvs_file, lods):
     self._delta_db = delta_db
     self._co_db = co_db
@@ -303,13 +298,6 @@ class _FileTree:
 
     del self._revs[cvs_rev_id]
 
-  def checkout(self, cvs_rev, suppress_keyword_substitution):
-    rev = self[cvs_rev.id]
-    text = rev.checkout(self, 0)
-    if suppress_keyword_substitution:
-      return re.sub(self._kw_re, r'$\1$', text)
-    return text
-
   def log_leftovers(self):
     """If any revisions are still in the checkout cache, log them."""
 
@@ -325,6 +313,11 @@ class _FileTree:
 
 class InternalRevisionReader(RevisionReader):
   """A RevisionReader that reads the contents from an own delta store."""
+
+  _kw_re = re.compile(
+      r'\$(' +
+      r'Author|Date|Header|Id|Name|Locker|Log|RCSfile|Revision|Source|State' +
+      r'):[^$\n]*\$')
 
   def __init__(self):
     pass
@@ -388,8 +381,10 @@ class InternalRevisionReader(RevisionReader):
     Each revision may be requested only once."""
 
     file_tree = self._get_file_tree(cvs_rev.cvs_file)
+    text = file_tree[cvs_rev.id].checkout(file_tree, 0)
 
-    text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
+    if suppress_keyword_substitution:
+      text = re.sub(self._kw_re, r'$\1$', text)
 
     if not file_tree:
       # The file tree is empty and will not be needed any more:
