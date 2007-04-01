@@ -217,6 +217,47 @@ class _Rev:
     # relative to, or None if it is the head revision.
     self.prev = None
 
+  def checkout(self, file_tree, cvs_rev_id, deref):
+    """Workhorse of the checkout process.
+
+    Recurse if a revision was skipped.  FILE_TREE is the _FileTree
+    that manages this revision."""
+
+    rev = file_tree._revs[cvs_rev_id]
+    if rev.prev is not None:
+      # This is not the root revision so we need an ancestor.
+      prev = file_tree._revs[rev.prev]
+      try:
+        text = file_tree._co_db[str(prev.cvs_rev_id)]
+      except KeyError:
+        # The previous revision was skipped. Fetch it now.
+        co = file_tree._checkout_rev(prev.cvs_rev_id, 1)
+      else:
+        # The previous revision was already checked out.
+        co = RCSStream(text)
+        prev.ref -= 1
+        if not prev.ref:
+          # The previous revision will not be needed any more.
+          del file_tree._revs[prev.cvs_rev_id]
+          del file_tree._co_db[str(prev.cvs_rev_id)]
+      co.apply_diff(file_tree._delta_db[cvs_rev_id])
+    else:
+      # Root revision - initialize checkout.
+      co = RCSStream(file_tree._delta_db[cvs_rev_id])
+    rev.ref -= deref
+    if rev.ref:
+      # Revision has descendants.
+      text = co.get_text()
+      file_tree._co_db[str(cvs_rev_id)] = text
+      if not deref:
+        return text
+    else:
+      # Revision is branch head.
+      del file_tree._revs[cvs_rev_id]
+      if not deref:
+        return co.get_text()
+    return co
+
 
 class _FileTree:
   """A representation of the file tree of delta dependencies."""
@@ -247,43 +288,8 @@ class _FileTree:
     return bool(self._revs)
 
   def _checkout_rev(self, cvs_rev_id, deref):
-    """Workhorse of the checkout process. Recurses if a revision was skipped.
-    """
-
     rev = self._revs[cvs_rev_id]
-    if rev.prev is not None:
-      # This is not the root revision so we need an ancestor.
-      prev = self._revs[rev.prev]
-      try:
-        text = self._co_db[str(prev.cvs_rev_id)]
-      except KeyError:
-        # The previous revision was skipped. Fetch it now.
-        co = self._checkout_rev(prev.cvs_rev_id, 1)
-      else:
-        # The previous revision was already checked out.
-        co = RCSStream(text)
-        prev.ref -= 1
-        if not prev.ref:
-          # The previous revision will not be needed any more.
-          del self._revs[prev.cvs_rev_id]
-          del self._co_db[str(prev.cvs_rev_id)]
-      co.apply_diff(self._delta_db[cvs_rev_id])
-    else:
-      # Root revision - initialize checkout.
-      co = RCSStream(self._delta_db[cvs_rev_id])
-    rev.ref -= deref
-    if rev.ref:
-      # Revision has descendants.
-      text = co.get_text()
-      self._co_db[str(cvs_rev_id)] = text
-      if not deref:
-        return text
-    else:
-      # Revision is branch head.
-      del self._revs[cvs_rev_id]
-      if not deref:
-        return co.get_text()
-    return co
+    return rev.checkout(self, cvs_rev_id, deref)
 
   def checkout(self, cvs_rev, suppress_keyword_substitution):
     rv = self._checkout_rev(cvs_rev.id, 0)
