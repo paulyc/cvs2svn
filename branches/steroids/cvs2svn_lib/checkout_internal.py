@@ -356,19 +356,19 @@ class InternalRevisionReader(RevisionReader):
     try:
       file_tree = self._file_trees[cvs_rev.cvs_file]
       # The file is already active ...
-      text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
-      if not file_tree:
-        # ... and will not be needed any more.
-        del self._file_trees[cvs_rev.cvs_file]
     except KeyError:
       # The file is not active yet ...
       file_tree = _FileTree(
           self._delta_db, self._co_db,
           cvs_rev.cvs_file, self._tree_db[cvs_rev.cvs_file.id])
-      text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
-      if file_tree:
-        # ... and will be needed again.
-        self._file_trees[cvs_rev.cvs_file] = file_tree
+      self._file_trees[cvs_rev.cvs_file] = file_tree
+
+    text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
+
+    if not file_tree:
+      # The file tree is empty and will not be needed any more:
+      del self._file_trees[cvs_rev.cvs_file]
+
     return text
 
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
