@@ -238,7 +238,7 @@ class _FileTree:
           rev = _FileTree._Rev(cvs_rev_id)
           self._revs[cvs_rev_id] = rev
         if succ_cvs_rev_id is not None:
-          self._revs[succ_cvs_rev_id].prev = cvs_rev_id
+          self._revs[succ_cvs_rev_id].prev = rev.cvs_rev_id
           rev.ref += 1
         succ_cvs_rev_id = cvs_rev_id
 
@@ -250,22 +250,22 @@ class _FileTree:
     """
 
     rev = self._revs[cvs_rev_id]
-    if rev.prev:
+    if rev.prev is not None:
       # This is not the root revision so we need an ancestor.
       prev = self._revs[rev.prev]
       try:
-        text = self._co_db[str(rev.prev)]
+        text = self._co_db[str(prev.cvs_rev_id)]
       except KeyError:
         # The previous revision was skipped. Fetch it now.
-        co = self._checkout_rev(rev.prev, 1)
+        co = self._checkout_rev(prev.cvs_rev_id, 1)
       else:
         # The previous revision was already checked out.
         co = RCSStream(text)
         prev.ref -= 1
         if not prev.ref:
           # The previous revision will not be needed any more.
-          del self._revs[rev.prev]
-          del self._co_db[str(rev.prev)]
+          del self._revs[prev.cvs_rev_id]
+          del self._co_db[str(prev.cvs_rev_id)]
       co.apply_diff(self._delta_db[cvs_rev_id])
     else:
       # Root revision - initialize checkout.
