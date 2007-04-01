@@ -213,7 +213,7 @@ class _Rev:
     # The number of revisions defined relative to this revision.
     self.ref = 0
 
-  def checkout(self, file_tree, deref):
+  def checkout(self, file_tree, deref=0):
     """Workhorse of the checkout process.
 
     Recurse if a revision was skipped.  FILE_TREE is the _FileTree
@@ -232,7 +232,7 @@ class _PendingRev(_Rev):
     # relative to, or None if it is the head revision.
     self.prev = None
 
-  def checkout(self, file_tree, deref):
+  def checkout(self, file_tree, deref=0):
     """Workhorse of the checkout process.
 
     Recurse if a revision was skipped.  FILE_TREE is the _FileTree
@@ -245,7 +245,7 @@ class _PendingRev(_Rev):
         text = file_tree._co_db[str(prev.cvs_rev_id)]
       except KeyError:
         # The previous revision was skipped. Fetch it now.
-        co = prev.checkout(file_tree, 1)
+        co = prev.checkout(file_tree, deref=1)
       else:
         # The previous revision was already checked out.
         co = RCSStream(text)
@@ -396,7 +396,7 @@ class InternalRevisionReader(RevisionReader):
     Each revision may be requested only once."""
 
     file_tree = self._get_file_tree(cvs_rev.cvs_file)
-    text = file_tree[cvs_rev.id].checkout(file_tree, 0)
+    text = file_tree[cvs_rev.id].checkout(file_tree)
 
     if suppress_keyword_substitution:
       text = re.sub(self._kw_re, r'$\1$', text)
