@@ -288,10 +288,10 @@ class _FileTree:
 
   def checkout(self, cvs_rev, suppress_keyword_substitution):
     rev = self._revs[cvs_rev.id]
-    rv = rev.checkout(self, 0)
+    text = rev.checkout(self, 0)
     if suppress_keyword_substitution:
-      return re.sub(self._kw_re, r'$\1$', rv)
-    return rv
+      return re.sub(self._kw_re, r'$\1$', text)
+    return text
 
   def log_leftovers(self):
     """If any revisions are still in the checkout cache, log them."""
@@ -356,7 +356,7 @@ class InternalRevisionReader(RevisionReader):
     try:
       file_tree = self._file_trees[cvs_rev.cvs_file]
       # The file is already active ...
-      rv = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
+      text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
       if not file_tree:
         # ... and will not be needed any more.
         del self._file_trees[cvs_rev.cvs_file]
@@ -365,11 +365,11 @@ class InternalRevisionReader(RevisionReader):
       file_tree = _FileTree(
           self._delta_db, self._co_db,
           cvs_rev.cvs_file, self._tree_db[cvs_rev.cvs_file.id])
-      rv = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
+      text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
       if file_tree:
         # ... and will be needed again.
         self._file_trees[cvs_rev.cvs_file] = file_tree
-    return rv
+    return text
 
   def get_content_stream(self, cvs_rev, suppress_keyword_substitution=False):
     return cStringIO.StringIO(
