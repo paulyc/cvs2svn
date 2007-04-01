@@ -342,6 +342,23 @@ class InternalRevisionReader(RevisionReader):
     # revisions:
     self._file_trees = {}
 
+  def _get_file_tree(self, cvs_file):
+    """Get the _FileTree instance for the specified CVS_FILE.
+
+    If the tree hasn't been initialized yet, do so now and record it
+    in self._file_trees before returning it."""
+
+    try:
+      return self._file_trees[cvs_file]
+      # The file is already active ...
+    except KeyError:
+      # The file is not active yet ...
+      file_tree = _FileTree(
+          self._delta_db, self._co_db, cvs_file, self._tree_db[cvs_file.id]
+          )
+      self._file_trees[cvs_file] = file_tree
+      return file_tree
+
   def _checkout(self, cvs_rev, suppress_keyword_substitution):
     """Check out the revision C_REV from the repository.
 
@@ -353,15 +370,7 @@ class InternalRevisionReader(RevisionReader):
     Revisions except the last one on a branch may be skipped.
     Each revision may be requested only once."""
 
-    try:
-      file_tree = self._file_trees[cvs_rev.cvs_file]
-      # The file is already active ...
-    except KeyError:
-      # The file is not active yet ...
-      file_tree = _FileTree(
-          self._delta_db, self._co_db,
-          cvs_rev.cvs_file, self._tree_db[cvs_rev.cvs_file.id])
-      self._file_trees[cvs_rev.cvs_file] = file_tree
+    file_tree = self._get_file_tree(cvs_rev.cvs_file)
 
     text = file_tree.checkout(cvs_rev, suppress_keyword_substitution)
 
