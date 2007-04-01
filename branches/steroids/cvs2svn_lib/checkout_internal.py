@@ -215,7 +215,9 @@ class _FileTree:
       r'):[^$\n]*\$')
 
   class _Rev:
-    def __init__(self):
+    def __init__(self, cvs_rev_id):
+      self.cvs_rev_id = cvs_rev_id
+
       # The number of revisions defined relative to this revision.
       self.ref = 0
 
@@ -233,7 +235,7 @@ class _FileTree:
       for cvs_rev_id in lod:
         rev = self._revs.get(cvs_rev_id, None)
         if rev is None:
-          rev = _FileTree._Rev()
+          rev = _FileTree._Rev(cvs_rev_id)
           self._revs[cvs_rev_id] = rev
         if succ_cvs_rev_id is not None:
           self._revs[succ_cvs_rev_id].prev = cvs_rev_id
