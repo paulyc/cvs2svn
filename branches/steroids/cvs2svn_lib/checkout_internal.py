@@ -206,6 +206,18 @@ class InternalRevisionExcluder(RevisionExcluder):
     self._new_tree_db.close()
 
 
+class _Rev:
+  def __init__(self, cvs_rev_id):
+    self.cvs_rev_id = cvs_rev_id
+
+    # The number of revisions defined relative to this revision.
+    self.ref = 0
+
+    # The cvs_rev_id of the revision that this one is defined
+    # relative to, or None if it is the head revision.
+    self.prev = None
+
+
 class _FileTree:
   """A representation of the file tree of delta dependencies."""
 
@@ -213,17 +225,6 @@ class _FileTree:
       r'\$(' +
       r'Author|Date|Header|Id|Name|Locker|Log|RCSfile|Revision|Source|State' +
       r'):[^$\n]*\$')
-
-  class _Rev:
-    def __init__(self, cvs_rev_id):
-      self.cvs_rev_id = cvs_rev_id
-
-      # The number of revisions defined relative to this revision.
-      self.ref = 0
-
-      # The cvs_rev_id of the revision that this one is defined
-      # relative to, or None if it is the head revision.
-      self.prev = None
 
   def __init__(self, delta_db, co_db, cvs_file, lods):
     self._delta_db = delta_db
@@ -235,7 +236,7 @@ class _FileTree:
       for cvs_rev_id in lod:
         rev = self._revs.get(cvs_rev_id, None)
         if rev is None:
-          rev = _FileTree._Rev(cvs_rev_id)
+          rev = _Rev(cvs_rev_id)
           self._revs[cvs_rev_id] = rev
         if succ_cvs_rev_id is not None:
           self._revs[succ_cvs_rev_id].prev = rev.cvs_rev_id
