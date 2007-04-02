@@ -2508,6 +2508,16 @@ def file_directory_conflict():
       )
 
 
+def leftover_revs():
+  "check for leftover checked-out revisions"
+
+  conv = ensure_conversion(
+      'leftover-revs', args=['--use-internal-co', '--exclude=BRANCH'],
+      )
+  if conv.output_found(r'WARNING\: internal problem\: leftover revisions'):
+    raise Failure()
+
+
 ########################################################################
 # Run the tests
 
@@ -2638,6 +2648,7 @@ test_list = [
     XFail(tagging_after_delete),
     crossed_branches,
     file_directory_conflict,
+    leftover_revs,
     ]
 
 if __name__ == '__main__':
