@@ -207,11 +207,11 @@ class InternalRevisionExcluder(RevisionExcluder):
 
 
 class _Rev:
-  def __init__(self, cvs_rev_id):
+  def __init__(self, cvs_rev_id, ref):
     self.cvs_rev_id = cvs_rev_id
 
     # The number of revisions defined relative to this revision.
-    self.ref = 0
+    self.ref = ref
 
   def checkout(self, file_tree, deref=0):
     """Workhorse of the checkout process.
@@ -226,7 +226,7 @@ class _PendingRev(_Rev):
   """A _Rev that hasn't been retrieved yet."""
 
   def __init__(self, cvs_rev_id):
-    _Rev.__init__(self, cvs_rev_id)
+    _Rev.__init__(self, cvs_rev_id, 0)
 
     # The cvs_rev_id of the revision that this one is defined
     # relative to, or None if it is the head revision.
