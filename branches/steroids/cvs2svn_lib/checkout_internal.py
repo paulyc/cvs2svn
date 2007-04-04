@@ -208,16 +208,18 @@ class InternalRevisionExcluder(RevisionExcluder):
 
 class _Rev:
   def __init__(self, cvs_rev_id, ref):
-    self.cvs_rev_id = cvs_rev_id
-
     # The number of revisions defined relative to this revision.
     self.ref = ref
 
-  def checkout(self, file_tree, deref=0):
+  def checkout(self, cvs_rev_id, file_tree, deref=0):
     """Workhorse of the checkout process.
 
     Recurse if a revision was skipped.  FILE_TREE is the _FileTree
-    that manages this revision."""
+    that manages this revision.
+
+    CVS_REV_ID is passed to this method (instead of recording it in
+    the instance) simply to save space, as a large number of _Rev
+    objects might need to be in RAM at one time."""
 
     raise NotImplementedError()
 
@@ -232,32 +234,32 @@ class _PendingRev(_Rev):
     # relative to, or None if it is the head revision.
     self.prev = None
 
-  def checkout(self, file_tree, deref=0):
+  def checkout(self, cvs_rev_id, file_tree, deref=0):
     """Workhorse of the checkout process.
 
     Recurse if a revision was skipped.  FILE_TREE is the _FileTree
     that manages this revision."""
 
     if self.prev is not None:
-      co = file_tree[self.prev].checkout(file_tree, 1)
-      co.apply_diff(file_tree._delta_db[self.cvs_rev_id])
+      co = file_tree[self.prev].checkout(self.prev, file_tree, 1)
+      co.apply_diff(file_tree._delta_db[cvs_rev_id])
     else:
       # Root revision - initialize checkout.
-      co = RCSStream(file_tree._delta_db[self.cvs_rev_id])
+      co = RCSStream(file_tree._delta_db[cvs_rev_id])
     self.ref -= deref
     if self.ref:
       # Revision has descendants.  Replace SELF with a _CheckedOutRev
       # in file_tree:
       text = co.get_text()
-      file_tree[self.cvs_rev_id] = _CheckedOutRev(
-          self.cvs_rev_id, self.ref, file_tree, text
+      file_tree[cvs_rev_id] = _CheckedOutRev(
+          cvs_rev_id, self.ref, file_tree, text
           )
       if not deref:
         return text
     else:
       # Revision is branch head with no descendants.  It is no longer
       # needed.
-      del file_tree[self.cvs_rev_id]
+      del file_tree[cvs_rev_id]
       if not deref:
         return co.get_text()
     return co
@@ -268,17 +270,17 @@ class _CheckedOutRev(_Rev):
 
   def __init__(self, cvs_rev_id, ref, file_tree, text):
     _Rev.__init__(self, cvs_rev_id, ref)
-    file_tree._co_db[str(self.cvs_rev_id)] = text
+    file_tree._co_db[str(cvs_rev_id)] = text
 
-  def checkout(self, file_tree, deref=0):
+  def checkout(self, cvs_rev_id, file_tree, deref=0):
     """Retrieve the (already checked-out) text for this release."""
 
-    text = file_tree._co_db[str(self.cvs_rev_id)]
+    text = file_tree._co_db[str(cvs_rev_id)]
     self.ref -= 1
     if not self.ref:
       # This revision will not be needed any more.
-      del file_tree[self.cvs_rev_id]
-      del file_tree._co_db[str(self.cvs_rev_id)]
+      del file_tree[cvs_rev_id]
+      del file_tree._co_db[str(cvs_rev_id)]
     if deref:
       return RCSStream(text)
     else:
@@ -301,7 +303,7 @@ class _FileTree:
           rev = _PendingRev(cvs_rev_id)
           self[cvs_rev_id] = rev
         if succ_cvs_rev_id is not None:
-          self[succ_cvs_rev_id].prev = rev.cvs_rev_id
+          self[succ_cvs_rev_id].prev = cvs_rev_id
           rev.ref += 1
         succ_cvs_rev_id = cvs_rev_id
 
@@ -408,7 +410,7 @@ class InternalRevisionReader(RevisionReader):
     Each revision may be requested only once."""
 
     file_tree = self._get_file_tree(cvs_rev.cvs_file)
-    text = file_tree[cvs_rev.id].checkout(file_tree)
+    text = file_tree[cvs_rev.id].checkout(cvs_rev.id, file_tree)
 
     if suppress_keyword_substitution:
       text = re.sub(self._kw_re, r'$\1$', text)
