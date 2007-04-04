@@ -239,38 +239,50 @@ class _PendingRev(_Rev):
     that manages this revision."""
 
     if self.prev is not None:
-      # This is not the root revision so we need an ancestor.
-      prev = file_tree[self.prev]
-      try:
-        text = file_tree._co_db[str(prev.cvs_rev_id)]
-      except KeyError:
-        # The previous revision was skipped. Fetch it now.
-        co = prev.checkout(file_tree, deref=1)
-      else:
-        # The previous revision was already checked out.
-        co = RCSStream(text)
-        prev.ref -= 1
-        if not prev.ref:
-          # The previous revision will not be needed any more.
-          del file_tree[prev.cvs_rev_id]
-          del file_tree._co_db[str(prev.cvs_rev_id)]
+      co = file_tree[self.prev].checkout(file_tree, 1)
       co.apply_diff(file_tree._delta_db[self.cvs_rev_id])
     else:
       # Root revision - initialize checkout.
       co = RCSStream(file_tree._delta_db[self.cvs_rev_id])
     self.ref -= deref
     if self.ref:
-      # Revision has descendants.
+      # Revision has descendants.  Replace SELF with a _CheckedOutRev
+      # in file_tree:
       text = co.get_text()
-      file_tree._co_db[str(self.cvs_rev_id)] = text
+      file_tree[self.cvs_rev_id] = _CheckedOutRev(
+          self.cvs_rev_id, self.ref, file_tree, text
+          )
       if not deref:
         return text
     else:
-      # Revision is branch head.
+      # Revision is branch head with no descendants.  It is no longer
+      # needed.
       del file_tree[self.cvs_rev_id]
       if not deref:
         return co.get_text()
     return co
+
+
+class _CheckedOutRev(_Rev):
+  """A _Rev that has been retrieved, but is still referred to by other revs."""
+
+  def __init__(self, cvs_rev_id, ref, file_tree, text):
+    _Rev.__init__(self, cvs_rev_id, ref)
+    file_tree._co_db[str(self.cvs_rev_id)] = text
+
+  def checkout(self, file_tree, deref=0):
+    """Retrieve the (already checked-out) text for this release."""
+
+    text = file_tree._co_db[str(self.cvs_rev_id)]
+    self.ref -= 1
+    if not self.ref:
+      # This revision will not be needed any more.
+      del file_tree[self.cvs_rev_id]
+      del file_tree._co_db[str(self.cvs_rev_id)]
+    if deref:
+      return RCSStream(text)
+    else:
+      return text
 
 
 class _FileTree:
