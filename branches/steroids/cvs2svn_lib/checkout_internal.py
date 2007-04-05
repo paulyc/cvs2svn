@@ -231,7 +231,7 @@ class _PendingRev(_Rev):
     _Rev.__init__(self, cvs_rev_id, 0)
 
     # The cvs_rev_id of the revision that this one is defined
-    # relative to, or None if it is the head revision.
+    # relative to, or None if it is the root revision.
     self.prev = None
 
   def checkout(self, cvs_rev_id, file_tree, deref=0):
@@ -393,8 +393,7 @@ class InternalRevisionReader(RevisionReader):
     except KeyError:
       # The file is not active yet ...
       file_tree = _FileTree(
-          self._delta_db, self._co_db, cvs_file, self._tree_db[cvs_file.id]
-          )
+          self._delta_db, self._co_db, cvs_file, self._tree_db[cvs_file.id])
       self._file_trees[cvs_file] = file_tree
       return file_tree
 
@@ -410,8 +409,8 @@ class InternalRevisionReader(RevisionReader):
     Each revision may be requested only once."""
 
     file_tree = self._get_file_tree(cvs_rev.cvs_file)
-    text = file_tree[cvs_rev.id].checkout(cvs_rev.id, file_tree)
 
+    text = file_tree[cvs_rev.id].checkout(cvs_rev.id, file_tree)
     if suppress_keyword_substitution:
       text = re.sub(self._kw_re, r'$\1$', text)
 
