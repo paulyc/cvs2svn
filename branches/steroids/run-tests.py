@@ -2525,9 +2525,9 @@ def internal_co():
   lines = run_program(
       svntest.main.svnadmin_binary, None, 'dump', '-q', '-r', '1:HEAD',
       conv.repos)
-  for idx, line in enumerate(lines):
-    if idx > 3 and line != org_lines[idx]:
-      raise Failure()
+  # Compare all lines following the repository UUID:
+  if lines[3:] != org_lines[3:]:
+    raise Failure()
 
 
 def internal_co_trunk_only():
