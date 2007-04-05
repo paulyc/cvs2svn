@@ -2508,6 +2508,38 @@ def file_directory_conflict():
       )
 
 
+def internal_co():
+  "verify that --use-internal-co works"
+
+  org_conv = ensure_conversion(
+      'internal-co', args=['--exclude=BRANCH'],
+      )
+  conv = ensure_conversion(
+      'internal-co', args=['--use-internal-co', '--exclude=BRANCH'],
+      )
+  if conv.output_found(r'WARNING\: internal problem\: leftover revisions'):
+    raise Failure()
+  org_lines = run_program(
+      svntest.main.svnadmin_binary, None, 'dump', '-q', '-r', '1:HEAD',
+      org_conv.repos)
+  lines = run_program(
+      svntest.main.svnadmin_binary, None, 'dump', '-q', '-r', '1:HEAD',
+      conv.repos)
+  for idx, line in enumerate(lines):
+    if idx > 3 and line != org_lines[idx]:
+      raise Failure()
+
+
+def internal_co_trunk_only():
+  "verify that --use-internal-co --trunk-only works"
+
+  conv = ensure_conversion(
+      'internal-co', args=['--use-internal-co', '--trunk-only'],
+      )
+  if conv.output_found(r'WARNING\: internal problem\: leftover revisions'):
+    raise Failure()
+
+
 def leftover_revs():
   "check for leftover checked-out revisions"
 
@@ -2515,6 +2547,22 @@ def leftover_revs():
       'leftover-revs', args=['--use-internal-co', '--exclude=BRANCH'],
       )
   if conv.output_found(r'WARNING\: internal problem\: leftover revisions'):
+    raise Failure()
+
+
+def requires_internal_co():
+  "test that internal co can do more than RCS"
+  # See issues 4, 11 for the bugs whose regression we're testing for.
+  # Unlike in requires_rcs above, issue 29 is not covered.
+  conv = ensure_conversion('requires-cvs', args=["--use-internal-co"])
+
+  atsign_contents = file(conv.get_wc("trunk", "atsign-add")).read()
+
+  if atsign_contents[-1:] == "@":
+    raise Failure()
+
+  if not (conv.logs[21].author == "William Lyon Phelps III" and
+          conv.logs[20].author == "j random"):
     raise Failure()
 
 
@@ -2648,7 +2696,11 @@ test_list = [
     XFail(tagging_after_delete),
     crossed_branches,
     file_directory_conflict,
-    leftover_revs,
+    internal_co,
+# 110:
+    internal_co_trunk_only,
+    XFail(leftover_revs),
+    requires_internal_co,
     ]
 
 if __name__ == '__main__':
