@@ -193,10 +193,11 @@ class InternalRevisionExcluder(RevisionExcluder):
       r = cvs_revisions[i].id
       if self._lods.has_key(r):
         del self._lods[r]
-        # TODO: This does not prune deleted revisions that have no children
-        # any more after the branch was excluded.  This is the case for
-        # files that were added on a branch and were never merged to trunk.
-        # Makes test 111 fail.
+        # TODO: This does not prune deleted revisions that have no
+        # children any more after the branch was excluded.  This is
+        # the case for files that were added on a branch and were
+        # never merged to trunk.  This deficiency makes the
+        # "leftover_revs" test fail.
         return
 
   def finish_file(self):
