@@ -2512,6 +2512,28 @@ def internal_co():
   "verify that --use-internal-co works"
 
   org_conv = ensure_conversion(
+      'main',
+      )
+  conv = ensure_conversion(
+      'main', args=['--use-internal-co'],
+      )
+  if conv.output_found(r'WARNING\: internal problem\: leftover revisions'):
+    raise Failure()
+  org_lines = run_program(
+      svntest.main.svnadmin_binary, None, 'dump', '-q', '-r', '1:HEAD',
+      org_conv.repos)
+  lines = run_program(
+      svntest.main.svnadmin_binary, None, 'dump', '-q', '-r', '1:HEAD',
+      conv.repos)
+  # Compare all lines following the repository UUID:
+  if lines[3:] != org_lines[3:]:
+    raise Failure()
+
+
+def internal_co_exclude():
+  "verify that --use-internal-co --exclude=... works"
+
+  org_conv = ensure_conversion(
       'internal-co', args=['--exclude=BRANCH'],
       )
   conv = ensure_conversion(
@@ -2698,6 +2720,7 @@ test_list = [
     file_directory_conflict,
     internal_co,
 # 110:
+    internal_co_exclude,
     internal_co_trunk_only,
     XFail(leftover_revs),
     requires_internal_co,
