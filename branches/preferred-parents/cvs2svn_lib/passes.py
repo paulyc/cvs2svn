@@ -222,6 +222,7 @@ class FilterSymbolsPass(Pass):
     for cvs_file_items in cvs_item_store.iter_cvs_file_items():
       cvs_file_items.filter_excluded_symbols(revision_excluder)
       cvs_file_items.mutate_symbols()
+      cvs_file_items.adjust_parents()
       cvs_file_items.record_closed_symbols()
 
       # Store whatever is left to the new file:
