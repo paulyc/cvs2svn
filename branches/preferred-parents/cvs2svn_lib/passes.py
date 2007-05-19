@@ -561,7 +561,6 @@ class BreakRevisionChangesetCyclesPass(Pass):
             config.CHANGESETS_REVBROKEN_DB), DB_OPEN_NEW)
 
     changeset_ids = old_changesets_db.keys()
-    changeset_ids.sort()
 
     self.changeset_graph = ChangesetGraph()
 
@@ -571,7 +570,7 @@ class BreakRevisionChangesetCyclesPass(Pass):
       if isinstance(changeset, RevisionChangeset):
         self.changeset_graph.add_changeset(changeset)
 
-    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
+    self.changeset_key_generator = KeyGenerator(max(changeset_ids) + 1)
     del changeset_ids
 
     old_changesets_db.close()
@@ -779,7 +778,6 @@ class BreakSymbolChangesetCyclesPass(Pass):
         DB_OPEN_NEW)
 
     changeset_ids = old_changesets_db.keys()
-    changeset_ids.sort()
 
     self.changeset_graph = ChangesetGraph()
 
@@ -789,7 +787,7 @@ class BreakSymbolChangesetCyclesPass(Pass):
       if isinstance(changeset, SymbolChangeset):
         self.changeset_graph.add_changeset(changeset)
 
-    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
+    self.changeset_key_generator = KeyGenerator(max(changeset_ids) + 1)
     del changeset_ids
 
     old_changesets_db.close()
@@ -927,7 +925,6 @@ class BreakAllChangesetCyclesPass(Pass):
         DB_OPEN_NEW)
 
     changeset_ids = old_changesets_db.keys()
-    changeset_ids.sort()
 
     self.changeset_graph = ChangesetGraph()
 
@@ -949,7 +946,7 @@ class BreakAllChangesetCyclesPass(Pass):
     ordered_changeset_ids = set(ordered_changeset_map.values())
     del ordered_changeset_map
 
-    self.changeset_key_generator = KeyGenerator(changeset_ids[-1] + 1)
+    self.changeset_key_generator = KeyGenerator(max(changeset_ids) + 1)
     del changeset_ids
 
     old_changesets_db.close()
