@@ -853,6 +853,85 @@ class BreakAllChangesetCyclesPass(Pass):
     for item_id in changeset.cvs_item_ids:
       self.cvs_item_to_changeset_id[item_id] = changeset.id
 
+  def _split_retrograde_changeset(self, changeset):
+    """CHANGESET is retrograde.  Split it into non-retrograde changesets."""
+
+    Log().debug('Breaking retrograde changeset %x' % (changeset.id,))
+
+    self._delete_changeset(changeset)
+
+    # A map { cvs_branch_id : (max_pred_ordinal, min_succ_ordinal) }
+    ordinal_limits = {}
+    for cvs_branch in changeset.get_cvs_items():
+      max_pred_ordinal = 0
+      min_succ_ordinal = sys.maxint
+
+      for pred_id in cvs_branch.get_pred_ids():
+        pred_ordinal = self.ordinals.get(
+            Ctx()._cvs_item_to_changeset_id[pred_id], 0)
+        max_pred_ordinal = max(max_pred_ordinal, pred_ordinal)
+
+      for succ_id in cvs_branch.get_succ_ids():
+        succ_ordinal = self.ordinals.get(
+            Ctx()._cvs_item_to_changeset_id[succ_id], sys.maxint)
+        min_succ_ordinal = min(min_succ_ordinal, succ_ordinal)
+
+      assert max_pred_ordinal < min_succ_ordinal
+      ordinal_limits[cvs_branch.id] = (max_pred_ordinal, min_succ_ordinal,)
+
+    # Find the earliest successor ordinal:
+    min_min_succ_ordinal = sys.maxint
+    for (max_pred_ordinal, min_succ_ordinal) in ordinal_limits.values():
+      min_min_succ_ordinal = min(min_min_succ_ordinal, min_succ_ordinal)
+
+    early_item_ids = []
+    late_item_ids = []
+    for (id, (max_pred_ordinal, min_succ_ordinal)) in ordinal_limits.items():
+      if max_pred_ordinal >= min_min_succ_ordinal:
+        late_item_ids.append(id)
+      else:
+        early_item_ids.append(id)
+
+    assert early_item_ids
+    assert late_item_ids
+
+    early_changeset = changeset.create_split_changeset(
+        self.changeset_key_generator.gen_id(), early_item_ids)
+    late_changeset = changeset.create_split_changeset(
+        self.changeset_key_generator.gen_id(), late_item_ids)
+
+    self._add_changeset(early_changeset)
+    self._add_changeset(late_changeset)
+
+    early_split = self._split_if_retrograde(early_changeset.id)
+
+    # Because of the way we constructed it, the early changeset should
+    # not have to be split:
+    assert not early_split
+
+    self._split_if_retrograde(late_changeset.id)
+
+  def _split_if_retrograde(self, changeset_id):
+    node = self.changeset_graph[changeset_id]
+    pred_ordinals = [
+        self.ordinals[id]
+        for id in node.pred_ids
+        if id in self.ordinals
+        ]
+    pred_ordinals.sort()
+    succ_ordinals = [
+        self.ordinals[id]
+        for id in node.succ_ids
+        if id in self.ordinals
+        ]
+    succ_ordinals.sort()
+    if pred_ordinals and succ_ordinals \
+           and pred_ordinals[-1] >= succ_ordinals[0]:
+      self._split_retrograde_changeset(node.get_changeset())
+      return True
+    else:
+      return False
+
   def break_segment(self, segment):
     """Break a changeset in SEGMENT[1:-1].
 
@@ -937,14 +1016,21 @@ class BreakAllChangesetCyclesPass(Pass):
 
     self.changeset_graph = ChangesetGraph()
 
+    # A map {changeset_id : ordinal} for OrderedChangesets:
+    self.ordinals = {}
     # A map {ordinal : changeset_id}:
     ordered_changeset_map = {}
+    # A list of all BranchChangeset ids:
+    branch_changeset_ids = []
     for changeset_id in changeset_ids:
       changeset = old_changesets_db[changeset_id]
       self.changesets_db.store(changeset)
       self.changeset_graph.add_changeset(changeset)
       if isinstance(changeset, OrderedChangeset):
         ordered_changeset_map[changeset.ordinal] = changeset.id
+        self.ordinals[changeset.id] = changeset.ordinal
+      elif isinstance(changeset, BranchChangeset):
+        branch_changeset_ids.append(changeset.id)
 
     # An array of ordered_changeset ids, indexed by ordinal:
     ordered_changesets = []
@@ -962,6 +1048,14 @@ class BreakAllChangesetCyclesPass(Pass):
     del old_changesets_db
 
     Ctx()._changesets_db = self.changesets_db
+
+    # First we scan through all BranchChangesets looking for
+    # changesets that are individually "retrograde" and splitting
+    # those up:
+    for changeset_id in branch_changeset_ids:
+      self._split_if_retrograde(changeset_id)
+
+    del self.ordinals
 
     next_ordered_changeset = 0
 
