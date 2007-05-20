@@ -837,6 +837,22 @@ class BreakAllChangesetCyclesPass(Pass):
           'Consumed changeset ids %s'
           % (', '.join(['%x' % id for id in new_changeset_ids]),))
 
+  def _delete_changeset(self, changeset):
+    if Log().is_on(Log.DEBUG):
+      Log().debug('Removing changeset %r' % (changeset,))
+
+    del self.changeset_graph[changeset.id]
+    del self.changesets_db[changeset.id]
+
+  def _add_changeset(self, changeset):
+    if Log().is_on(Log.DEBUG):
+      Log().debug('Adding changeset %r' % (changeset,))
+
+    self.changeset_graph.add_changeset(changeset)
+    self.changesets_db.store(changeset)
+    for item_id in changeset.cvs_item_ids:
+      self.cvs_item_to_changeset_id[item_id] = changeset.id
+
   def break_segment(self, segment):
     """Break a changeset in SEGMENT[1:-1].
 
@@ -860,17 +876,10 @@ class BreakAllChangesetCyclesPass(Pass):
 
     new_changesets = best_link.break_changeset(self.changeset_key_generator)
 
-    del self.changeset_graph[best_link.changeset.id]
-    del self.changesets_db[best_link.changeset.id]
+    self._delete_changeset(best_link.changeset)
 
     for changeset in new_changesets:
-      if Log().is_on(Log.DEBUG):
-        Log().debug(repr(changeset))
-
-      self.changeset_graph.add_changeset(changeset)
-      self.changesets_db.store(changeset)
-      for item_id in changeset.cvs_item_ids:
-        self.cvs_item_to_changeset_id[item_id] = changeset.id
+      self._add_changeset(changeset)
 
   def break_cycle(self, cycle):
     """Break up one or more SymbolChangesets in CYCLE to help break the cycle.
