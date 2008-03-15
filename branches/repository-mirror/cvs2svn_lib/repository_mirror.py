@@ -460,7 +460,7 @@ class RepositoryMirror:
   stored in self._lod_histories.  An LODHistory keeps track of each
   revnum in which files were added to or deleted from that LOD, as
   well as the node id of the root of the node tree describing the LOD
-  contents at that SVN revision.
+  contents at that revision.
 
   The LOD trees themselves are stored in the _nodes_db database, which
   maps node ids to nodes.  A node is a map from CVSPath to ids of the
@@ -471,21 +471,21 @@ class RepositoryMirror:
   revision that is being constructed is kept in memory in the
   _new_nodes map, which is cheap to access.
 
-  You must invoke start_commit() before each SVNCommit and
-  end_commit() afterwards."""
+  You must invoke start_commit() before each commit and end_commit()
+  afterwards."""
 
   def register_artifacts(self, which_pass):
     """Register the artifacts that will be needed for this object."""
 
     artifact_manager.register_temp_file(
-        config.SVN_MIRROR_NODES_INDEX_TABLE, which_pass
+        config.MIRROR_NODES_INDEX_TABLE, which_pass
         )
     artifact_manager.register_temp_file(
-        config.SVN_MIRROR_NODES_STORE, which_pass
+        config.MIRROR_NODES_STORE, which_pass
         )
 
   def open(self):
-    """Set up the RepositoryMirror and prepare it for SVNCommits."""
+    """Set up the RepositoryMirror and prepare it for commits."""
 
     self._key_generator = KeyGenerator()
 
@@ -497,8 +497,8 @@ class RepositoryMirror:
     # don't need a 'representations' or 'strings' table because we
     # only track file existence, not file contents.)
     self._nodes_db = IndexedDatabase(
-        artifact_manager.get_temp_file(config.SVN_MIRROR_NODES_STORE),
-        artifact_manager.get_temp_file(config.SVN_MIRROR_NODES_INDEX_TABLE),
+        artifact_manager.get_temp_file(config.MIRROR_NODES_STORE),
+        artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
         DB_OPEN_NEW, serializer=_NodeSerializer()
         )
 
