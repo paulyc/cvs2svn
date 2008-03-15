@@ -624,45 +624,6 @@ class RepositoryMirror:
     # new destination node.
     return src_node
 
-  def copy_path(self, cvs_path, src_lod, dest_lod, src_revnum):
-    """Copy CVS_PATH from SRC_LOD at SRC_REVNUM to DST_LOD.
-
-    In the youngest revision of the repository, the destination's
-    parent *must* exist.  But the destination itself *must not* exist.
-
-    Return the new node at (CVS_PATH, DEST_LOD)."""
-
-    if cvs_path.parent_directory is None:
-      return self.copy_lod(src_lod, dest_lod, src_revnum)
-
-    # Get the node of our source, or None if it is a file:
-    src_node = self.get_old_path(cvs_path, src_lod, src_revnum)
-
-    # Get the parent path of the destination:
-    try:
-      dest_parent_node = self.get_current_path(
-          cvs_path.parent_directory, dest_lod
-          )
-    except KeyError:
-      raise self.ParentMissingError(
-          'Attempt to add path \'%s\' to repository mirror, '
-          'but its parent directory doesn\'t exist in the mirror.'
-          % (dest_lod.get_path(cvs_path.cvs_path),)
-          )
-
-    if cvs_path in dest_parent_node:
-      raise self.PathExistsError(
-          'Attempt to add path \'%s\' to repository mirror '
-          'when it already exists in the mirror.'
-          % (dest_lod.get_path(cvs_path.cvs_path),)
-          )
-
-    dest_parent_node[cvs_path] = src_node
-
-    # This is a cheap copy, so src_node has the same contents as the
-    # new destination node.
-    return src_node
-
   def close(self):
     """Free resources and close databases."""
 
