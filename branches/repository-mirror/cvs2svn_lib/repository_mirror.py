@@ -602,41 +602,6 @@ class RepositoryMirror:
       raise KeyError()
     lod_history.update(self._youngest, None)
 
-  def delete_path(self, cvs_path, lod):
-    """Delete CVS_PATH from LOD."""
-
-    if cvs_path.parent_directory is None:
-      self.delete_lod(lod)
-    else:
-      del self.get_current_directory(
-          cvs_path.parent_directory, lod
-          )[cvs_path]
-
-  def change_path(self, cvs_rev):
-    """Register a change in self._youngest for the CVS_REV's svn_path."""
-
-    # We do not have to update the nodes because our mirror is only
-    # concerned with the presence or absence of paths, and a file
-    # content change does not cause any path changes.
-    pass
-
-  def add_path(self, cvs_rev):
-    """Add the CVS_REV's svn_path to the repository mirror."""
-
-    cvs_file = cvs_rev.cvs_file
-    parent_node = self.get_current_directory(
-        cvs_file.parent_directory, cvs_rev.lod
-        )
-
-    if cvs_file in parent_node:
-      raise self.PathExistsError(
-          'Attempt to add path \'%s\' to repository mirror '
-          'when it already exists in the mirror.'
-          % (cvs_rev.get_svn_path(),)
-          )
-
-    parent_node[cvs_file] = None
-
   def copy_lod(self, src_lod, dest_lod, src_revnum):
     """Copy all of SRC_LOD at SRC_REVNUM to DST_LOD.
 
