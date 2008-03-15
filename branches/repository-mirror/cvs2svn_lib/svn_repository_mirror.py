@@ -314,7 +314,7 @@ class SVNRepositoryMirror:
     symbol = svn_symbol_commit.symbol
 
     try:
-      dest_node = self._open_writable_lod_node(symbol, False, False)
+      dest_node = self._mirror.get_current_lod_directory(symbol)
     except KeyError:
       self._fill_directory(symbol, None, fill_source, None)
     else:
@@ -370,7 +370,7 @@ class SVNRepositoryMirror:
     src_entries = fill_source.get_subsource_map()
 
     if copy_source is not None:
-      dest_node = self._prune_extra_entries(
+      self._prune_extra_entries(
           fill_source.cvs_path, symbol, dest_node, src_entries
           )
 
@@ -453,27 +453,20 @@ class SVNRepositoryMirror:
   def _prune_extra_entries(
         self, dest_cvs_path, symbol, dest_node, src_entries
         ):
-    """Delete any entries in DEST_NODE that are not in SRC_ENTRIES.
-
-    This might require creating a new writable node, so return a
-    possibly-modified dest_node."""
+    """Delete any entries in DEST_NODE that are not in SRC_ENTRIES."""
 
     delete_list = [
         cvs_path
         for cvs_path in dest_node
         if cvs_path not in src_entries
         ]
-    if delete_list:
-      if not isinstance(dest_node, _WritableMirrorNode):
-        dest_node = self._open_writable_node(dest_cvs_path, symbol, False)
-      # Sort the delete list so that the output is in a consistent
-      # order:
-      delete_list.sort()
-      for cvs_path in delete_list:
-        del dest_node[cvs_path]
-        self._invoke_delegates('delete_path', symbol, cvs_path)
 
-    return dest_node
+    # Sort the delete list so that the output is in a consistent
+    # order:
+    delete_list.sort()
+    for cvs_path in delete_list:
+      del dest_node[cvs_path]
+      self._invoke_delegates('delete_path', symbol, cvs_path)
 
   def add_delegate(self, delegate):
     """Adds DELEGATE to self._delegates.
