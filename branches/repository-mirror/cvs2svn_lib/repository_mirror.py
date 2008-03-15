@@ -197,7 +197,7 @@ class OldMirrorDirectory(MirrorDirectory):
       # This represents a leaf node.
       return None
     else:
-      return OldMirrorDirectory(self, id, self.repo._nodes_db[id])
+      return OldMirrorDirectory(self.repo, id, self.repo._nodes_db[id])
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
