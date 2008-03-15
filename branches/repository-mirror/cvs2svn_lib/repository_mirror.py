@@ -515,7 +515,7 @@ class RepositoryMirror:
     assert revnum > self._youngest
     self._youngest = revnum
 
-    # A map {node_id : CurrentMirrorDirectory}.
+    # A map {node_id : _WritableMirrorDirectoryMixin}.
     self._new_nodes = {}
 
   def end_commit(self):
@@ -526,8 +526,7 @@ class RepositoryMirror:
 
     # Copy the new nodes to the _nodes_db
     for node in self._new_nodes.values():
-      if isinstance(node, _WritableMirrorDirectoryMixin):
-        self._nodes_db[node.id] = node.entries
+      self._nodes_db[node.id] = node.entries
 
     del self._new_nodes
 
