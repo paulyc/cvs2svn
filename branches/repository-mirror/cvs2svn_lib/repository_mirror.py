@@ -500,7 +500,8 @@ class RepositoryMirror:
 
     # Copy the new nodes to the _nodes_db
     for node in self._new_nodes.values():
-      self._nodes_db[node.id] = node.entries
+      if isinstance(node, _WritableMirrorDirectoryMixin):
+        self._nodes_db[node.id] = node.entries
 
     del self._new_nodes
 
