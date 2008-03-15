@@ -157,6 +157,19 @@ class MirrorDirectory(object):
 
     return self.entries.__iter__()
 
+  def _format_entries(self):
+    """Format the entries map for output in subclasses' __repr__() methods."""
+
+    def format_item(key, value):
+      if value is None:
+        return str(key)
+      else:
+        return '%s -> %x' % (key, value,)
+
+    items = self.entries.items()
+    items.sort()
+    return '{%s}' % (', '.join([format_item(*item) for item in items]),)
+
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
@@ -177,7 +190,7 @@ class OldMirrorDirectory(MirrorDirectory):
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
 
-    return '%s(%r)' % (self, self.entries,)
+    return '%s(%s)' % (self, self._format_entries(),)
 
 
 class CurrentMirrorDirectory(MirrorDirectory):
@@ -205,7 +218,9 @@ class CurrentMirrorDirectory(MirrorDirectory):
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
 
-    return '%s(%r, %r, %r)' % (self, self.lod, self.cvs_path, self.entries,)
+    return '%s(%r, %r, %s)' % (
+        self, self.lod, self.cvs_path, self._format_entries(),
+        )
 
 
 class _WritableMirrorDirectoryMixin:
