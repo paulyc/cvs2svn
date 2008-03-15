@@ -55,7 +55,6 @@ numberOfRevisions) as would be needed if the information were stored
 in the equivalent of a 2D array."""
 
 
-import sys
 import bisect
 
 from cvs2svn_lib.boolean import *
@@ -375,7 +374,7 @@ class LODHistory(object):
     self.revnums = [0]
     self.ids = [None]
 
-  def get_id(self, revnum=sys.maxint):
+  def get_id(self, revnum):
     """Get the ID of the root path for this LOD in REVNUM.
 
     Raise KeyError if this LOD didn't exist in REVNUM."""
