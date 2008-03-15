@@ -72,6 +72,22 @@ from cvs2svn_lib.symbol import Trunk
 from cvs2svn_lib.svn_commit_item import SVNCommitItem
 
 
+class RepositoryMirrorError(Exception):
+  """An error related to the RepositoryMirror."""
+
+  pass
+
+
+class PathExistsError(RepositoryMirrorError):
+  """The path already exists in the repository.
+
+  Exception raised if an attempt is made to add a path to the
+  repository mirror and that path already exists in the youngest
+  revision of the repository."""
+
+  pass
+
+
 class MirrorDirectory(object):
   """Represent a node within the RepositoryMirror.
 
@@ -201,7 +217,7 @@ class _WritableMirrorDirectoryMixin:
     Return the CurrentDirectory that was created."""
 
     if cvs_directory in self:
-      raise self.PathExistsError(
+      raise PathExistsError(
           'Attempt to create directory \'%s\' in %s in repository mirror '
           'when it already exists.'
           % (cvs_directory, self.lod,)
@@ -219,7 +235,7 @@ class _WritableMirrorDirectoryMixin:
     """Create a file within this node at CVS_FILE."""
 
     if cvs_file in self:
-      raise self.PathExistsError(
+      raise PathExistsError(
           'Attempt to create file \'%s\' in %s in repository mirror '
           'when it already exists.'
           % (cvs_file, self.lod,)
@@ -459,24 +475,6 @@ class RepositoryMirror:
   *** WARNING *** Path arguments to methods in this class MUST NOT
       have leading or trailing slashes."""
 
-  class ParentMissingError(Exception):
-    """The parent of a path is missing.
-
-    Exception raised if an attempt is made to add a path to the
-    repository mirror but the parent's path doesn't exist in the
-    youngest revision of the repository."""
-
-    pass
-
-  class PathExistsError(Exception):
-    """The path already exists in the repository.
-
-    Exception raised if an attempt is made to add a path to the
-    repository mirror and that path already exists in the youngest
-    revision of the repository."""
-
-    pass
-
   def register_artifacts(self, which_pass):
     """Register the artifacts that will be needed for this object."""
 
@@ -613,7 +611,7 @@ class RepositoryMirror:
 
     dest_lod_history = self._get_lod_history(dest_lod)
     if dest_lod_history.exists():
-      raise self.PathExistsError(
+      raise PathExistsError(
           "Attempt to add path '%s' to repository mirror "
           "when it already exists in the mirror." % (dest_lod.get_path(),)
           )
