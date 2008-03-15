@@ -78,6 +78,16 @@ class RepositoryMirrorError(Exception):
   pass
 
 
+class LODExistsError(RepositoryMirrorError):
+  """The LOD already exists in the repository.
+
+  Exception raised if an attempt is made to add an LOD to the
+  repository mirror and that LOD already exists in the youngest
+  revision of the repository."""
+
+  pass
+
+
 class PathExistsError(RepositoryMirrorError):
   """The path already exists in the repository.
 
@@ -611,9 +621,9 @@ class RepositoryMirror:
 
     dest_lod_history = self._get_lod_history(dest_lod)
     if dest_lod_history.exists():
-      raise PathExistsError(
-          "Attempt to add path '%s' to repository mirror "
-          "when it already exists in the mirror." % (dest_lod.get_path(),)
+      raise LODExistsError(
+          'Attempt to copy to %s in repository mirror when it already exists.'
+          % (dest_lod,)
           )
 
     dest_lod_history.update(self._youngest, src_node.id)
