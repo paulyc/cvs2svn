@@ -61,6 +61,8 @@ from cvs2svn_lib.boolean import *
 from cvs2svn_lib import config
 from cvs2svn_lib.common import DB_OPEN_NEW
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib.cvs_file import CVSFile
+from cvs2svn_lib.cvs_file import CVSDirectory
 from cvs2svn_lib.key_generator import KeyGenerator
 from cvs2svn_lib.artifact_manager import artifact_manager
 from cvs2svn_lib.serializer import MarshalSerializer
@@ -221,6 +223,7 @@ class _WritableMirrorDirectoryMixin:
 
     Return the CurrentDirectory that was created."""
 
+    assert isinstance(cvs_directory, CVSDirectory)
     if cvs_directory in self:
       raise PathExistsError(
           'Attempt to create directory \'%s\' in %s in repository mirror '
@@ -239,6 +242,7 @@ class _WritableMirrorDirectoryMixin:
   def add_file(self, cvs_file):
     """Create a file within this node at CVS_FILE."""
 
+    assert isinstance(cvs_file, CVSFile)
     if cvs_file in self:
       raise PathExistsError(
           'Attempt to create file \'%s\' in %s in repository mirror '
