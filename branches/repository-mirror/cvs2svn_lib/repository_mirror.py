@@ -215,6 +215,18 @@ class _WritableMirrorDirectoryMixin:
     self.repo._new_nodes[new_node.id] = new_node
     return new_node
 
+  def add_file(self, cvs_file):
+    """Create a file within this node at CVS_FILE."""
+
+    if cvs_file in self:
+      raise self.PathExistsError(
+          'Attempt to create file \'%s\' in %s in repository mirror '
+          'when it already exists.'
+          % (cvs_file, self.lod,)
+          )
+
+    self[cvs_file] = None
+
 
 class _ReadOnlyMirrorDirectoryMixin:
   """Mixin for a CurrentMirrorDirectory that hasn't yet been made writable."""
@@ -233,6 +245,10 @@ class _ReadOnlyMirrorDirectoryMixin:
   def mkdir(self, cvs_directory):
     self._make_writable()
     self.mkdir(cvs_directory)
+
+  def add_file(self, cvs_file):
+    self._make_writable()
+    self.add_file(cvs_file)
 
 
 class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
