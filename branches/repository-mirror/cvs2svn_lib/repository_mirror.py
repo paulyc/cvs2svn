@@ -513,6 +513,7 @@ class RepositoryMirror:
   def start_commit(self, revnum):
     """Start a new commit."""
 
+    assert revnum > self._youngest
     self._youngest = revnum
 
     # A map {node_id : CurrentMirrorDirectory}.
