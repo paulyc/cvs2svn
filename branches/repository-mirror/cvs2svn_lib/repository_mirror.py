@@ -195,6 +195,19 @@ class _WritableMirrorDirectoryMixin:
 
     del self.entries[cvs_path]
 
+  def mkdir(self, cvs_directory):
+    """Create an empty subdirectory of this node at CVS_PATH.
+
+    Return the CurrentDirectory that was created."""
+
+    new_node = _CurrentMirrorWritableSubdirectory(
+        self.repo, self.repo.key_generator.gen_id(), self.lod, cvs_directory,
+        self, {}
+        )
+    self[cvs_directory] = new_node
+    self.repo._new_nodes[new_node.id] = new_node
+    return new_node
+
 
 class _ReadOnlyMirrorDirectoryMixin:
   """Mixin for a CurrentMirrorDirectory that hasn't yet been made writable."""
@@ -209,6 +222,10 @@ class _ReadOnlyMirrorDirectoryMixin:
   def __delitem__(self, cvs_path):
     self._make_writable()
     del self[cvs_path]
+
+  def mkdir(self, cvs_directory):
+    self._make_writable()
+    self.mkdir(cvs_directory)
 
 
 class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
