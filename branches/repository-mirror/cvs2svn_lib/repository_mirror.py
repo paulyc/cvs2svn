@@ -219,6 +219,13 @@ class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
         self, repo, id, lod, lod.project.get_root_cvs_directory(), entries
         )
 
+  def rmdir(self):
+    """Remove the directory represented by this object."""
+
+    self.repo._get_lod_history(self.lod).update(self.repo._youngest, None)
+    # Vandalize this object to prevent its being used again:
+    self.__dict__.clear()
+
 
 class _CurrentMirrorReadOnlyLODDirectory(
           CurrentMirrorLODDirectory, _ReadOnlyMirrorDirectoryMixin
@@ -245,6 +252,13 @@ class CurrentMirrorSubdirectory(CurrentMirrorDirectory):
   def __init__(self, repo, id, lod, cvs_path, parent_mirror_dir, entries):
     CurrentMirrorDirectory.__init__(self, repo, id, lod, cvs_path, entries)
     self.parent_mirror_dir = parent_mirror_dir
+
+  def rmdir(self):
+    """Remove the directory represented by this object."""
+
+    del self.parent_mirror_dir[self.cvs_path]
+    # Vandalize this object to prevent its being used again:
+    self.__dict__.clear()
 
 
 class _CurrentMirrorReadOnlySubdirectory(
