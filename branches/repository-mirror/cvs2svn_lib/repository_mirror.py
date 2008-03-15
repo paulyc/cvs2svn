@@ -552,12 +552,14 @@ class RepositoryMirror:
     id = lod_history.get_id(revnum)
     return OldMirrorDirectory(self, id, self._nodes_db[id])
 
-  def get_old_directory(self, cvs_path, lod, revnum):
-    """Return the directory for CVS_PATH from LOD at REVNUM.
+  def get_old_path(self, cvs_path, lod, revnum):
+    """Return the node for CVS_PATH from LOD at REVNUM.
 
-    If cvs_path refers to a leaf node, return None.
+    If CVS_PATH is a CVSDirectory, then return an instance of
+    OldMirrorDirectory.  If CVS_PATH is a CVSFile, return None.
 
-    Raise KeyError if the node does not exist."""
+    If CVS_PATH does not exist in the specified LOD and REVNUM, raise
+    KeyError."""
 
     node = self.get_old_lod_directory(lod, revnum)
 
@@ -581,15 +583,18 @@ class RepositoryMirror:
           self, id, lod, self._nodes_db[id]
           )
 
-  def get_current_directory(self, cvs_directory, lod):
-    """Return the directory for CVS_DIRECTORY in LOD in the current revision.
+  def get_current_path(self, cvs_path, lod):
+    """Return the node for CVS_PATH from LOD in the current revision.
 
-    Return an instance of CurrentMirrorDirectory.  Raise KeyError if
-    CVS_DIRECTORY doesn't exist."""
+    If CVS_PATH is a CVSDirectory, then return an instance of
+    CurrentMirrorDirectory.  If CVS_PATH is a CVSFile, return None.
+
+    If CVS_PATH does not exist in the current revision of the
+    specified LOD, raise KeyError."""
 
     node = self.get_current_lod_directory(lod)
 
-    for sub_path in cvs_directory.get_ancestry()[1:]:
+    for sub_path in cvs_path.get_ancestry()[1:]:
       node = node[sub_path]
 
     return node
@@ -631,11 +636,11 @@ class RepositoryMirror:
       return self.copy_lod(src_lod, dest_lod, src_revnum)
 
     # Get the node of our source, or None if it is a file:
-    src_node = self.get_old_directory(cvs_path, src_lod, src_revnum)
+    src_node = self.get_old_path(cvs_path, src_lod, src_revnum)
 
     # Get the parent path of the destination:
     try:
-      dest_parent_node = self.get_current_directory(
+      dest_parent_node = self.get_current_path(
           cvs_path.parent_directory, dest_lod
           )
     except KeyError:
