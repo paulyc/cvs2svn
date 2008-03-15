@@ -269,11 +269,11 @@ class _ReadOnlyMirrorDirectoryMixin:
 
   def mkdir(self, cvs_directory):
     self._make_writable()
-    self.mkdir(cvs_directory)
+    return self.mkdir(cvs_directory)
 
   def add_file(self, cvs_file):
     self._make_writable()
-    self.add_file(cvs_file)
+    return self.add_file(cvs_file)
 
 
 class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
