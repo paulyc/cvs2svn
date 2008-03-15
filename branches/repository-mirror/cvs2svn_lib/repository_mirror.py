@@ -101,6 +101,12 @@ class DeletedNodeReusedError(RepositoryMirrorError):
   pass
 
 
+class CopyFromCurrentNodeError(RepositoryMirrorError):
+  """A CurrentMirrorDirectory cannot be copied to the current revision."""
+
+  pass
+
+
 class MirrorDirectory(object):
   """Represent a node within the RepositoryMirror.
 
@@ -221,6 +227,68 @@ class CurrentMirrorDirectory(MirrorDirectory):
             self.repo._nodes_db[id]
             )
 
+  def __setitem__(self, cvs_path, node):
+    """Create or overwrite a subnode of this node.
+
+    CVS_PATH is the path of the subnode.  NODE will be the new value
+    of the node; for CVSDirectories it should be a MirrorDirectory
+    instance; for CVSFiles it should be None."""
+
+    if isinstance(node, DeletedCurrentMirrorDirectory):
+      raise DeletedNodeReusedError(
+          '%r has already been deleted and should not be reused' % (node,)
+          )
+    elif isinstance(node, CurrentMirrorDirectory):
+      raise CopyFromCurrentNodeError(
+          '%r was created in the current node and cannot be copied' % (node,)
+          )
+    else:
+      self._set_entry(cvs_path, node)
+
+  def __delitem__(self, cvs_path):
+    """Remove the subnode of this node at CVS_PATH.
+
+    If the node does not exist, then raise a KeyError."""
+
+    node = self[cvs_path]
+    self._del_entry(cvs_path)
+    if isinstance(node, _WritableMirrorDirectoryMixin):
+      node._mark_deleted()
+
+  def mkdir(self, cvs_directory):
+    """Create an empty subdirectory of this node at CVS_PATH.
+
+    Return the CurrentDirectory that was created."""
+
+    assert isinstance(cvs_directory, CVSDirectory)
+    if cvs_directory in self:
+      raise PathExistsError(
+          'Attempt to create directory \'%s\' in %s in repository mirror '
+          'when it already exists.'
+          % (cvs_directory, self.lod,)
+          )
+
+    new_node = _CurrentMirrorWritableSubdirectory(
+        self.repo, self.repo._key_generator.gen_id(), self.lod, cvs_directory,
+        self, {}
+        )
+    self._set_entry(cvs_directory, new_node)
+    self.repo._new_nodes[new_node.id] = new_node
+    return new_node
+
+  def add_file(self, cvs_file):
+    """Create a file within this node at CVS_FILE."""
+
+    assert isinstance(cvs_file, CVSFile)
+    if cvs_file in self:
+      raise PathExistsError(
+          'Attempt to create file \'%s\' in %s in repository mirror '
+          'when it already exists.'
+          % (cvs_file, self.lod,)
+          )
+
+    self._set_entry(cvs_file, None)
+
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
 
@@ -245,65 +313,18 @@ class _WritableMirrorDirectoryMixin:
   A MirrorDirectory is writable if it has already been recreated
   during the current revision."""
 
-  def __setitem__(self, cvs_path, node):
-    """Create or overwrite a subnode of this node.
-
-    CVS_PATH is the path of the subnode.  NODE will be the new value
-    of the node; for CVSDirectories it should be a MirrorDirectory
-    instance; for CVSFiles it should be None."""
+  def _set_entry(self, cvs_path, node):
+    """Create or overwrite a subnode of this node, with no checks."""
 
     if node is None:
       self.entries[cvs_path] = None
-    elif isinstance(node, DeletedCurrentMirrorDirectory):
-      raise DeletedNodeReusedError(
-          '%r has already been deleted and should not be reused' % (node,)
-          )
     else:
       self.entries[cvs_path] = node.id
 
-  def __delitem__(self, cvs_path):
-    """Remove the subnode of this node at CVS_PATH.
+  def _del_entry(self, cvs_path):
+    """Remove the subnode of this node at CVS_PATH, with no checks."""
 
-    If the node does not exist, then raise a KeyError."""
-
-    node = self[cvs_path]
     del self.entries[cvs_path]
-    if isinstance(node, _WritableMirrorDirectoryMixin):
-      node._mark_deleted()
-
-  def mkdir(self, cvs_directory):
-    """Create an empty subdirectory of this node at CVS_PATH.
-
-    Return the CurrentDirectory that was created."""
-
-    assert isinstance(cvs_directory, CVSDirectory)
-    if cvs_directory in self:
-      raise PathExistsError(
-          'Attempt to create directory \'%s\' in %s in repository mirror '
-          'when it already exists.'
-          % (cvs_directory, self.lod,)
-          )
-
-    new_node = _CurrentMirrorWritableSubdirectory(
-        self.repo, self.repo._key_generator.gen_id(), self.lod, cvs_directory,
-        self, {}
-        )
-    self[cvs_directory] = new_node
-    self.repo._new_nodes[new_node.id] = new_node
-    return new_node
-
-  def add_file(self, cvs_file):
-    """Create a file within this node at CVS_FILE."""
-
-    assert isinstance(cvs_file, CVSFile)
-    if cvs_file in self:
-      raise PathExistsError(
-          'Attempt to create file \'%s\' in %s in repository mirror '
-          'when it already exists.'
-          % (cvs_file, self.lod,)
-          )
-
-    self[cvs_file] = None
 
   def _mark_deleted(self):
     """Mark this object and any writable descendants as being deleted."""
@@ -324,21 +345,17 @@ class _ReadOnlyMirrorDirectoryMixin:
   def _make_writable(self):
     raise NotImplementedError()
 
-  def __setitem__(self, cvs_path, node):
-    self._make_writable()
-    self[cvs_path] = node
+  def _set_entry(self, cvs_path, node):
+    """Create or overwrite a subnode of this node, with no checks."""
 
-  def __delitem__(self, cvs_path):
     self._make_writable()
-    del self[cvs_path]
+    self._set_entry(cvs_path, node)
 
-  def mkdir(self, cvs_directory):
-    self._make_writable()
-    return self.mkdir(cvs_directory)
+  def _del_entry(self, cvs_path):
+    """Remove the subnode of this node at CVS_PATH, with no checks."""
 
-  def add_file(self, cvs_file):
     self._make_writable()
-    return self.add_file(cvs_file)
+    self._del_entry(cvs_path)
 
 
 class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
@@ -400,7 +417,7 @@ class _CurrentMirrorReadOnlySubdirectory(
     # Create a new ID:
     self.id = self.repo._key_generator.gen_id()
     self.repo._new_nodes[self.id] = self
-    self.parent_mirror_dir[self.cvs_path] = self
+    self.parent_mirror_dir._set_entry(self.cvs_path, self)
 
 
 class _CurrentMirrorWritableSubdirectory(
