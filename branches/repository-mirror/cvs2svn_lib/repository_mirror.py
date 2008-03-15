@@ -157,6 +157,11 @@ class MirrorDirectory(object):
 
     return self.entries.__iter__()
 
+  def __str__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s<%x>' % (self.__class__.__name__, self.id,)
+
 
 class OldMirrorDirectory(MirrorDirectory):
   """Represent a historical directory within the RepositoryMirror."""
@@ -168,6 +173,11 @@ class OldMirrorDirectory(MirrorDirectory):
       return None
     else:
       return OldMirrorDirectory(self, id, self.repo._nodes_db[id])
+
+  def __repr__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s(%r)' % (self, self.entries,)
 
 
 class CurrentMirrorDirectory(MirrorDirectory):
@@ -191,6 +201,11 @@ class CurrentMirrorDirectory(MirrorDirectory):
             self.repo, id, self.lod, self.cvs_path, self,
             self.repo._nodes_db[id]
             )
+
+  def __repr__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s(%r, %r, %r)' % (self, self.lod, self.cvs_path, self.entries,)
 
 
 class _WritableMirrorDirectoryMixin:
