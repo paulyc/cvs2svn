@@ -262,7 +262,9 @@ class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
   def delete(self):
     """Remove the directory represented by this object."""
 
-    self.repo._get_lod_history(self.lod).update(self.repo._youngest, None)
+    lod_history = self.repo._get_lod_history(self.lod)
+    assert lod_history.exists()
+    lod_history.update(self.repo._youngest, None)
     # Vandalize this object to prevent its being used again:
     self.__dict__.clear()
 
