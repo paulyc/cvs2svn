@@ -607,6 +607,25 @@ class RepositoryMirror:
 
     return node
 
+  def add_lod(self, lod):
+    """Create a new LOD in this repository.
+
+    Return the CurrentMirrorDirectory that was created.  If the LOD
+    already exists, raise LODExistsError."""
+
+    lod_history = self._get_lod_history(lod)
+    if lod_history.exists():
+      raise LODExistsError(
+          'Attempt to create %s in repository mirror when it already exists.'
+          % (lod,)
+          )
+    new_node = _CurrentMirrorWritableLODDirectory(
+        self, self._key_generator.gen_id(), lod, {}
+        )
+    lod_history.update(self._youngest, new_node.id)
+    self._new_nodes[new_node.id] = new_node
+    return new_node
+
   def copy_lod(self, src_lod, dest_lod, src_revnum):
     """Copy all of SRC_LOD at SRC_REVNUM to DST_LOD.
 
