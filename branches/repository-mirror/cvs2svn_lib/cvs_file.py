@@ -185,7 +185,7 @@ class CVSDirectory(CVSPath):
     return self.cvs_path + '/'
 
   def __repr__(self):
-    return 'CVSDirectory<%d>(%r)' % (self.id, str(self),)
+    return 'CVSDirectory<%x>(%r)' % (self.id, str(self),)
 
 
 class CVSFile(CVSPath):
@@ -274,6 +274,6 @@ class CVSFile(CVSPath):
     return self.cvs_path
 
   def __repr__(self):
-    return 'CVSFile<%d>(%r)' % (self.id, str(self),)
+    return 'CVSFile<%x>(%r)' % (self.id, str(self),)
 
 
