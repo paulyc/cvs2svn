@@ -259,7 +259,7 @@ class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
         self, repo, id, lod, lod.project.get_root_cvs_directory(), entries
         )
 
-  def rmdir(self):
+  def delete(self):
     """Remove the directory represented by this object."""
 
     self.repo._get_lod_history(self.lod).update(self.repo._youngest, None)
@@ -293,7 +293,7 @@ class CurrentMirrorSubdirectory(CurrentMirrorDirectory):
     CurrentMirrorDirectory.__init__(self, repo, id, lod, cvs_path, entries)
     self.parent_mirror_dir = parent_mirror_dir
 
-  def rmdir(self):
+  def delete(self):
     """Remove the directory represented by this object."""
 
     del self.parent_mirror_dir[self.cvs_path]
