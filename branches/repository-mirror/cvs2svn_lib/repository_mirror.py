@@ -557,12 +557,12 @@ class RepositoryMirror:
 
     Raise KeyError if the node does not exist."""
 
-    if cvs_path.parent_directory is None:
-      return self.get_old_lod_directory(lod, revnum)
-    else:
-      return self.get_old_directory(
-          cvs_path.parent_directory, lod, revnum
-          )[cvs_path]
+    node = self.get_old_lod_directory(lod, revnum)
+
+    for sub_path in cvs_path.get_ancestry()[1:]:
+      node = node[sub_path]
+
+    return node
 
   def get_current_lod_directory(self, lod):
     """Return the directory for the root path of LOD in the current revision.
@@ -585,12 +585,12 @@ class RepositoryMirror:
     Return an instance of CurrentMirrorDirectory.  Raise KeyError if
     CVS_DIRECTORY doesn't exist."""
 
-    if cvs_directory.parent_directory is None:
-      return self.get_current_lod_directory(lod)
+    node = self.get_current_lod_directory(lod)
 
-    return self.get_current_directory(
-        cvs_directory.parent_directory, lod
-        )[cvs_directory]
+    for sub_path in cvs_directory.get_ancestry()[1:]:
+      node = node[sub_path]
+
+    return node
 
   def delete_lod(self, lod):
     """Delete the main path for LOD from the tree.
