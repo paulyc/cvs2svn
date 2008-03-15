@@ -211,7 +211,7 @@ class CurrentMirrorDirectory(MirrorDirectory):
         return self.repo._new_nodes[id]
       except KeyError:
         return _CurrentMirrorReadOnlySubdirectory(
-            self.repo, id, self.lod, self.cvs_path, self,
+            self.repo, id, self.lod, cvs_path, self,
             self.repo._nodes_db[id]
             )
 
