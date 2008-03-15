@@ -229,7 +229,7 @@ class _WritableMirrorDirectoryMixin:
           )
 
     new_node = _CurrentMirrorWritableSubdirectory(
-        self.repo, self.repo.key_generator.gen_id(), self.lod, cvs_directory,
+        self.repo, self.repo._key_generator.gen_id(), self.lod, cvs_directory,
         self, {}
         )
     self[cvs_directory] = new_node
