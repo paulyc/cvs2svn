@@ -200,6 +200,13 @@ class _WritableMirrorDirectoryMixin:
 
     Return the CurrentDirectory that was created."""
 
+    if cvs_directory in self:
+      raise self.PathExistsError(
+          'Attempt to create directory \'%s\' in %s in repository mirror '
+          'when it already exists.'
+          % (cvs_directory, self.lod,)
+          )
+
     new_node = _CurrentMirrorWritableSubdirectory(
         self.repo, self.repo.key_generator.gen_id(), self.lod, cvs_directory,
         self, {}
