@@ -594,16 +594,6 @@ class RepositoryMirror:
 
     return node
 
-  def delete_lod(self, lod):
-    """Delete the main path for LOD from the tree.
-
-    The path must currently exist."""
-
-    lod_history = self._get_lod_history(lod)
-    if not lod_history.exists():
-      raise KeyError()
-    lod_history.update(self._youngest, None)
-
   def copy_lod(self, src_lod, dest_lod, src_revnum):
     """Copy all of SRC_LOD at SRC_REVNUM to DST_LOD.
 
