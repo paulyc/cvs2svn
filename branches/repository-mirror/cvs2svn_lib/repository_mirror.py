@@ -353,23 +353,21 @@ class LODHistory(object):
 
   Members:
 
-    revnums -- (list of int) the SVN revision numbers in which the id
+    revnums -- (list of int) the revision numbers in which the id
         changed, in numerical order.
 
     ids -- (list of (int or None)) the ID of the node describing the
-        root of this LOD starting at the corresponding SVN revision
+        root of this LOD starting at the corresponding revision
         number, or None if the LOD did not exist in that revision.
 
-  To find the root id for a given SVN revision number, a binary search
-  is done within REVNUMS to find the index of the most recent revision
-  at the time of REVNUM, then that index is used to read the id out of
+  To find the root id for a given revision number, a binary search is
+  done within REVNUMS to find the index of the most recent revision at
+  the time of REVNUM, then that index is used to read the id out of
   IDS.
 
   A sentry is written at the zeroth index of both arrays to describe
-  the initial situation, namely, that the LOD doesn't exist in SVN
-  revision r0.
-
-  """
+  the initial situation, namely, that the LOD doesn't exist in
+  revision r0."""
 
   __slots__ = ['revnums', 'ids']
 
@@ -403,7 +401,7 @@ class LODHistory(object):
     return id
 
   def exists(self):
-    """Return True iff LOD exists at the end of history."""
+    """Return True iff LOD exists in the current revision."""
 
     return self.ids[-1] is not None
 
@@ -457,33 +455,29 @@ class _NodeSerializer(MarshalSerializer):
 
 
 class RepositoryMirror:
-  """Mirror a Subversion repository and its history.
+  """Mirror a repository and its history.
 
-  Mirror a Subversion repository as it is constructed, one SVNCommit
-  at a time.  For each LineOfDevelopment we store a skeleton of the
-  directory structure within that LOD for each SVN revision number in
-  which it changed.
+  Mirror a repository as it is constructed, one revision at a time.
+  For each LineOfDevelopment we store a skeleton of the directory
+  structure within that LOD for each revnum in which it changed.
 
   For each LOD that has been seen so far, an LODHistory instance is
   stored in self._lod_histories.  An LODHistory keeps track of each
-  SVNRevision in which files were added to or deleted from that LOD,
-  as well as the node id of the node tree describing the LOD contents
-  at that SVN revision.
+  revnum in which files were added to or deleted from that LOD, as
+  well as the node id of the root of the node tree describing the LOD
+  contents at that SVN revision.
 
   The LOD trees themselves are stored in the _nodes_db database, which
-  maps node ids to nodes.  A node is a map from CVSPath.id to ids of
-  the corresponding subnodes.  The _nodes_db is stored on disk and
-  each access is expensive.
+  maps node ids to nodes.  A node is a map from CVSPath to ids of the
+  corresponding subnodes.  The _nodes_db is stored on disk and each
+  access is expensive.
 
   The _nodes_db database only holds the nodes for old revisions.  The
   revision that is being constructed is kept in memory in the
   _new_nodes map, which is cheap to access.
 
   You must invoke start_commit() before each SVNCommit and
-  end_commit() afterwards.
-
-  *** WARNING *** Path arguments to methods in this class MUST NOT
-      have leading or trailing slashes."""
+  end_commit() afterwards."""
 
   def register_artifacts(self, which_pass):
     """Register the artifacts that will be needed for this object."""
@@ -501,20 +495,19 @@ class RepositoryMirror:
     self._key_generator = KeyGenerator()
 
     # A map from LOD to LODHistory instance for all LODs that have
-    # been defines so far:
+    # been referenced so far:
     self._lod_histories = {}
 
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
-    # only track metadata, not file contents.)
+    # only track file existence, not file contents.)
     self._nodes_db = IndexedDatabase(
         artifact_manager.get_temp_file(config.SVN_MIRROR_NODES_STORE),
         artifact_manager.get_temp_file(config.SVN_MIRROR_NODES_INDEX_TABLE),
         DB_OPEN_NEW, serializer=_NodeSerializer()
         )
 
-    # Start at revision 0 without a root node.  It will be created
-    # by _open_writable_lod_node().
+    # Start at revision 0 without a root node.
     self._youngest = 0
 
   def start_commit(self, revnum):
