@@ -163,20 +163,14 @@ class SVNRepositoryMirror:
   def delete_path(self, cvs_path, lod, should_prune=False):
     """Delete CVS_PATH from LOD."""
 
-    if isinstance(cvs_path, CVSFile):
-      parent_node = self._mirror.get_current_path(
-          cvs_path.parent_directory, lod
-          )
-      del parent_node[cvs_path]
-    else:
-      node = self._mirror.get_current_path(cvs_path, lod)
-      if isinstance(node, CurrentMirrorSubdirectory):
-        parent_node = node.parent_mirror_dir
-      else:
-        parent_node = None
+    if cvs_path.parent_directory is None:
+      self.delete_lod(lod)
+      return
 
-      node.delete()
-
+    parent_node = self._mirror.get_current_path(
+        cvs_path.parent_directory, lod
+        )
+    del parent_node[cvs_path]
     self._invoke_delegates('delete_path', lod, cvs_path)
 
     if should_prune:
@@ -186,12 +180,13 @@ class SVNRepositoryMirror:
         # pruned.
         node = parent_node
         cvs_path = node.cvs_path
-        if isinstance(node, CurrentMirrorSubdirectory):
-          parent_node = node.parent_mirror_dir
-        else:
+        if cvs_path.parent_directory is None:
           parent_node = None
-        node.delete()
-        self._invoke_delegates('delete_path', lod, cvs_path)
+          self.delete_lod(lod)
+        else:
+          parent_node = node.parent_mirror_dir
+          node.delete()
+          self._invoke_delegates('delete_path', lod, cvs_path)
 
   def initialize_project(self, project):
     """Create the basic structure for PROJECT."""
