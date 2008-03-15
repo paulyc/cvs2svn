@@ -620,8 +620,7 @@ class RepositoryMirror:
     In the youngest revision of the repository, the destination LOD
     *must not* already exist.
 
-    Return the new node at DEST_LOD.  Note that this node is not
-    necessarily writable, though its parent node necessarily is."""
+    Return the new node at DEST_LOD, as a CurrentMirrorDirectory."""
 
     # Get the node of our src_path
     src_node = self.get_old_lod_directory(src_lod, src_revnum)
@@ -635,9 +634,8 @@ class RepositoryMirror:
 
     dest_lod_history.update(self._youngest, src_node.id)
 
-    # This is a cheap copy, so src_node has the same contents as the
-    # new destination node.
-    return src_node
+    # Return src_node, except packaged up as a CurrentMirrorDirectory:
+    return self.get_current_lod_directory(dest_lod)
 
   def close(self):
     """Free resources and close databases."""
