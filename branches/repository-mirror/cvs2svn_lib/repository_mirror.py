@@ -334,7 +334,7 @@ class _CurrentMirrorReadOnlySubdirectory(
     # Create a new ID:
     self.id = self.repo._key_generator.gen_id()
     self.repo._new_nodes[self.id] = self
-    self.parent_mirror_dir[self.cvs_path] = self.id
+    self.parent_mirror_dir[self.cvs_path] = self
 
 
 class _CurrentMirrorWritableSubdirectory(
