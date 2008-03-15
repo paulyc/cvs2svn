@@ -95,6 +95,12 @@ class PathExistsError(RepositoryMirrorError):
   pass
 
 
+class DeletedNodeReusedError(RepositoryMirrorError):
+  """The MirrorDirectory has already been deleted and shouldn't be reused."""
+
+  pass
+
+
 class MirrorDirectory(object):
   """Represent a node within the RepositoryMirror.
 
@@ -223,6 +229,16 @@ class CurrentMirrorDirectory(MirrorDirectory):
         )
 
 
+class DeletedCurrentMirrorDirectory(CurrentMirrorDirectory):
+  """A MirrorDirectory that has been deleted.
+
+  A MirrorDirectory that used to be a _WritableMirrorDirectoryMixin
+  but then was deleted.  Such instances are turned into this class so
+  that nobody can accidentally mutate them again."""
+
+  pass
+
+
 class _WritableMirrorDirectoryMixin:
   """Mixin for MirrorDirectories that are already writable.
 
@@ -238,6 +254,10 @@ class _WritableMirrorDirectoryMixin:
 
     if node is None:
       self.entries[cvs_path] = None
+    elif isinstance(node, DeletedCurrentMirrorDirectory):
+      raise DeletedNodeReusedError(
+          '%r has already been deleted and should not be reused' % (node,)
+          )
     else:
       self.entries[cvs_path] = node.id
 
@@ -246,7 +266,10 @@ class _WritableMirrorDirectoryMixin:
 
     If the node does not exist, then raise a KeyError."""
 
+    node = self[cvs_path]
     del self.entries[cvs_path]
+    if isinstance(node, _WritableMirrorDirectoryMixin):
+      node._mark_deleted()
 
   def mkdir(self, cvs_directory):
     """Create an empty subdirectory of this node at CVS_PATH.
@@ -281,6 +304,18 @@ class _WritableMirrorDirectoryMixin:
           )
 
     self[cvs_file] = None
+
+  def _mark_deleted(self):
+    """Mark this object and any writable descendants as being deleted."""
+
+    self.__class__ = DeletedCurrentMirrorDirectory
+
+    for (cvs_path, id) in self.entries.iteritems():
+      if id in self.repo._new_nodes:
+        node = self[cvs_path]
+        if isinstance(node, _WritableMirrorDirectoryMixin):
+          # Mark deleted and recurse:
+          node._mark_deleted()
 
 
 class _ReadOnlyMirrorDirectoryMixin:
@@ -320,8 +355,7 @@ class CurrentMirrorLODDirectory(CurrentMirrorDirectory):
     lod_history = self.repo._get_lod_history(self.lod)
     assert lod_history.exists()
     lod_history.update(self.repo._youngest, None)
-    # Vandalize this object to prevent its being used again:
-    self.__dict__.clear()
+    self._mark_deleted()
 
 
 class _CurrentMirrorReadOnlyLODDirectory(
@@ -354,8 +388,6 @@ class CurrentMirrorSubdirectory(CurrentMirrorDirectory):
     """Remove the directory represented by this object."""
 
     del self.parent_mirror_dir[self.cvs_path]
-    # Vandalize this object to prevent its being used again:
-    self.__dict__.clear()
 
 
 class _CurrentMirrorReadOnlySubdirectory(
@@ -556,7 +588,8 @@ class RepositoryMirror:
 
     # Copy the new nodes to the _nodes_db
     for node in self._new_nodes.values():
-      self._nodes_db[node.id] = node.entries
+      if not isinstance(node, DeletedCurrentMirrorDirectory):
+        self._nodes_db[node.id] = node.entries
 
     del self._new_nodes
 
