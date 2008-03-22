@@ -374,7 +374,7 @@ class SVNRepositoryMirror:
           fill_source.cvs_path, symbol, dest_node, src_entries
           )
 
-    self._cleanup_filled_directory(
+    return self._cleanup_filled_directory(
         symbol, dest_node, src_entries, copy_source
         )
 
@@ -396,17 +396,21 @@ class SVNRepositoryMirror:
           dest_subnode = dest_node[cvs_path]
         except KeyError:
           # Path doesn't exist yet; it has to be created:
-          self._fill_directory(symbol, None, src_entries[cvs_path], None)
+          dest_node = self._fill_directory(
+              symbol, None, src_entries[cvs_path], None
+              ).parent_mirror_dir
         else:
           # Path already exists, but might have to be cleaned up:
-          self._fill_directory(
+          dest_node = self._fill_directory(
               symbol, dest_subnode, src_entries[cvs_path], copy_source
-              )
+              ).parent_mirror_dir
       else:
         # Path is a CVSFile:
         self._fill_file(
             symbol, cvs_path in dest_node, src_entries[cvs_path], copy_source
             )
+
+    return dest_node
 
   def _fill_file(self, symbol, dest_existed, fill_source, parent_source):
     """Fill the tag or branch SYMBOL at the path indicated by FILL_SOURCE.
