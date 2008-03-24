@@ -22,7 +22,6 @@ For information about the format allowed by git-fast-import, see:
 
 """
 
-
 from __future__ import generators
 
 import bisect
@@ -45,6 +44,8 @@ from cvs2svn_lib.cvs_item import CVSRevisionNoop
 from cvs2svn_lib.cvs_item import CVSSymbol
 from cvs2svn_lib.output_option import OutputOption
 from cvs2svn_lib.svn_revision_range import RevisionScores
+from cvs2svn_lib.repository_mirror import RepositoryMirror
+from cvs2svn_lib.repository_mirror import PathExistsError
 
 
 # The branch name to use for the "tag fixup branches".  The
@@ -56,24 +57,87 @@ from cvs2svn_lib.svn_revision_range import RevisionScores
 FIXUP_BRANCH_NAME = 'refs/heads/TAG.FIXUP'
 
 
+class ExpectedDirectoryError(Exception):
+  """A file was found where a directory was expected."""
+
+  pass
+
+
+class ExpectedFileError(Exception):
+  """A directory was found where a file was expected."""
+
+  pass
+
+
 class GitRevisionWriter(object):
   def register_artifacts(self, which_pass):
     pass
 
-  def start(self):
-    pass
+  def start(self, mirror):
+    self._mirror = mirror
 
   def _modify_file(self, f, cvs_item, post_commit):
     raise NotImplementedError()
 
+  def _mkdir_p(self, cvs_directory, lod):
+    """Make sure that CVS_DIRECTORY exists in LOD.
+
+    If not, create it.  Return the node for CVS_DIRECTORY."""
+
+    try:
+      node = self._mirror.get_current_lod_directory(lod)
+    except KeyError:
+      node = self._mirror.add_lod(lod)
+
+    for sub_path in cvs_directory.get_ancestry()[1:]:
+      try:
+        node = node[sub_path]
+      except KeyError:
+        node = node.mkdir(sub_path)
+      if node is None:
+        raise ExpectedDirectoryError(
+            'File found at \'%s\' where directory was expected.' % (sub_path,)
+            )
+
+    return node
+
   def add_file(self, f, cvs_rev, post_commit):
+    cvs_file = cvs_rev.cvs_file
+    if post_commit:
+      lod = cvs_file.project.get_trunk()
+    else:
+      lod = cvs_rev.lod
+    parent_node = self._mkdir_p(cvs_file.parent_directory, lod)
+    parent_node.add_file(cvs_file)
     self._modify_file(f, cvs_rev, post_commit)
 
   def modify_file(self, f, cvs_rev, post_commit):
+    cvs_file = cvs_rev.cvs_file
+    if post_commit:
+      lod = cvs_file.project.get_trunk()
+    else:
+      lod = cvs_rev.lod
+    if self._mirror.get_current_path(cvs_file, lod) is not None:
+      raise ExpectedFileError(
+          'Directory found at \'%s\' where file was expected.' % (cvs_file,)
+          )
     self._modify_file(f, cvs_rev, post_commit)
 
-  def delete_file(self, f, cvs_item, post_commit):
-    f.write('D %s\n' % (cvs_item.cvs_file.cvs_path,))
+  def delete_file(self, f, cvs_rev, post_commit):
+    cvs_file = cvs_rev.cvs_file
+    if post_commit:
+      lod = cvs_file.project.get_trunk()
+    else:
+      lod = cvs_rev.lod
+    parent_node = self._mirror.get_current_path(
+        cvs_file.parent_directory, lod
+        )
+    if parent_node[cvs_file] is not None:
+      raise ExpectedFileError(
+          'Directory found at \'%s\' where file was expected.' % (cvs_file,)
+          )
+    del parent_node[cvs_file]
+    f.write('D %s\n' % (cvs_rev.cvs_file.cvs_path,))
 
   def process_revision(self, f, cvs_rev, post_commit):
     if isinstance(cvs_rev, CVSRevisionAdd):
@@ -88,10 +152,13 @@ class GitRevisionWriter(object):
       raise InternalError('Unexpected CVSRevision type: %s' % (cvs_rev,))
 
   def branch_file(self, f, cvs_symbol):
+    cvs_file = cvs_symbol.cvs_file
+    parent_node = self._mkdir_p(cvs_file.parent_directory, cvs_symbol.symbol)
+    parent_node.add_file(cvs_file)
     self._modify_file(f, cvs_symbol, post_commit=False)
 
   def finish(self):
-    pass
+    del self._mirror
 
 
 class GitRevisionMarkWriter(GitRevisionWriter):
@@ -116,8 +183,8 @@ class GitRevisionInlineWriter(GitRevisionWriter):
     GitRevisionWriter.register_artifacts(self, which_pass)
     self.revision_reader.register_artifacts(which_pass)
 
-  def start(self):
-    GitRevisionWriter.start(self)
+  def start(self, mirror):
+    GitRevisionWriter.start(self, mirror)
     self.revision_reader.start()
 
   def _modify_file(self, f, cvs_item, post_commit):
@@ -207,6 +274,8 @@ class GitOutputOption(OutputOption):
 
     self.revision_writer = revision_writer
 
+    self._mirror = RepositoryMirror()
+
   def register_artifacts(self, which_pass):
     # These artifacts are needed for SymbolingsReader:
     artifact_manager.register_temp_file_needed(
@@ -216,6 +285,7 @@ class GitOutputOption(OutputOption):
         config.SYMBOL_OFFSETS_DB, which_pass
         )
     self.revision_writer.register_artifacts(which_pass)
+    self._mirror.register_artifacts(which_pass)
 
   def check(self):
     if Ctx().cross_project_commits:
@@ -247,7 +317,8 @@ class GitOutputOption(OutputOption):
     # corresponding mark.
     self._marks = {}
 
-    self.revision_writer.start()
+    self._mirror.open()
+    self.revision_writer.start(self._mirror)
 
   def _create_commit_mark(self, lod, revnum):
     assert revnum >= self._youngest
@@ -271,8 +342,8 @@ class GitOutputOption(OutputOption):
   _get_log_msg = staticmethod(_get_log_msg)
 
   def process_initial_project_commit(self, svn_commit):
-    # Nothing to do.
-    pass
+    self._mirror.start_commit(svn_commit.revnum)
+    self._mirror.end_commit()
 
   def process_primary_commit(self, svn_commit):
     author = self._get_author(svn_commit)
@@ -284,6 +355,8 @@ class GitOutputOption(OutputOption):
     if len(lods) != 1:
       raise InternalError('Commit affects %d LODs' % (len(lods),))
     lod = lods.pop()
+
+    self._mirror.start_commit(svn_commit.revnum)
     if isinstance(lod, Trunk):
       # FIXME: is this correct?:
       self.f.write('commit refs/heads/master\n')
@@ -304,6 +377,7 @@ class GitOutputOption(OutputOption):
           )
 
     self.f.write('\n')
+    self._mirror.end_commit()
 
   def process_post_commit(self, svn_commit):
     author = self._get_author(svn_commit)
@@ -315,6 +389,8 @@ class GitOutputOption(OutputOption):
     if len(source_lods) != 1:
       raise InternalError('Commit is from %d LODs' % (len(source_lods),))
     source_lod = source_lods.pop()
+
+    self._mirror.start_commit(svn_commit.revnum)
     # FIXME: is this correct?:
     self.f.write('commit refs/heads/master\n')
     self.f.write(
@@ -336,6 +412,7 @@ class GitOutputOption(OutputOption):
           )
 
     self.f.write('\n')
+    self._mirror.end_commit()
 
   def _get_source_groups(self, svn_commit):
     """Return groups of sources for SVN_COMMIT.
@@ -407,10 +484,12 @@ class GitOutputOption(OutputOption):
     self.f.write('\n')
 
   def process_branch_commit(self, svn_commit):
+    self._mirror.start_commit(svn_commit.revnum)
     self._process_symbol_commit(
         svn_commit, 'refs/heads/%s' % (svn_commit.symbol.name,),
         self._create_commit_mark(svn_commit.symbol, svn_commit.revnum),
         )
+    self._mirror.end_commit()
 
   def process_tag_commit(self, svn_commit):
     # FIXME: For now we create a fixup branch with the same name as
@@ -420,6 +499,7 @@ class GitOutputOption(OutputOption):
     author = self._get_author(svn_commit)
     log_msg = self._get_log_msg(svn_commit)
 
+    self._mirror.start_commit(svn_commit.revnum)
     mark = self._create_commit_mark(svn_commit.symbol, svn_commit.revnum)
     self._process_symbol_commit(svn_commit, FIXUP_BRANCH_NAME, mark)
     self.f.write('tag %s\n' % (svn_commit.symbol.name,))
@@ -432,9 +512,11 @@ class GitOutputOption(OutputOption):
 
     self.f.write('reset %s\n' % (FIXUP_BRANCH_NAME,))
     self.f.write('\n')
+    self._mirror.end_commit()
 
   def cleanup(self):
     self.revision_writer.finish()
+    self._mirror.close()
     self.f.close()
     del self.f
     self._symbolings_reader.close()
