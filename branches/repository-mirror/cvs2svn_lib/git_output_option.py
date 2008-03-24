@@ -450,6 +450,55 @@ class GitOutputOption(OutputOption):
             del lod_range_map[cvs_symbol]
         yield (lod, revnum, cvs_symbols)
 
+  def _get_all_files(self, node):
+    """Generate all of the CVSFiles under NODE."""
+
+    for cvs_path in node:
+      subnode = node[cvs_path]
+      if subnode is None:
+        yield cvs_path
+      else:
+        for sub_cvs_path in self._get_all_files(subnode):
+          yield sub_cvs_path
+
+  def _is_simple_copy(self, svn_commit, source_groups):
+    """Return True iff SVN_COMMIT can be created as a simple copy.
+
+    SVN_COMMIT is an SVNTagCommit.  Return True iff it can be created
+    as a simple copy from an existing revision (i.e., if the fixup
+    branch can be avoided for this tag creation)."""
+
+    # The first requirement is that there be exactly one source:
+    if len(source_groups) != 1:
+      return False
+
+    (source_lod, svn_revnum, cvs_symbols) = source_groups[0]
+
+    # The second requirement is that the destionation LOD not already
+    # exist:
+    try:
+      self._mirror.get_current_lod_directory(svn_commit.symbol)
+    except KeyError:
+      # The LOD doesn't already exist.  This is good.
+      pass
+    else:
+      # The LOD already exists.  It cannot be created by a copy.
+      return False
+
+    # The third requirement is that the source LOD contains exactly
+    # the same files as we need to add to the symbol:
+    try:
+      source_node = self._mirror.get_current_lod_directory(source_lod)
+    except KeyError:
+      raise InternalError('Source %r does not exist' % (source_lod,))
+    cvs_file_set = set([cvs_symbol.cvs_file for cvs_symbol in cvs_symbols])
+    for cvs_file in self._get_all_files(source_node):
+      try:
+        cvs_file_set.remove(cvs_file)
+      except KeyError:
+        return False
+    return not cvs_file_set
+
   def _get_source_mark(self, source_lod, revnum):
     """Return the mark active at REVNUM on SOURCE_LOD."""
 
@@ -503,21 +552,45 @@ class GitOutputOption(OutputOption):
     log_msg = self._get_log_msg(svn_commit)
 
     self._mirror.start_commit(svn_commit.revnum)
-    mark = self._create_commit_mark(svn_commit.symbol, svn_commit.revnum)
-    source_groups = list(self._get_source_groups(svn_commit))
-    self._process_symbol_commit(
-        svn_commit, FIXUP_BRANCH_NAME, source_groups, mark
-        )
-    self.f.write('tag %s\n' % (svn_commit.symbol.name,))
-    self.f.write('from :%d\n' % (mark,))
-    self.f.write(
-        'tagger %s %d +0000\n' % (author, svn_commit.date,)
-        )
-    self.f.write('data %d\n' % (len(log_msg),))
-    self.f.write('%s\n' % (log_msg,))
 
-    self.f.write('reset %s\n' % (FIXUP_BRANCH_NAME,))
-    self.f.write('\n')
+    source_groups = list(self._get_source_groups(svn_commit))
+    if self._is_simple_copy(svn_commit, source_groups):
+      (source_lod, source_revnum, cvs_symbols) = source_groups[0]
+
+      Log().debug(
+          '%s will be created via a simple copy from %s:r%d'
+          % (svn_commit.symbol, source_lod, source_revnum,)
+          )
+
+      mark = self._get_source_mark(source_lod, source_revnum)
+
+      self.f.write('tag %s\n' % (svn_commit.symbol.name,))
+      self.f.write('from :%d\n' % (mark,))
+      self.f.write(
+          'tagger %s %d +0000\n' % (author, svn_commit.date,)
+          )
+      self.f.write('data %d\n' % (len(log_msg),))
+      self.f.write('%s\n' % (log_msg,))
+    else:
+      Log().debug(
+          '%s will be created via a fixup branch' % (svn_commit.symbol,)
+          )
+
+      mark = self._create_commit_mark(svn_commit.symbol, svn_commit.revnum)
+      self._process_symbol_commit(
+          svn_commit, FIXUP_BRANCH_NAME, source_groups, mark
+          )
+      self.f.write('tag %s\n' % (svn_commit.symbol.name,))
+      self.f.write('from :%d\n' % (mark,))
+      self.f.write(
+          'tagger %s %d +0000\n' % (author, svn_commit.date,)
+          )
+      self.f.write('data %d\n' % (len(log_msg),))
+      self.f.write('%s\n' % (log_msg,))
+
+      self.f.write('reset %s\n' % (FIXUP_BRANCH_NAME,))
+      self.f.write('\n')
+
     self._mirror.end_commit()
 
   def cleanup(self):
