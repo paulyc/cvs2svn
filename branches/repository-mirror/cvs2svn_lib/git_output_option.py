@@ -73,10 +73,11 @@ class GitRevisionWriter(object):
   def register_artifacts(self, which_pass):
     pass
 
-  def start(self, mirror):
+  def start(self, f, mirror):
+    self.f = f
     self._mirror = mirror
 
-  def _modify_file(self, f, cvs_item, post_commit):
+  def _modify_file(self, cvs_item, post_commit):
     raise NotImplementedError()
 
   def _mkdir_p(self, cvs_directory, lod):
@@ -101,7 +102,7 @@ class GitRevisionWriter(object):
 
     return node
 
-  def add_file(self, f, cvs_rev, post_commit):
+  def add_file(self, cvs_rev, post_commit):
     cvs_file = cvs_rev.cvs_file
     if post_commit:
       lod = cvs_file.project.get_trunk()
@@ -109,9 +110,9 @@ class GitRevisionWriter(object):
       lod = cvs_rev.lod
     parent_node = self._mkdir_p(cvs_file.parent_directory, lod)
     parent_node.add_file(cvs_file)
-    self._modify_file(f, cvs_rev, post_commit)
+    self._modify_file(cvs_rev, post_commit)
 
-  def modify_file(self, f, cvs_rev, post_commit):
+  def modify_file(self, cvs_rev, post_commit):
     cvs_file = cvs_rev.cvs_file
     if post_commit:
       lod = cvs_file.project.get_trunk()
@@ -121,9 +122,9 @@ class GitRevisionWriter(object):
       raise ExpectedFileError(
           'Directory found at \'%s\' where file was expected.' % (cvs_file,)
           )
-    self._modify_file(f, cvs_rev, post_commit)
+    self._modify_file(cvs_rev, post_commit)
 
-  def delete_file(self, f, cvs_rev, post_commit):
+  def delete_file(self, cvs_rev, post_commit):
     cvs_file = cvs_rev.cvs_file
     if post_commit:
       lod = cvs_file.project.get_trunk()
@@ -137,38 +138,39 @@ class GitRevisionWriter(object):
           'Directory found at \'%s\' where file was expected.' % (cvs_file,)
           )
     del parent_node[cvs_file]
-    f.write('D %s\n' % (cvs_rev.cvs_file.cvs_path,))
+    self.f.write('D %s\n' % (cvs_rev.cvs_file.cvs_path,))
 
-  def process_revision(self, f, cvs_rev, post_commit):
+  def process_revision(self, cvs_rev, post_commit):
     if isinstance(cvs_rev, CVSRevisionAdd):
-      self.add_file(f, cvs_rev, post_commit)
+      self.add_file(cvs_rev, post_commit)
     elif isinstance(cvs_rev, CVSRevisionChange):
-      self.modify_file(f, cvs_rev, post_commit)
+      self.modify_file(cvs_rev, post_commit)
     elif isinstance(cvs_rev, CVSRevisionDelete):
-      self.delete_file(f, cvs_rev, post_commit)
+      self.delete_file(cvs_rev, post_commit)
     elif isinstance(cvs_rev, CVSRevisionNoop):
       pass
     else:
       raise InternalError('Unexpected CVSRevision type: %s' % (cvs_rev,))
 
-  def branch_file(self, f, cvs_symbol):
+  def branch_file(self, cvs_symbol):
     cvs_file = cvs_symbol.cvs_file
     parent_node = self._mkdir_p(cvs_file.parent_directory, cvs_symbol.symbol)
     parent_node.add_file(cvs_file)
-    self._modify_file(f, cvs_symbol, post_commit=False)
+    self._modify_file(cvs_symbol, post_commit=False)
 
   def finish(self):
     del self._mirror
+    del self.f
 
 
 class GitRevisionMarkWriter(GitRevisionWriter):
-  def _modify_file(self, f, cvs_item, post_commit):
+  def _modify_file(self, cvs_item, post_commit):
     if cvs_item.cvs_file.executable:
       mode = '100755'
     else:
       mode = '100644'
 
-    f.write(
+    self.f.write(
         'M %s :%d %s\n'
         % (mode, cvs_item.revision_recorder_token,
            cvs_item.cvs_file.cvs_path,)
@@ -183,17 +185,17 @@ class GitRevisionInlineWriter(GitRevisionWriter):
     GitRevisionWriter.register_artifacts(self, which_pass)
     self.revision_reader.register_artifacts(which_pass)
 
-  def start(self, mirror):
-    GitRevisionWriter.start(self, mirror)
+  def start(self, f, mirror):
+    GitRevisionWriter.start(self, f, mirror)
     self.revision_reader.start()
 
-  def _modify_file(self, f, cvs_item, post_commit):
+  def _modify_file(self, cvs_item, post_commit):
     if cvs_item.cvs_file.executable:
       mode = '100755'
     else:
       mode = '100644'
 
-    f.write(
+    self.f.write(
         'M %s inline %s\n'
         % (mode, cvs_item.cvs_file.cvs_path,)
         )
@@ -208,9 +210,9 @@ class GitRevisionInlineWriter(GitRevisionWriter):
         cvs_rev, suppress_keyword_substitution=False
         ).read()
 
-    f.write('data %d\n' % (len(fulltext),))
-    f.write(fulltext)
-    f.write('\n')
+    self.f.write('data %d\n' % (len(fulltext),))
+    self.f.write(fulltext)
+    self.f.write('\n')
 
   def finish(self):
     GitRevisionWriter.finish(self)
@@ -318,7 +320,7 @@ class GitOutputOption(OutputOption):
     self._marks = {}
 
     self._mirror.open()
-    self.revision_writer.start(self._mirror)
+    self.revision_writer.start(self.f, self._mirror)
 
   def _create_commit_mark(self, lod, revnum):
     assert revnum >= self._youngest
@@ -372,9 +374,7 @@ class GitOutputOption(OutputOption):
     self.f.write('data %d\n' % (len(log_msg),))
     self.f.write('%s\n' % (log_msg,))
     for cvs_rev in svn_commit.get_cvs_items():
-      self.revision_writer.process_revision(
-          self.f, cvs_rev, post_commit=False
-          )
+      self.revision_writer.process_revision(cvs_rev, post_commit=False)
 
     self.f.write('\n')
     self._mirror.end_commit()
@@ -407,9 +407,7 @@ class GitOutputOption(OutputOption):
         % (self._get_source_mark(source_lod, svn_commit.revnum),)
         )
     for cvs_rev in svn_commit.cvs_revs:
-      self.revision_writer.process_revision(
-          self.f, cvs_rev, post_commit=True
-          )
+      self.revision_writer.process_revision(cvs_rev, post_commit=True)
 
     self.f.write('\n')
     self._mirror.end_commit()
@@ -529,7 +527,7 @@ class GitOutputOption(OutputOption):
 
     for (source_lod, source_revnum, cvs_symbols,) in source_groups:
       for cvs_symbol in cvs_symbols:
-        self.revision_writer.branch_file(self.f, cvs_symbol)
+        self.revision_writer.branch_file(cvs_symbol)
 
     self.f.write('\n')
 
