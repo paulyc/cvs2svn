@@ -458,7 +458,9 @@ class GitOutputOption(OutputOption):
     (revnum, mark) = modifications[i]
     return mark
 
-  def _process_symbol_commit(self, svn_commit, git_branch, mark):
+  def _process_symbol_commit(
+        self, svn_commit, git_branch, source_groups, mark
+        ):
     author = self._get_author(svn_commit)
     log_msg = self._get_log_msg(svn_commit)
 
@@ -470,7 +472,6 @@ class GitOutputOption(OutputOption):
     self.f.write('data %d\n' % (len(log_msg),))
     self.f.write('%s\n' % (log_msg,))
 
-    source_groups = list(self._get_source_groups(svn_commit))
     for (source_lod, source_revnum, cvs_symbols,) in source_groups:
       self.f.write(
           'merge :%d\n'
@@ -485,8 +486,10 @@ class GitOutputOption(OutputOption):
 
   def process_branch_commit(self, svn_commit):
     self._mirror.start_commit(svn_commit.revnum)
+    source_groups = list(self._get_source_groups(svn_commit))
     self._process_symbol_commit(
         svn_commit, 'refs/heads/%s' % (svn_commit.symbol.name,),
+        source_groups,
         self._create_commit_mark(svn_commit.symbol, svn_commit.revnum),
         )
     self._mirror.end_commit()
@@ -501,7 +504,10 @@ class GitOutputOption(OutputOption):
 
     self._mirror.start_commit(svn_commit.revnum)
     mark = self._create_commit_mark(svn_commit.symbol, svn_commit.revnum)
-    self._process_symbol_commit(svn_commit, FIXUP_BRANCH_NAME, mark)
+    source_groups = list(self._get_source_groups(svn_commit))
+    self._process_symbol_commit(
+        svn_commit, FIXUP_BRANCH_NAME, source_groups, mark
+        )
     self.f.write('tag %s\n' % (svn_commit.symbol.name,))
     self.f.write('from :%d\n' % (mark,))
     self.f.write(
