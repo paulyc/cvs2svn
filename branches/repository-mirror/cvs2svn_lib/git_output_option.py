@@ -543,6 +543,15 @@ class GitOutputOption(OutputOption):
         )
     self._mirror.end_commit()
 
+  def _set_tag(self, svn_commit, mark, author, log_msg):
+    self.f.write('tag %s\n' % (svn_commit.symbol.name,))
+    self.f.write('from :%d\n' % (mark,))
+    self.f.write(
+        'tagger %s %d +0000\n' % (author, svn_commit.date,)
+        )
+    self.f.write('data %d\n' % (len(log_msg),))
+    self.f.write('%s\n' % (log_msg,))
+
   def process_tag_commit(self, svn_commit):
     # FIXME: For now we create a fixup branch with the same name as
     # the tag, then the tag.  We never delete the fixup branch.  Also,
@@ -556,38 +565,21 @@ class GitOutputOption(OutputOption):
     source_groups = list(self._get_source_groups(svn_commit))
     if self._is_simple_copy(svn_commit, source_groups):
       (source_lod, source_revnum, cvs_symbols) = source_groups[0]
-
       Log().debug(
           '%s will be created via a simple copy from %s:r%d'
           % (svn_commit.symbol, source_lod, source_revnum,)
           )
-
       mark = self._get_source_mark(source_lod, source_revnum)
-
-      self.f.write('tag %s\n' % (svn_commit.symbol.name,))
-      self.f.write('from :%d\n' % (mark,))
-      self.f.write(
-          'tagger %s %d +0000\n' % (author, svn_commit.date,)
-          )
-      self.f.write('data %d\n' % (len(log_msg),))
-      self.f.write('%s\n' % (log_msg,))
+      self._set_tag(svn_commit, mark, author, log_msg)
     else:
       Log().debug(
           '%s will be created via a fixup branch' % (svn_commit.symbol,)
           )
-
       mark = self._create_commit_mark(svn_commit.symbol, svn_commit.revnum)
       self._process_symbol_commit(
           svn_commit, FIXUP_BRANCH_NAME, source_groups, mark
           )
-      self.f.write('tag %s\n' % (svn_commit.symbol.name,))
-      self.f.write('from :%d\n' % (mark,))
-      self.f.write(
-          'tagger %s %d +0000\n' % (author, svn_commit.date,)
-          )
-      self.f.write('data %d\n' % (len(log_msg),))
-      self.f.write('%s\n' % (log_msg,))
-
+      self._set_tag(svn_commit, mark, author, log_msg)
       self.f.write('reset %s\n' % (FIXUP_BRANCH_NAME,))
       self.f.write('\n')
 
