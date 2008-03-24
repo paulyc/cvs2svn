@@ -63,39 +63,39 @@ class GitRevisionWriter(object):
   def start(self):
     pass
 
-  def _modify_file(self, f, cvs_item):
+  def _modify_file(self, f, cvs_item, post_commit):
     raise NotImplementedError()
 
-  def add_file(self, f, cvs_rev):
-    self._modify_file(f, cvs_rev)
+  def add_file(self, f, cvs_rev, post_commit):
+    self._modify_file(f, cvs_rev, post_commit)
 
-  def modify_file(self, f, cvs_rev):
-    self._modify_file(f, cvs_rev)
+  def modify_file(self, f, cvs_rev, post_commit):
+    self._modify_file(f, cvs_rev, post_commit)
 
-  def delete_file(self, f, cvs_item):
+  def delete_file(self, f, cvs_item, post_commit):
     f.write('D %s\n' % (cvs_item.cvs_file.cvs_path,))
 
-  def process_revision(self, f, cvs_rev):
+  def process_revision(self, f, cvs_rev, post_commit):
     if isinstance(cvs_rev, CVSRevisionAdd):
-      self.add_file(f, cvs_rev)
+      self.add_file(f, cvs_rev, post_commit)
     elif isinstance(cvs_rev, CVSRevisionChange):
-      self.modify_file(f, cvs_rev)
+      self.modify_file(f, cvs_rev, post_commit)
     elif isinstance(cvs_rev, CVSRevisionDelete):
-      self.delete_file(f, cvs_rev)
+      self.delete_file(f, cvs_rev, post_commit)
     elif isinstance(cvs_rev, CVSRevisionNoop):
       pass
     else:
       raise InternalError('Unexpected CVSRevision type: %s' % (cvs_rev,))
 
   def branch_file(self, f, cvs_symbol):
-    self._modify_file(f, cvs_symbol)
+    self._modify_file(f, cvs_symbol, post_commit=False)
 
   def finish(self):
     pass
 
 
 class GitRevisionMarkWriter(GitRevisionWriter):
-  def _modify_file(self, f, cvs_item):
+  def _modify_file(self, f, cvs_item, post_commit):
     if cvs_item.cvs_file.executable:
       mode = '100755'
     else:
@@ -120,7 +120,7 @@ class GitRevisionInlineWriter(GitRevisionWriter):
     GitRevisionWriter.start(self)
     self.revision_reader.start()
 
-  def _modify_file(self, f, cvs_item):
+  def _modify_file(self, f, cvs_item, post_commit):
     if cvs_item.cvs_file.executable:
       mode = '100755'
     else:
@@ -299,7 +299,9 @@ class GitOutputOption(OutputOption):
     self.f.write('data %d\n' % (len(log_msg),))
     self.f.write('%s\n' % (log_msg,))
     for cvs_rev in svn_commit.get_cvs_items():
-      self.revision_writer.process_revision(self.f, cvs_rev)
+      self.revision_writer.process_revision(
+          self.f, cvs_rev, post_commit=False
+          )
 
     self.f.write('\n')
 
@@ -329,7 +331,9 @@ class GitOutputOption(OutputOption):
         % (self._get_source_mark(source_lod, svn_commit.revnum),)
         )
     for cvs_rev in svn_commit.cvs_revs:
-      self.revision_writer.process_revision(self.f, cvs_rev)
+      self.revision_writer.process_revision(
+          self.f, cvs_rev, post_commit=True
+          )
 
     self.f.write('\n')
 
