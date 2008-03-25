@@ -3315,6 +3315,12 @@ def mirror_keyerror2_test():
   conv = ensure_conversion('mirror-keyerror2')
 
 
+def mirror_keyerror3_test():
+  "a case that gave KeyError in RepositoryMirror"
+
+  conv = ensure_conversion('mirror-keyerror3')
+
+
 
 ########################################################################
 # Run the tests
@@ -3501,6 +3507,7 @@ test_list = [
     no_revs_file,
     mirror_keyerror_test,
     mirror_keyerror2_test,
+    mirror_keyerror3_test,
     ]
 
 if __name__ == '__main__':
