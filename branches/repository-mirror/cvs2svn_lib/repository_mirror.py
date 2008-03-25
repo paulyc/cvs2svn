@@ -431,6 +431,9 @@ class LODHistory(object):
 
   Members:
 
+    _mirror -- (RepositoryMirror) the RepositoryMirror that manages
+        this LODHistory.
+
     lod -- (LineOfDevelopment) the LOD described by this LODHistory.
 
     revnums -- (list of int) the revision numbers in which the id
@@ -449,9 +452,10 @@ class LODHistory(object):
   the initial situation, namely, that the LOD doesn't exist in
   revision r0."""
 
-  __slots__ = ['lod', 'revnums', 'ids']
+  __slots__ = ['_mirror', 'lod', 'revnums', 'ids']
 
-  def __init__(self, lod):
+  def __init__(self, mirror, lod):
+    self._mirror = mirror
     self.lod = lod
     self.revnums = [0]
     self.ids = [None]
@@ -621,7 +625,7 @@ class RepositoryMirror:
     try:
       return self._lod_histories[lod]
     except KeyError:
-      lod_history = LODHistory(lod)
+      lod_history = LODHistory(self, lod)
       self._lod_histories[lod] = lod_history
       return lod_history
 
