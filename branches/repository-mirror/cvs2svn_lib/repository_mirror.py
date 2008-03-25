@@ -60,6 +60,7 @@ import bisect
 from cvs2svn_lib.boolean import *
 from cvs2svn_lib import config
 from cvs2svn_lib.common import DB_OPEN_NEW
+from cvs2svn_lib.common import InternalError
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.cvs_file import CVSFile
 from cvs2svn_lib.cvs_file import CVSDirectory
@@ -503,7 +504,20 @@ class LODHistory(object):
     if revnum < self.revnums[-1]:
       raise KeyError()
     elif revnum == self.revnums[-1]:
-      # Overwrite old entry (which was presumably read-only):
+      # This is an attempt to overwrite an entry that was already
+      # updated during this revision.  Don't allow the replacement
+      # None -> None or allow one new id to be replaced with another:
+      old_id = self.ids[-1]
+      if old_id is None and id is None:
+        raise InternalError(
+            'ID changed from None -> None for %s, r%d' % (self.lod, revnum,)
+            )
+      elif (old_id is not None and id is not None
+            and old_id in self._mirror._new_nodes):
+        raise InternalError(
+            'ID changed from %d -> %d for %s, r%d'
+            % (old_id, id, self.lod, revnum,)
+            )
       self.ids[-1] = id
     else:
       self.revnums.append(revnum)
