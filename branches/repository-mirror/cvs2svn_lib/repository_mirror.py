@@ -515,7 +515,7 @@ class LODHistory(object):
       elif (old_id is not None and id is not None
             and old_id in self._mirror._new_nodes):
         raise InternalError(
-            'ID changed from %d -> %d for %s, r%d'
+            'ID changed from %x -> %x for %s, r%d'
             % (old_id, id, self.lod, revnum,)
             )
       self.ids[-1] = id
