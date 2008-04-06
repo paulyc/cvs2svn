@@ -612,7 +612,7 @@ class _NodeSerializer(MarshalSerializer):
     return self._load(MarshalSerializer.loads(self, s))
 
 
-class _NodeDatabase(IndexedDatabase):
+class _NodeDatabase(object):
   """A database storing all of the directory nodes."""
 
   def __init__(self):
