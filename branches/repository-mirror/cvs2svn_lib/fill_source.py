@@ -163,6 +163,18 @@ class FillSource:
 
     return src_entries
 
+  def __str__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s(%s:%s)' % (
+        self.__class__.__name__, self._symbol, self.cvs_path,
+        )
+
+  def __repr__(self):
+    """For convenience only.  The format is subject to change at any time."""
+
+    return '%s%r' % (self, self._node_tree,)
+
 
 def get_source_set(symbol, range_map):
   """Return a FillSource describing the fill sources for RANGE_MAP.
