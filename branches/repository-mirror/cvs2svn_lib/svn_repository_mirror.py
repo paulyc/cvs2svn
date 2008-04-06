@@ -342,6 +342,11 @@ class SVNRepositoryMirror:
         self._fill_file(
             symbol, cvs_path in dest_node, src_entries[cvs_path], copy_source
             )
+        # Reread dest_node since the call to _fill_file() might have
+        # made it writable:
+        dest_node = self._mirror.get_current_path(
+            dest_node.cvs_path, dest_node.lod
+            )
 
     return dest_node
 
