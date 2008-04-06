@@ -52,7 +52,84 @@ storage of the history of potentially tens of thousands of LODs over
 hundreds of thousands of revisions in an amount of space that scales
 as O(numberOfLODs + numberOfRevisions), rather than O(numberOfLODs *
 numberOfRevisions) as would be needed if the information were stored
-in the equivalent of a 2D array."""
+in the equivalent of a 2D array.
+
+The internal operation of these classes is somewhat intricate, but the
+interface attempts to hide the complexity, enforce the usage rules,
+and allow efficient access.  The most important facts to remember are
+(1) that a directory node can be used for multiple purposes (for
+multiple branches and for multiple revisions on a single branch), (2)
+that only a node that has been created within the current revision is
+allowed to be mutated, and (3) that the current revision can include
+nodes carried over from prior revisions, which are immutable.
+
+This leads to a bewildering variety of MirrorDirectory classes.  The
+most important distinction is between OldMirrorDirectories and
+CurrentMirrorDirectories.  A single node can be represented multiple
+ways in memory at the same time, depending on whether it was looked up
+as part of the current revision or part of an old revision:
+
+    MirrorDirectory -- the base class for all MirrorDirectory nodes.
+        This class allows lookup of subnodes and iteration over
+        subnodes.
+
+    OldMirrorDirectory -- a MirrorDirectory that was looked up for an
+        old revision.  These instances are immutable, as only the
+        current revision is allowed to be modified.
+
+    CurrentMirrorDirectory -- a MirrorDirectory that was looked up for
+        the current revision.  Such an instance is always logically
+        mutable, though mutating it might require the node to be
+        copied first.  Such an instance might represent a node that
+        has already been copied during this revision and can therefore
+        be modified freely (such nodes implement
+        _WritableMirrorDirectoryMixin), or it might represent a node
+        that was carried over from an old revision and hasn't been
+        copied yet (such nodes implement
+        _ReadOnlyMirrorDirectoryMixin).  If the latter, then the node
+        copies itself (and bubbles up the change) before allowing
+        itself to be modified.  But the distinction is managed
+        internally; client classes should not have to worry about it.
+
+    CurrentMirrorLODDirectory -- A CurrentMirrorDirectory representing
+        the root directory of a line of development in the current
+        revision.  This class has two concrete subclasses,
+        _CurrentMirrorReadOnlyLODDirectory and
+        _CurrentMirrorWritableLODDirectory, depending on whether the
+        node has already been copied during this revision.
+
+
+    CurrentMirrorSubdirectory -- A CurrentMirrorDirectory representing
+        a subdirectory within a line of development's directory tree
+        in the current revision.  This class has two concrete
+        subclasses, _CurrentMirrorReadOnlySubdirectory and
+        _CurrentMirrorWritableSubdirectory, depending on whether the
+        node has already been copied during this revision.
+
+    DeletedCurrentMirrorDirectory -- a MirrorDirectory that has been
+        deleted.  Such an instance is disabled so that it cannot
+        accidentally be used.
+
+While a revision is being processed, RepositoryMirror._new_nodes holds
+every writable CurrentMirrorDirectory instance (i.e., every node that
+has been created in the revision).  Since these nodes are mutable, it
+is important that there be exactly one instance associated with each
+node; otherwise there would be problems keeping the instances
+synchronized.  These are written to the database by
+RepositoryMirror.end_commit().
+
+OldMirrorDirectory and read-only CurrentMirrorDirectory instances are
+*not* cached; they are recreated whenever they are referenced.  There
+might be multiple instances referring to the same node.  A read-only
+CurrentMirrorDirectory instance is mutated in place into a writable
+CurrentMirrorDirectory instance if it needs to be modified.
+
+FIXME: The rules for when a MirrorDirectory instance can continue to
+be used vs. when it has to be read again (because it has been modified
+indirectly and therefore copied) are confusing and error-prone.
+Probably the semantics should be changed.
+
+"""
 
 
 import bisect
@@ -114,25 +191,7 @@ class MirrorDirectory(object):
   Instances of this class act like a map {CVSPath : MirrorDirectory},
   where CVSPath is an item within this directory (i.e., a file or
   subdirectory within this directory).  The value is either another
-  MirrorDirectory instance (for directories) or None (for files).
-
-  There is a bewildering variety of MirrorDirectory classes.  The most
-  important distinction is between OldMirrorDirectories and
-  CurrentMirrorDirectories:
-
-      OldMirrorDirectory -- a MirrorDirectory that was looked up for
-          an old revision.  These instances are immutable, as only the
-          current revision is allowed to be modified.
-
-      CurrentMirrorDirectory -- a MirrorDirectory that was looked up
-          for the current revision.  These instances might represent a
-          node that has already been copied during this revision, or
-          they might represent a node that was carried over from an
-          old revision.  If the latter, then the node copies itself
-          (and bubbles up the change) before allowing itself to be
-          modified.
-
-  """
+  MirrorDirectory instance (for directories) or None (for files)."""
 
   def __init__(self, repo, id, entries):
     # The RepositoryMirror containing this directory:
