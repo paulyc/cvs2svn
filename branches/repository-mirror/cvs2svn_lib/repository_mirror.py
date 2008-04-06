@@ -257,7 +257,7 @@ class OldMirrorDirectory(MirrorDirectory):
       # This represents a leaf node.
       return None
     else:
-      return OldMirrorDirectory(self.repo, id, self.repo._nodes_db[id])
+      return OldMirrorDirectory(self.repo, id, self.repo._node_db[id])
 
   def __repr__(self):
     """For convenience only.  The format is subject to change at any time."""
@@ -284,7 +284,7 @@ class CurrentMirrorDirectory(MirrorDirectory):
       except KeyError:
         return _CurrentMirrorReadOnlySubdirectory(
             self.repo, id, self.lod, cvs_path, self,
-            self.repo._nodes_db[id]
+            self.repo._node_db[id]
             )
 
   def __setitem__(self, cvs_path, node):
@@ -612,6 +612,27 @@ class _NodeSerializer(MarshalSerializer):
     return self._load(MarshalSerializer.loads(self, s))
 
 
+class _NodeDatabase(IndexedDatabase):
+  """A database storing all of the directory nodes."""
+
+  def __init__(self):
+    self.db = IndexedDatabase(
+        artifact_manager.get_temp_file(config.MIRROR_NODES_STORE),
+        artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
+        DB_OPEN_NEW, serializer=_NodeSerializer(),
+        )
+
+  def __getitem__(self, id):
+    return self.db[id]
+
+  def __setitem__(self, id, entries):
+    self.db[id] = entries
+
+  def close(self):
+    self.db.close()
+    self.db = None
+
+
 class RepositoryMirror:
   """Mirror a repository and its history.
 
@@ -625,12 +646,12 @@ class RepositoryMirror:
   well as the node id of the root of the node tree describing the LOD
   contents at that revision.
 
-  The LOD trees themselves are stored in the _nodes_db database, which
+  The LOD trees themselves are stored in the _node_db database, which
   maps node ids to nodes.  A node is a map from CVSPath to ids of the
-  corresponding subnodes.  The _nodes_db is stored on disk and each
+  corresponding subnodes.  The _node_db is stored on disk and each
   access is expensive.
 
-  The _nodes_db database only holds the nodes for old revisions.  The
+  The _node_db database only holds the nodes for old revisions.  The
   revision that is being constructed is kept in memory in the
   _new_nodes map, which is cheap to access.
 
@@ -659,11 +680,7 @@ class RepositoryMirror:
     # This corresponds to the 'nodes' table in a Subversion fs.  (We
     # don't need a 'representations' or 'strings' table because we
     # only track file existence, not file contents.)
-    self._nodes_db = IndexedDatabase(
-        artifact_manager.get_temp_file(config.MIRROR_NODES_STORE),
-        artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
-        DB_OPEN_NEW, serializer=_NodeSerializer()
-        )
+    self._node_db = _NodeDatabase()
 
     # Start at revision 0 without a root node.
     self._youngest = 0
@@ -683,10 +700,10 @@ class RepositoryMirror:
     This method copies the newly created nodes to the on-disk nodes
     db."""
 
-    # Copy the new nodes to the _nodes_db
+    # Copy the new nodes to the _node_db
     for node in self._new_nodes.values():
       if not isinstance(node, DeletedCurrentMirrorDirectory):
-        self._nodes_db[node.id] = node.entries
+        self._node_db[node.id] = node.entries
 
     del self._new_nodes
 
@@ -710,7 +727,7 @@ class RepositoryMirror:
 
     lod_history = self._get_lod_history(lod)
     id = lod_history.get_id(revnum)
-    return OldMirrorDirectory(self, id, self._nodes_db[id])
+    return OldMirrorDirectory(self, id, self._node_db[id])
 
   def get_old_path(self, cvs_path, lod, revnum):
     """Return the node for CVS_PATH from LOD at REVNUM.
@@ -740,7 +757,7 @@ class RepositoryMirror:
       return self._new_nodes[id]
     except KeyError:
       return _CurrentMirrorReadOnlyLODDirectory(
-          self, id, lod, self._nodes_db[id]
+          self, id, lod, self._node_db[id]
           )
 
   def get_current_path(self, cvs_path, lod):
@@ -805,7 +822,7 @@ class RepositoryMirror:
     """Free resources and close databases."""
 
     self._lod_histories = None
-    self._nodes_db.close()
-    self._nodes_db = None
+    self._node_db.close()
+    self._node_db = None
 
 
