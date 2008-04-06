@@ -583,21 +583,16 @@ class LODHistory(object):
       self.ids.append(id)
 
 
-class _NodeSerializer(MarshalSerializer):
+class _NodeDatabase(object):
+  """A database storing all of the directory nodes."""
+
   def __init__(self):
     self.cvs_file_db = Ctx()._cvs_file_db
-
-  def _dump(self, node):
-    return [
-        (cvs_path.id, value)
-        for (cvs_path, value) in node.iteritems()
-        ]
-
-  def dumpf(self, f, node):
-    MarshalSerializer.dumpf(self, f, self._dump(node))
-
-  def dumps(self, node):
-    return MarshalSerializer.dumps(self, self._dump(node))
+    self.db = IndexedDatabase(
+        artifact_manager.get_temp_file(config.MIRROR_NODES_STORE),
+        artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
+        DB_OPEN_NEW, serializer=MarshalSerializer(),
+        )
 
   def _load(self, items):
     retval = {}
@@ -605,25 +600,14 @@ class _NodeSerializer(MarshalSerializer):
       retval[self.cvs_file_db.get_file(id)] = value
     return retval
 
-  def loadf(self, f):
-    return self._load(MarshalSerializer.loadf(self, f))
-
-  def loads(self, s):
-    return self._load(MarshalSerializer.loads(self, s))
-
-
-class _NodeDatabase(object):
-  """A database storing all of the directory nodes."""
-
-  def __init__(self):
-    self.db = IndexedDatabase(
-        artifact_manager.get_temp_file(config.MIRROR_NODES_STORE),
-        artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
-        DB_OPEN_NEW, serializer=_NodeSerializer(),
-        )
+  def _dump(self, node):
+    return [
+        (cvs_path.id, value)
+        for (cvs_path, value) in node.iteritems()
+        ]
 
   def __getitem__(self, id):
-    return self.db[id]
+    return self._load(self.db[id])
 
   def write_new_nodes(self, nodes):
     """Write NODES to the database.
@@ -631,7 +615,7 @@ class _NodeDatabase(object):
     NODES is an iterable of writable CurrentMirrorDirectory instances."""
 
     for node in nodes:
-      self.db[node.id] = node.entries
+      self.db[node.id] = self._dump(node.entries)
 
   def close(self):
     self.db.close()
