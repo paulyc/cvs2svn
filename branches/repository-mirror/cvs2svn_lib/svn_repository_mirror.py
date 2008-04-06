@@ -17,21 +17,12 @@
 """This module contains the SVNRepositoryMirror class."""
 
 
-import sys
-import bisect
-
 from cvs2svn_lib.boolean import *
-from cvs2svn_lib import config
-from cvs2svn_lib.common import InternalError
-from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.cvs_file import CVSDirectory
-from cvs2svn_lib.cvs_file import CVSFile
 from cvs2svn_lib.symbol import Trunk
 from cvs2svn_lib.svn_commit_item import SVNCommitItem
 from cvs2svn_lib.repository_mirror import RepositoryMirror
-from cvs2svn_lib.repository_mirror import LODExistsError
 from cvs2svn_lib.repository_mirror import PathExistsError
-from cvs2svn_lib.repository_mirror import CurrentMirrorSubdirectory
 
 
 class SVNRepositoryMirror:
