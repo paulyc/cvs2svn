@@ -298,7 +298,7 @@ class CurrentMirrorDirectory(MirrorDirectory):
         )
 
 
-class DeletedCurrentMirrorDirectory(CurrentMirrorDirectory):
+class DeletedCurrentMirrorDirectory(object):
   """A MirrorDirectory that has been deleted.
 
   A MirrorDirectory that used to be a _WritableMirrorDirectoryMixin
