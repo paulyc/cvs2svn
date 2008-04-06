@@ -625,8 +625,13 @@ class _NodeDatabase(IndexedDatabase):
   def __getitem__(self, id):
     return self.db[id]
 
-  def __setitem__(self, id, entries):
-    self.db[id] = entries
+  def write_new_nodes(self, nodes):
+    """Write NODES to the database.
+
+    NODES is an iterable of writable CurrentMirrorDirectory instances."""
+
+    for node in nodes:
+      self.db[node.id] = node.entries
 
   def close(self):
     self.db.close()
@@ -701,9 +706,11 @@ class RepositoryMirror:
     db."""
 
     # Copy the new nodes to the _node_db
-    for node in self._new_nodes.values():
-      if not isinstance(node, DeletedCurrentMirrorDirectory):
-        self._node_db[node.id] = node.entries
+    self._node_db.write_new_nodes([
+        node
+        for node in self._new_nodes.values()
+        if not isinstance(node, DeletedCurrentMirrorDirectory)
+        ])
 
     del self._new_nodes
 
