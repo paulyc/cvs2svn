@@ -593,6 +593,8 @@ class _NodeDatabase(object):
         artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
         DB_OPEN_NEW, serializer=MarshalSerializer(),
         )
+    # A map from node_id to [(cvs_path.id, node_id), ...]:
+    self._cache = {}
 
   def _load(self, items):
     retval = {}
@@ -607,17 +609,26 @@ class _NodeDatabase(object):
         ]
 
   def __getitem__(self, id):
-    return self._load(self.db[id])
+    try:
+      items = self._cache[id]
+    except KeyError:
+      items = self.db[id]
+      self._cache[id] = items
+
+    return self._load(items)
 
   def write_new_nodes(self, nodes):
     """Write NODES to the database.
 
     NODES is an iterable of writable CurrentMirrorDirectory instances."""
 
+    self._cache.clear()
+
     for node in nodes:
       self.db[node.id] = self._dump(node.entries)
 
   def close(self):
+    self._cache.clear()
     self.db.close()
     self.db = None
 
