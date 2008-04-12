@@ -584,7 +584,19 @@ class LODHistory(object):
 
 
 class _NodeDatabase(object):
-  """A database storing all of the directory nodes."""
+  """A database storing all of the directory nodes.
+
+  The nodes are written in groups every time write_new_nodes() is
+  called.  To the database is written a dictionary {node_id :
+  [(cvs_path.id, node_id),...]}, where the keys are the node_ids of
+  the new nodes.  When a node is read, its whole group is read and
+  cached under the assumption that the other nodes in the group are
+  likely to be needed soon.
+
+  The nodes are cached in the _cache member variable.  This variable
+  holds a list that is turned into a dictionary when used.  This is
+  both to save space for nodes that might never be used, and to avoid
+  cross-talk between MirrorDirectory instances."""
 
   def __init__(self):
     self.cvs_file_db = Ctx()._cvs_file_db
@@ -593,6 +605,11 @@ class _NodeDatabase(object):
         artifact_manager.get_temp_file(config.MIRROR_NODES_INDEX_TABLE),
         DB_OPEN_NEW, serializer=MarshalSerializer(),
         )
+
+    # A list of the maximum node_id stored by each call to
+    # write_new_nodes():
+    self._max_node_ids = [0]
+
     # A map from node_id to [(cvs_path.id, node_id), ...]:
     self._cache = {}
 
@@ -608,12 +625,18 @@ class _NodeDatabase(object):
         for (cvs_path, value) in node.iteritems()
         ]
 
+  def _determine_index(self, id):
+    """Return the index of the record holding the node with ID."""
+
+    return bisect.bisect_left(self._max_node_ids, id)
+
   def __getitem__(self, id):
     try:
       items = self._cache[id]
     except KeyError:
-      items = self.db[id]
-      self._cache[id] = items
+      index = self._determine_index(id)
+      self._cache.update(self.db[index])
+      items = self._cache[id]
 
     return self._load(items)
 
@@ -624,8 +647,19 @@ class _NodeDatabase(object):
 
     self._cache.clear()
 
+    data = {}
+    max_node_id = 0
     for node in nodes:
-      self.db[node.id] = self._dump(node.entries)
+      max_node_id = max(max_node_id, node.id)
+      data[node.id] = self._dump(node.entries)
+
+    self.db[len(self._max_node_ids)] = data
+
+    if max_node_id == 0:
+      # Rewrite last value:
+      self._max_node_ids.append(self._max_node_ids[-1])
+    else:
+      self._max_node_ids.append(max_node_id)
 
   def close(self):
     self._cache.clear()
