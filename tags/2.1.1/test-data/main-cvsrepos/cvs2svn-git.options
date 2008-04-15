@@ -1,0 +1,88 @@
+# (Be in -*- mode: python; coding: utf-8 -*- mode.)
+
+# As a partial check that the example options file is functional, we
+# use it as the basis for this test.  We only need to overwrite the
+# output option to get the output repository in the location expected
+# by the test infrastructure.
+
+execfile('cvs2svn-example.options')
+
+from cvs2svn_lib.fulltext_revision_recorder \
+     import SimpleFulltextRevisionRecorderAdapter
+from cvs2svn_lib.git_revision_recorder import GitRevisionRecorder
+from cvs2svn_lib.git_output_option import GitOutputOption
+
+
+ctx.trunk_only = False
+ctx.cross_project_commits = False
+ctx.cross_branch_commits = False
+ctx.username = 'cvs2svn'
+
+# CVS uses unix login names as author names whereas git requires
+# author names to be of the form "foo <bar>".  The default is to set
+# the git author to "cvsauthor <cvsauthor>".  author_transforms can be
+# used to map cvsauthor names (e.g., "jrandom") to a true name and
+# email address (e.g., "J. Random <jrandom@example.com>" for the
+# example shown).  All values should be either 16-bit strings or 8-bit
+# strings in the utf-8 encoding.
+author_transforms={
+    'jrandom' : ('J. Random', 'jrandom@example.com'),
+    'mhagger' : ('Michael Haggerty', 'mhagger@alum.mit.edu'),
+    'brane' : (u'Branko Čibej', 'brane@xbc.nu'),
+    'ringstrom' : ('Tobias Ringström', 'tobias@ringstrom.mine.nu'),
+    'dionisos' : (u'Erik Hülsmann', 'e.huelsmann@gmx.net'),
+    }
+
+ctx.output_option = GitOutputOption(
+    'cvs2svn-tmp/git-dump.dat',
+    author_transforms=author_transforms,
+    )
+
+ctx.revision_recorder = SimpleFulltextRevisionRecorderAdapter(
+    RCSRevisionReader('co'),
+    GitRevisionRecorder('cvs2svn-tmp/git-blob.dat'),
+    )
+ctx.revision_excluder = NullRevisionExcluder()
+ctx.revision_reader = None
+
+run_options.clear_projects()
+
+run_options.add_project(
+    r'test-data/main-cvsrepos',
+    symbol_transforms=[
+        # See cvs2svn-example.options for more documention about
+        # symbol transforms.
+        ReplaceSubstringsSymbolTransform('\\','/'),
+        NormalizePathsSymbolTransform(),
+        ],
+    symbol_strategy_rules=[
+        # See cvs2svn-example.options for more documention about
+        # strategy rules.
+
+        # Read from a file how symbols should be converted:
+        #SymbolHintsFileRule('symbol-hints.txt'),
+
+        # Specific rules for symbols matching particular regexps:
+        #ForceBranchRegexpStrategyRule(r'branch.*'),
+        #ForceTagRegexpStrategyRule(r'tag.*'),
+        #ExcludeRegexpStrategyRule(r'unknown-.*'),
+
+        # If a symbol is used consistently in CVS, do the same in git:
+        UnambiguousUsageRule(),
+
+        # If there are ever commits on a symbol, force it to be a
+        # branch:
+        BranchIfCommitsRule(),
+
+        # Uncomment at most one of the following group of
+        # "catch-all" rules:
+        HeuristicStrategyRule(),
+        #AllBranchRule(),
+        #AllTagRule(),
+
+        # This rule should always be included.  It determines from
+        # where each branch sprouts.
+        HeuristicPreferredParentRule(),
+        ],
+    )
+
