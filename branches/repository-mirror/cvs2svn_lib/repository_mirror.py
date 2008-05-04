@@ -593,10 +593,11 @@ class _NodeDatabase(object):
   cached under the assumption that the other nodes in the group are
   likely to be needed soon.
 
-  The nodes are cached in the _cache member variable.  This variable
-  holds a list that is turned into a dictionary when used.  This is
-  both to save space for nodes that might never be used, and to avoid
-  cross-talk between MirrorDirectory instances."""
+  The dictionaries for nodes that have been read from the database
+  during the current revision are cached by node_id in the _cache
+  member variable.  The corresponding dictionaries are copied when
+  read to avoid cross-talk between distinct MirrorDirectory instances
+  that have the same node_id."""
 
   def __init__(self):
     self.cvs_file_db = Ctx()._cvs_file_db
