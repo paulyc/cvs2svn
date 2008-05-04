@@ -610,7 +610,7 @@ class _NodeDatabase(object):
     # write_new_nodes():
     self._max_node_ids = [0]
 
-    # A map from node_id to [(cvs_path.id, node_id), ...]:
+    # A map {node_id : {cvs_path : node_id}}:
     self._cache = {}
 
   def _load(self, items):
@@ -635,10 +635,11 @@ class _NodeDatabase(object):
       items = self._cache[id]
     except KeyError:
       index = self._determine_index(id)
-      self._cache.update(self.db[index])
+      for (node_id, items) in self.db[index].items():
+        self._cache[node_id] = self._load(items)
       items = self._cache[id]
 
-    return self._load(items)
+    return items.copy()
 
   def write_new_nodes(self, nodes):
     """Write NODES to the database.
