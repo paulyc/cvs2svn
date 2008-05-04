@@ -446,6 +446,7 @@ class _CurrentMirrorReadOnlyLODDirectory(
     self.id = self.repo._key_generator.gen_id()
     self.repo._new_nodes[self.id] = self
     self.repo._get_lod_history(self.lod).update(self.repo._youngest, self.id)
+    self._entries = self._entries.copy()
 
 
 class _CurrentMirrorWritableLODDirectory(
@@ -478,6 +479,7 @@ class _CurrentMirrorReadOnlySubdirectory(
     self.id = self.repo._key_generator.gen_id()
     self.repo._new_nodes[self.id] = self
     self.parent_mirror_dir._set_entry(self.cvs_path, self)
+    self._entries = self._entries.copy()
 
 
 class _CurrentMirrorWritableSubdirectory(
@@ -595,9 +597,10 @@ class _NodeDatabase(object):
 
   The dictionaries for nodes that have been read from the database
   during the current revision are cached by node_id in the _cache
-  member variable.  The corresponding dictionaries are copied when
-  read to avoid cross-talk between distinct MirrorDirectory instances
-  that have the same node_id."""
+  member variable.  The corresponding dictionaries are *not* copied
+  when read.  To avoid cross-talk between distinct MirrorDirectory
+  instances that have the same node_id, users of these dictionaries
+  have to copy them before modification."""
 
   def __init__(self):
     self.cvs_file_db = Ctx()._cvs_file_db
@@ -640,7 +643,7 @@ class _NodeDatabase(object):
         self._cache[node_id] = self._load(items)
       items = self._cache[id]
 
-    return items.copy()
+    return items
 
   def write_new_nodes(self, nodes):
     """Write NODES to the database.
