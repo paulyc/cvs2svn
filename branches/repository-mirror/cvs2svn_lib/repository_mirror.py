@@ -203,7 +203,7 @@ class MirrorDirectory(object):
     # The entries within this directory, stored as a map {CVSPath :
     # node_id}.  The node_ids are integers for CVSDirectories, None
     # for CVSFiles:
-    self.entries = entries
+    self._entries = entries
 
   def __getitem__(self, cvs_path):
     """Return the MirrorDirectory associated with the specified subnode.
@@ -217,17 +217,17 @@ class MirrorDirectory(object):
   def __len__(self):
     """Return the number of CVSPaths within this node."""
 
-    return len(self.entries)
+    return len(self._entries)
 
   def __contains__(self, cvs_path):
     """Return True iff CVS_PATH is contained in this node."""
 
-    return cvs_path in self.entries
+    return cvs_path in self._entries
 
   def __iter__(self):
     """Iterate over the CVSPaths within this node."""
 
-    return self.entries.__iter__()
+    return self._entries.__iter__()
 
   def _format_entries(self):
     """Format the entries map for output in subclasses' __repr__() methods."""
@@ -238,7 +238,7 @@ class MirrorDirectory(object):
       else:
         return '%s -> %x' % (key, value,)
 
-    items = self.entries.items()
+    items = self._entries.items()
     items.sort()
     return '{%s}' % (', '.join([format_item(*item) for item in items]),)
 
@@ -252,7 +252,7 @@ class OldMirrorDirectory(MirrorDirectory):
   """Represent a historical directory within the RepositoryMirror."""
 
   def __getitem__(self, cvs_path):
-    id = self.entries[cvs_path]
+    id = self._entries[cvs_path]
     if id is None:
       # This represents a leaf node.
       return None
@@ -274,7 +274,7 @@ class CurrentMirrorDirectory(MirrorDirectory):
     self.cvs_path = cvs_path
 
   def __getitem__(self, cvs_path):
-    id = self.entries[cvs_path]
+    id = self._entries[cvs_path]
     if id is None:
       # This represents a leaf node.
       return None
@@ -377,21 +377,21 @@ class _WritableMirrorDirectoryMixin:
     """Create or overwrite a subnode of this node, with no checks."""
 
     if node is None:
-      self.entries[cvs_path] = None
+      self._entries[cvs_path] = None
     else:
-      self.entries[cvs_path] = node.id
+      self._entries[cvs_path] = node.id
 
   def _del_entry(self, cvs_path):
     """Remove the subnode of this node at CVS_PATH, with no checks."""
 
-    del self.entries[cvs_path]
+    del self._entries[cvs_path]
 
   def _mark_deleted(self):
     """Mark this object and any writable descendants as being deleted."""
 
     self.__class__ = DeletedCurrentMirrorDirectory
 
-    for (cvs_path, id) in self.entries.iteritems():
+    for (cvs_path, id) in self._entries.iteritems():
       if id in self.repo._new_nodes:
         node = self[cvs_path]
         if isinstance(node, _WritableMirrorDirectoryMixin):
@@ -653,7 +653,7 @@ class _NodeDatabase(object):
     max_node_id = 0
     for node in nodes:
       max_node_id = max(max_node_id, node.id)
-      data[node.id] = self._dump(node.entries)
+      data[node.id] = self._dump(node._entries)
 
     self.db[len(self._max_node_ids)] = data
 
