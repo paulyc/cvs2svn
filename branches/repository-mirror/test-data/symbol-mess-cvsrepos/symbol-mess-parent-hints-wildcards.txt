@@ -1,3 +1,0 @@
-. MOSTLY_BRANCH      branch . .
-. MOSTLY_TAG         tag    . .
-. BRANCH_WITH_COMMIT .      . BRANCH
